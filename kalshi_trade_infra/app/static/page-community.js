@@ -1,22 +1,32 @@
-/* Meridian's Community page: the shared feed of posts.
-   Fetched on first use (pageLoad in app.meridian.js), which hands this function what the
-   bundle shares with its page files (shared()); the router calls the views it returns. */
+/* The Community page, the shared feed of posts, in both themes.
+   Fetched on first use (pageLoad in app.js or app.meridian.js), which hands this function what the
+   bundle shares with its page files (shared()); the router calls the views it returns.
+   What one theme draws and the other doesn't goes by the bundle's theme (shared(): theme). */
 window.TauPage('community', (T) => {
   'use strict';
   const {
-    alert0, api, armed, attachMention, authorLine, BEHIND, busy, deploymentMode, esc, flash, ICON, keepZone,
+    alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, deploymentMode, esc, flash, ICON, keepZone,
     liveWaitMark, loading, marketShort, mdLite, notice, num, overDays, pageLede, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
-    settleAt, shell, statusMark, tone, trDay, usd, when
+    settleAt, shell, statusMark, theme, tone, trDay, usd, when
   } = T;
+  // Each theme lays the page and its cards out its own way: Tau's cards print a figure in a line of words and its
+  // composer sits under the feed; Meridian's set figures out as labelled terms, under a New post that opens.
+  const tau = theme === 'tau';
 
   // ---------- community ----------
   // A shared figure says what it is: which book (a backtest, paper, demo or live), over what span and on
   // how many trades, each book on its own line. `owner` names the author when the post isn't the viewer's:
   // a strategy page is its owner's alone, so the card says how to get a copy instead of a dead link.
-  const snapPnl = (v, n) => n === 0 ? '<dd>No trades yet</dd>' : `<dd class="${tone(v)}">${usd(v, true)}${n != null ? `<span class="snap-n">on ${realTrades(n)}</span>` : ''}</dd>`;
+  const snapPnl = tau
+    ? (v, n) => (n === 0 ? 'no trades yet' : `<b class="${tone(v)}">${usd(v, true)}</b>${n != null ? ` on ${realTrades(n)}` : ''}`)
+    : (v, n) => n === 0 ? '<dd>No trades yet</dd>' : `<dd class="${tone(v)}">${usd(v, true)}${n != null ? `<span class="snap-n">on ${realTrades(n)}</span>` : ''}</dd>`;
   function postSnapshot(snap, owner) {
     if (!snap) return '';
     if (snap.kind === 'pnl') {
+      if (tau) {
+        return `<div class="snap"><div class="snap-meta">Realized P&amp;L, all time, as of this post</div><div class="snap-row"><span>Paper</span><span>${snapPnl(snap.paper_pnl, snap.paper_trades)}</span></div>
+        <div class="snap-row"><span>Live (real money)</span><span>${snapPnl(snap.live_pnl, snap.live_trades)}</span></div></div>`;
+      }
       return `<div class="snap snap-pnl"><div class="snap-head"><b>Realized P&amp;L</b><div class="snap-meta-line"><span class="snap-kind">All time, as of this post</span></div></div><dl class="snap-metrics"><div><dt>Paper</dt>${snapPnl(snap.paper_pnl, snap.paper_trades)}</div>
         <div><dt>Live (real money)</dt>${snapPnl(snap.live_pnl, snap.live_trades)}</div></dl></div>`;
     }
@@ -24,26 +34,39 @@ window.TauPage('community', (T) => {
       // A backtest-only strategy, or a pass the server found no gatekeeper record for (no_gatekeeper_record), has a
       // later-period figure: the slice after the split date that picked it, not held out, as its page and list say.
       const later = snap.status === 'backtest-only' || snap.no_gatekeeper_record;
-      // Either kind's figure is "Later-period P&L", as the Strategies list's sort names it; the note says which, in the
-      // family's words: "later period · unseen data" (held out) or "· not held out", as Tau's card and the Deploy hover
-      // do. A held-out card's term read "Unseen-data P&L" beside Tau's "backtest on unseen data", then "…, on unseen data
-      // (held out)" and "…, which picked it: not held out".
-      // A Void, Rejected or missed-final idea's figure is muted, as its row on Strategies is: a green "+$42.17" under a
-      // Void stamp read as a result. Tau's card prints it untoned.
+      // Either kind's figure is "later-period P&L", as the Strategies list's sort names it, and the note under the
+      // figures says which, in the family's words: "later period · unseen data" (held out) or "· not held out", as the
+      // Deploy hover does. In Tau's figures' line, "…which picked it: not held out: +$12.40" ran two colons into the P&L;
+      // a held-out card read "later-period backtest over 9 days on unseen data" in Tau and "Unseen-data P&L" in Meridian.
       // Each piece of the note's pair holds together, so a phone breaks only after the "·": it read "(later / period"
-      // and "unseen / data" at 390px (walked 2026-10-28).
-      const noPass = snap.status === 'failed' || snap.status === 'rejected' || snap.verdict === 'missed_final';
+      // and "not / held out" at 360-390px (walked 2026-10-28).
       // A card with no later-period figure ("—") has no note on it, as a Strategies row with no figure has no line
       // under it: "(later period · unseen data)" beside a dash described a figure that wasn't there (walked 2026-10-28).
       // A Void card the server flags (no_gatekeeper_record on a failed one: the first version's simple backtest stored it
       // as failed, never judged on held-out data) says "not held out" too, without "which picked it": nothing picked it.
+      // The note ends ", not paper or live trading.": Tau's said only "Backtest…", and a "+$42.17" beside a Passed stamp
+      // in a feed of paper and live results could pass for money made (walked 2026-10-30).
       const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date${snap.status === 'failed' ? '' : ', which picked it'} (later\u00a0period${SEP}not\u00a0held\u00a0out), not paper or live trading.`
         : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data), not paper or live trading.`;
+      if (tau) {
+        const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
+        return owner ? `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
+          : `<a class="snap" href="/strategies/${snap.id}">${head}${why ? `<div class="snap-note">${why}</div>` : ''}</a>`;
+      }
+      // A Void, Rejected or missed-final idea's figure is muted in Meridian, as its row on Strategies is: a green
+      // "+$42.17" under a Void stamp read as a result. Tau's card prints it untoned.
+      const noPass = snap.status === 'failed' || snap.status === 'rejected' || snap.verdict === 'missed_final';
       const note = [why, owner ? `Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''].filter(Boolean).join(' ');
       const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Later-period P&amp;L</dt><dd class="${noPass ? 'pnl-nopass' : tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${num(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl>${note ? `<p class="snap-note">${note}</p>` : ''}`;
       return owner ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
     }
     if (snap.kind === 'deployment') {
+      if (tau) {
+        const book = snap.mode === 'live' ? 'live' : snap.mode === 'demo' ? 'demo' : 'paper';
+        return `<div class="snap"><div class="snap-head"><b>${esc(snap.title)}</b>${book === 'live' ? '<span class="mk live">Live</span>' + liveWaitMark() : book === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>'}</div>
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${book}${SEP}realized ${usd(snap.realized_pnl, true)}${snap.closed_trades != null ? SEP + realTrades(snap.closed_trades) : ''}${snap.since ? ' since ' + trDay(Date.parse(snap.since) / 1000) : ''}</div></div>`;
+      }
       return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}${snap.mode === 'live' ? liveWaitMark() : ''}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span>${snap.since ? `<span class="snap-kind snap-since">since ${trDay(Date.parse(snap.since) / 1000)}</span>` : ''}</div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${num(snap.closed_trades)}</dd></div></dl></div>`;
     }
     return '';
@@ -63,41 +86,61 @@ window.TauPage('community', (T) => {
     const list = names.map(esc).join(', ');
     return extra > 0 ? `${list} and ${num(extra)} other${extra > 1 ? 's' : ''}` : list;
   }
+  // A pill toggles the reader's own reaction, and says whether it is on (aria-pressed): Tau's showed that only by its
+  // colour, so a screen reader heard "🔥, 3" alike whether the reader had reacted or not.
   function rxChip(rx) {
     const who = rxWho(rx);
     return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-pressed="${!!rx.mine}" aria-label="${esc(rx.emoji)}, ${num(rx.count)}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${num(rx.count)}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
   }
-  // Existing reactions and an explicit action to open the palette.
+  // Pills for the reactions a post has, then a way to add one: Tau's inline "+", Meridian's React.
   function reactionChips(list) {
     const chips = (list || []).map(rxChip).join('');
-    return chips + `<button class="rx add" data-react-add title="Add a reaction">React</button>`;
+    return chips + (tau ? `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`
+      : '<button class="rx add" data-react-add title="Add a reaction">React</button>');
   }
   const GROUP_WINDOW = 5 * 60 * 1000;  // consecutive posts by one author within 5 min collapse the header
   // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,
   // reaction pills, and a bottom-left action row (reply / replies count, plus edit on own posts).
-  // A grouped post is a tight continuation of the author above it: no header, its time in the gutter.
-  // Its time says its zone, and its date on another day than today (settleAt), kept on one line with its zone
-  // (keepZone): at 390px it read a bare "07:49" in no zone, under a header that says "Oct 29" (walked 2026-10-30).
+  // A grouped post is a tight continuation of the author above it: no header, its time in the gutter (Tau's shows on
+  // hover). Its time says its zone, and its date on another day than today (settleAt): it read a bare "07:49" in no
+  // zone, under a header that says "Oct 29" (walked 2026-10-30). In Tau's 42px gutter it wraps, the time on its own
+  // line; Meridian's keeps it on one line with its zone (keepZone).
   function postCard(p, grouped) {
     const replies = p.comments || 0;
-    return `<article class="post${grouped ? ' grouped' : ''}${p.picture ? ' post-photo' : ''}" data-id="${p.id}">
-      <div class="post-gutter">${grouped ? `<time class="gutter-time" datetime="${esc(p.created_at)}">${keepZone(settleAt(p.created_at))}</time>` : avatar(p.picture, p.author)}</div>
-      ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`}
-      <div class="post-col">
-        <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
+    const gutter = grouped ? `<time class="gutter-time" datetime="${esc(p.created_at)}">${tau ? settleAt(p.created_at) : keepZone(settleAt(p.created_at))}</time>` : avatar(p.picture, p.author);
+    const head = grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`;
+    const main = `<div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
-        ${postSnapshot(p.snapshot, snapOwner(p))}
-        <div class="post-footer"><div class="reactions">${reactionChips(p.reactions)}</div>
-        <div class="post-actions">
-          <button class="thread-link" data-act="comments"><span>${replies ? `${num(replies)} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
+        ${postSnapshot(p.snapshot, snapOwner(p))}`;
+    const actions = `<div class="post-actions">
+          <button class="thread-link" data-act="comments">${tau ? ICON.comment : ''}<span>${replies ? `${num(replies)} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
           ${p.mine ? `<button class="thread-link" data-act="edit">${ICON.pencil}<span>Edit</span></button><button class="thread-link" data-act="delete"><span>Delete</span></button>` : ''}
-        </div></div></div>
+        </div>`;
+    if (tau) {
+      return `<article class="post${grouped ? ' grouped' : ''}" data-id="${p.id}">
+      <div class="post-gutter">${gutter}</div>
+      <div class="post-col">
+        ${head}
+        ${main}</div>
+        <div class="reactions">${reactionChips(p.reactions)}</div>
+        ${actions}
+        <div class="comments" hidden></div>
+      </div>
+    </article>`;
+    }
+    return `<article class="post${grouped ? ' grouped' : ''}${p.picture ? ' post-photo' : ''}" data-id="${p.id}">
+      <div class="post-gutter">${gutter}</div>
+      ${head}
+      <div class="post-col">
+        ${main}
+        <div class="post-footer"><div class="reactions">${reactionChips(p.reactions)}</div>
+        ${actions}</div></div>
         <div class="comments" hidden></div>
       </div>
     </article>`;
   }
   // Emoji reactions — a fixed palette (matches the server whitelist). 'tau' is a
-  // custom reaction: the static Tau mark.
+  // custom reaction: the Tau mark (Tau's stylesheet shakes it: excitement; Meridian's keeps it still).
   const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻', '🐐', '🦍', '🐳', '💎', '🤡', '💀', '🫡', '🌙'];
   const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
   let emojiPop = null;
@@ -116,30 +159,46 @@ window.TauPage('community', (T) => {
     pop.addEventListener('click', (e) => { const b = e.target.closest('.ep'); if (b) { onPick(b.dataset.e); close(); } });
     setTimeout(() => { document.addEventListener('click', outside, true); document.addEventListener('keydown', onEsc); }, 0);
   }
+  // What an empty feed says, the reader's own posts or everyone's, in each theme's words.
+  const EMPTY_MINE = tau ? 'Share a strategy an agent found or how your book is doing — it’ll show up here.'
+    : 'Share a strategy an agent found or how your book is doing. It shows up here.';
+  const EMPTY_ALL = tau ? 'Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.'
+    : 'Be the first. Share a strategy an agent found, an idea worth researching, or how your paper book is doing.';
   async function viewCommunity() {
-    shell('/community', '', `
-      <div class="feedwrap"><div class="community-heading"><h1 class="page">Community</h1>
-        <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
-        ${pageLede('Share a strategy, an idea, or how your money is doing. Like and reply to other traders.')}
-      </div>
-        <details class="community-compose"><summary>New post ${ICON.chev}</summary>
-        <form class="panel composer-post" id="composer-post" aria-label="New post">
-          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" aria-describedby="post-hint" placeholder="Write a post…"></textarea>
+    const lede = 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.';
+    const filter = '<div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>';
+    const feedHtml = `<div id="feed-note"></div>
+        <div id="feed">${loading(120)}${loading(120)}</div>`;
+    const composer = `<form class="panel composer-post" id="composer-post"${tau ? '' : ' aria-label="New post"'}>
+          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" aria-describedby="post-hint" placeholder="${tau ? 'Share an idea or how it’s going…' : 'Write a post…'}"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
             <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/gif" class="vh" tabindex="-1" aria-label="Choose a photo to attach">
-            <label class="field"><span class="vh">Attach a strategy</span>
-              <select id="post-strat"><option value="">Attach strategy</option></select></label>
+            ${tau ? '<label class="field post-strat-f">' : '<label class="field">'}<span class="vh">Attach a strategy</span>
+              <select id="post-strat"><option value="">${tau ? 'Attach a strategy… (optional)' : 'Attach strategy'}</option></select></label>
             <button class="btn sm" type="button" data-share="pnl">${ICON.up}Share my P&amp;L</button>
             <button class="btn primary sm" type="submit">Post</button>
           </div>
           <p class="hint post-hint" id="post-hint">Everyone signed in to Tau can read posts and replies. An attached strategy shows its name, market and backtest result, never its rules. Share my P&amp;L posts your paper and live (real money) totals.</p>
           <div id="post-flash"></div>
-        </form>
+        </form>`;
+    // Tau: the title over the feed and its filter, the composer under the feed. Meridian: the title, filter and lede in
+    // one heading, then New post (folded) above the feed.
+    shell('/community', tau ? boardTitle('Community', lede) : '', tau ? `
+      <div class="feedwrap">
+        ${filter}
+        ${feedHtml}
+        ${composer}
+      </div>` : `
+      <div class="feedwrap"><div class="community-heading"><h1 class="page">Community</h1>
+        ${filter}
+        ${pageLede(lede)}
+      </div>
+        <details class="community-compose"><summary>New post ${ICON.chev}</summary>
+        ${composer}
         </details>
-        <div id="feed-note"></div>
-        <div id="feed">${loading(120)}${loading(120)}</div>
+        ${feedHtml}
       </div>`);
     // composer auto-grows with the draft (starts one line, caps at the CSS max-height)
     const ta = root.querySelector('#post-body');
@@ -317,7 +376,7 @@ window.TauPage('community', (T) => {
           && Math.abs(new Date(prev.created_at) - new Date(p.created_at)) < GROUP_WINDOW;
         return postCard(p, grouped);
       }).join('')
-        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3><p>${mineOnly ? 'Share a strategy an agent found or how your book is doing. It shows up here.' : 'Be the first. Share a strategy an agent found, an idea worth researching, or how your paper book is doing.'}</p></div>`;
+        : `<div class="empty"><h3>${mineOnly ? 'You haven’t posted yet' : 'No posts yet'}</h3><p>${mineOnly ? EMPTY_MINE : EMPTY_ALL}</p></div>`;
       if (html === lastFeed) return;  // nothing changed — don't re-render (avoids flicker)
       lastFeed = html;
       feed.innerHTML = html;

@@ -23,7 +23,7 @@
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
-    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode
   } = window.TauCore;
 
   const root = document.getElementById('app');
@@ -960,9 +960,6 @@
     mountHotRail();
     mountAutopilot();
   }
-  // What a page is for, in one line under its name, in Tau's words and Research's lede style. Deploy and Settings
-  // opened on their figures or a form with no word on what the page holds.
-  const pageLede = (text) => `<p class="lede page-lede">${text}</p>`;
   const ledeTitle = (title, text) => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${pageLede(text)}</div>`;
   async function viewDevLog() {
     shell('/devlog', boardTitle('Dev Logs'), loading(260));
@@ -1549,7 +1546,6 @@
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">${gl('Realized P&amp;L', 'realized')}</th><th class="num">${gl('Unrealized', 'unrealized')}</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
-  const deploymentMode = (d) => d.mode === 'live' ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
   const deploymentRemove = (d) => `<button class="btn sm danger" data-dep="${esc(d.id)}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button>`;
   // A demo copy the demo-copy sync paused waits on its paper deployment: Resume would be paused again
   // at the sync's next pass, so it is offered disabled with the server's reason (resume_block), which
@@ -2545,7 +2541,7 @@
   function viewFunds() { return pageView('funds', 'viewFunds', '/funds', []); }
 
   // ---------- community ----------
-  // In app.meridian-community.js, fetched on first use (page files, at the end of this file).
+  // In page-community.js (one for both themes), fetched on first use (page files, at the end of this file).
   function viewCommunity() { return pageView('community', 'viewCommunity', '/community', []); }
 
   // ---------- billing ----------
@@ -3748,7 +3744,7 @@
   function viewBilling() { return pageView('billing', 'viewBilling', '/billing', []); }
 
   // ---------- admin ----------
-  // In app.meridian-admin.js, fetched on first use (page files, at the end of this file).
+  // In page-admin.js (one for both themes), fetched on first use (page files, at the end of this file).
   function viewAdmin() { return pageView('admin', 'viewAdmin', '/admin', []); }
   function viewSystem() { return pageView('admin', 'viewSystem', '/system', []); }
 
@@ -3775,7 +3771,7 @@
   }
   // The page files both themes load (page-<name>.js, page_modules.SHARED): what this theme draws its own way in
   // them comes from shared() (theme).
-  const PAGE_SHARED = ['autopilot'];
+  const PAGE_SHARED = ['autopilot', 'admin', 'community'];
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/' + (PAGE_SHARED.includes(name) ? 'page-' : 'app.meridian-') + name + '.js' + (v ? '?v=' + v : '');
   // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):

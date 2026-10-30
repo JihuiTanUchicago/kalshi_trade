@@ -29,8 +29,7 @@ const INTERNAL = {
 };
 // Scripts no customer reads, or words a customer is owed. Each names why.
 const ALLOWED_FILES = {
-  'app-admin.js': 'the operator’s Admin page, and the System map, which shows the codebase on purpose (file and table names)',
-  'app.meridian-admin.js': 'the same, in Meridian',
+  'page-admin.js': 'the operator’s Admin page, and the System map, which shows the codebase on purpose (file and table names), in both themes',
   'app-legal.js': 'the privacy policy must name who processes a customer’s data (Anthropic via Amazon Bedrock, Amazon Web Services)',
 };
 const ALLOWED_TEXT = [

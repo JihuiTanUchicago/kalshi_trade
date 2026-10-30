@@ -421,6 +421,9 @@
 
   // ---------- page pieces ----------
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
+  // What a page is for, in one line under its name, in Tau's words and Research's lede style. Deploy and Settings
+  // opened on their figures or a form with no word on what the page holds.
+  const pageLede = (text) => `<p class="lede page-lede">${text}</p>`;
   // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
   // community emails also sets; the server checks it before every optional email. Perps safety
   // alerts and the failed auto-reload email never read it, and the copy says so.
@@ -539,6 +542,8 @@
   // A deployment as a customer knows it: by its book and state, never by its row id.
   const BOOK_NAME = { live: 'Live', demo: 'Demo', paper: 'Paper' };
   const bookName = (d) => BOOK_NAME[d.mode] || esc(d.mode);
+  // Its book as the mark beside its name: LIVE, Demo or Paper.
+  const deploymentMode = (d) => d.mode === 'live' ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
   // The example session (and its strategies) every account is seeded with: the server flags it
   // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
   const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
@@ -1106,6 +1111,6 @@
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
-    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode
   });
 })();

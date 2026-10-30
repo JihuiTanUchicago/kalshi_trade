@@ -3936,6 +3936,80 @@ test('the admin page counts open positions whose strategy was deleted', async ()
   }
 });
 
+// Admin's writes (a credit grant, the kill switch) take as long as they take. Tau's painted a reply that landed after
+// the reader had moved on over the page they were on: its flash over that page's, the kill switch's state, and a fresh
+// read of Admin behind it. Meridian's dropped it; both themes run one admin file now (page-admin.js), Meridian's way.
+for (const action of ['grant', 'kill switch']) for (const failure of [false, true]) {
+  test(`Tau: Admin's ${action} ignores a ${failure ? 'failure' : 'success'} that lands after the reader left`, async () => {
+    const pending = deferred(); let reads = 0;
+    const actionPath = action === 'grant' ? '/api/admin/grant' : '/api/admin/kill-switch';
+    const f = frontend({fetchImpl: (path, options = {}) => {
+      if (path === '/api/admin') { reads++; return response({users: [], waitlist: []}); }
+      if (path === '/api/admin/kill-switch' && options.method !== 'POST') return response({on: false, reason: '', by: '', env_on: false});
+      assert.equal(path, actionPath); return pending.promise;
+    }});
+    f.S.me.is_admin = true;
+    await f.viewAdmin(); await flush();
+    if (action === 'grant') {
+      f.root.querySelector('#g-email').value = 'synthetic@example.invalid'; f.root.querySelector('#g-amt').value = '10';
+      const form = f.root.querySelector('#grant'); form.onsubmit({preventDefault() {}, target: form});
+    } else {
+      f.root.querySelector('#kill').onsubmit({preventDefault() {}});  // Halt new buys goes at once
+    }
+    await flush();
+    f.S.gen++; f.clearTimers();
+    f.root.innerHTML = '<div id="main"><div id="g-flash">Fresh panel</div><div id="k-flash">Fresh panel</div><p id="k-state">Next page</p></div>';
+    const writes = f.root.writes, main = f.root.querySelector('#main');
+    pending.resolve(failure ? response({error: 'Synthetic departed failure'}, 503)
+      : response({email: 'synthetic@example.invalid', balance: 20, on: true, reason: '', by: 'dev@example.invalid', env_on: false}));
+    await flush(); await flush();
+    assert.equal(reads, 1, 'no read of Admin for a page the reader left');
+    for (const id of ['g-flash', 'k-flash']) assert.equal(f.root.querySelector('#' + id).innerHTML, 'Fresh panel', id);
+    assert.equal(f.root.querySelector('#k-state').innerHTML, 'Next page');
+    assert.equal(f.root.writes, writes); assert.equal(main.writes, 0);
+    assert.equal(postRequests(f).filter((r) => r.path === actionPath).length, 1);
+  });
+}
+
+// What only one theme's Admin draws stays its own in the shared file: Tau's line under each title and its DB box's
+// largest tables (the server sends them to an admin only); Meridian's waitlist (test_meridian_workspace.mjs).
+test('Tau: Admin has its title line and no waitlist, and the System map lists the database’s largest tables', async () => {
+  const f = frontend({fetchImpl: (path) => {
+    if (path === '/api/admin') return response({users: [], waitlist: [{email: 'waiting@example.invalid', note: '', created_at: '2026-10-25T10:00:00Z', status: 'requested'}]});
+    if (path === '/api/admin/kill-switch') return response({on: false, reason: '', by: '', env_on: false});
+    if (path === '/api/admin/system') return response({nodes: {db: {size_mb: 2048, rows: 5000, top_tables: [{table: 'forward_<quotes>', mb: 1536}, {table: 'markets', mb: 12}]}}, events: [], now: '2026-10-20T16:00:00Z'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.is_admin = true;
+  await f.viewAdmin(); await flush();
+  assert.match(f.root.innerHTML, /<p class="deck">Operator tools: grant credits and see who has signed up\.<\/p>/);
+  assert.equal(f.root.querySelector('#waitlist'), null); assert.doesNotMatch(f.root.innerHTML, /waiting@example\.invalid|Waitlist/);
+  await f.viewSystem(); await flush();
+  assert.match(f.root.innerHTML, /<p class="deck">A live map of the pipeline/);
+  assert.match(f.root.querySelector('#sys-detail').innerHTML, /^<h2>Pick a box<\/h2><p class="hint">Click any part of the system/);
+  f.root.querySelector('.sys-node[data-id="db"]').dispatchEvent({type: 'click'});
+  assert.match(f.root.querySelector('#sys-detail').innerHTML,
+    /<div class="sys-tables"><b>Largest tables<\/b><ul><li><span>forward_&lt;quotes&gt;<\/span><span>1\.5 GB<\/span><\/li><li><span>markets<\/span><span>12 MB<\/span><\/li><\/ul><\/div>/);
+  f.clearTimers();
+});
+
+// The System map read that failed left Tau's map blank with no word why; the line above the map Meridian had says so
+// now in both themes (escaped), and the next good read clears it. Not for a 401: that page is on its way to sign-in.
+test('Tau: System reports a current read failure and clears the notice after a successful poll', async () => {
+  let reads = 0;
+  const f = frontend({fetchImpl: (path) => {
+    assert.equal(path, '/api/admin/system');
+    return ++reads === 1 ? response({error: '<unsafe> unavailable'}, 503) : response({nodes: {}, events: [], now: '2026-10-20T16:00:00Z'});
+  }});
+  await f.viewSystem();
+  const notice = f.root.querySelector('#sys-error');
+  assert.ok(notice); assert.match(notice.innerHTML, /&lt;unsafe&gt; unavailable/); assert.doesNotMatch(notice.innerHTML, /<unsafe>/);
+  assert.equal(f.S.timers.length, 1);
+  f.intervals.get(f.S.timers[0])(); await flush();
+  assert.equal(notice.innerHTML, ''); assert.match(f.root.querySelector('#sys-stamp').textContent, /updated/);
+  f.clearTimers();
+});
+
 test('the since strip says what demo needs in a sentence, and a book with nothing closed keeps its name', async () => {
   const since = {at: '2026-10-25T08:00:00+00:00', first: false, books: {demo: {pnl: 0, trades: 0}},
     passed: {n: 0, items: []}, autopilot: {}, runs: {}};

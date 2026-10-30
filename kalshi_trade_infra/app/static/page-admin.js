@@ -1,12 +1,16 @@
-/* Tau's operator pages: Admin and the System map.
-   Fetched on first use (pageLoad in app.js), which hands this function what the
-   bundle shares with its page files (shared()); the router calls the views it returns. */
+/* The operator pages, Admin and the System map, in both themes.
+   Fetched on first use (pageLoad in app.js or app.meridian.js), which hands this function what the
+   bundle shares with its page files (shared()); the router calls the views it returns.
+   What one theme draws and the other doesn't goes by the bundle's theme (shared(): theme). */
 window.TauPage('admin', (T) => {
   'use strict';
   const {
-    adminViewOn, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, num, phone, poll, root, S, SEP,
-    shell, usd, when
+    adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, num, phone, poll, root,
+    S, SEP, shell, theme, usd, when
   } = T;
+  // Tau's pages have a line under each title, and its System map lists the database's largest tables; Meridian's
+  // Admin has the waitlist.
+  const tau = theme === 'tau';
 
   // ---------- admin ----------
   // The admin readout of open positions whose strategy was deleted (repo.orphaned_open_positions).
@@ -30,11 +34,13 @@ window.TauPage('admin', (T) => {
       <td class="hint" data-lab="Last seen">${when(r.last_seen)}<div class="sub-fig">first ${when(r.first_seen)}</div></td></tr>`).join('')}</tbody></table></div>`);
   async function viewAdmin() {
     if (!adminViewOn()) return go('/', true);
-    shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up.'), `
+    const gen = S.gen;
+    shell('/admin', boardTitle('Admin', tau ? 'Operator tools: grant credits and see who has signed up.' : ''), `
       <div class="detail">
         <div>
           <section class="sect"><div class="sect-head"><h2>Page errors</h2><span id="ce-count" class="sect-note"></span></div><div id="client-errors">${loading(80)}</div></section>
-          <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
+          <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>${theme === 'meridian' ? `
+          <section class="sect"><div class="sect-head"><h2>Waitlist</h2></div><div id="waitlist"></div></section>` : ''}
         </div>
         <aside aria-label="Operator controls">
           <form class="panel" id="grant"><h3>Grant credits</h3>
@@ -58,6 +64,7 @@ window.TauPage('admin', (T) => {
       </div>`);
     const load = async () => {
       const d = await api('/api/admin');
+      if (gen !== S.gen) return;
       root.querySelector('#ucount').textContent = `${d.users.length} shown`;
       root.querySelector('#o-state').textContent = orphanLine(d.orphaned_open);
       const ce = d.client_errors || [];
@@ -66,17 +73,34 @@ window.TauPage('admin', (T) => {
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
         <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
+      if (theme === 'meridian') {
+        root.querySelector('#waitlist').innerHTML = d.waitlist.length
+          ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th><th>Status</th><th class="act"><span class="vh">Actions</span></th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
+          <td class="name" data-lab="Email">${esc(w.email)}</td><td data-lab="Note">${esc(w.note || '')}</td><td class="hint" data-lab="When">${when(w.created_at)}</td>
+          <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span> <small class="hint">awaiting their sign-in</small>' : 'Requested'}</td>
+          <td class="act" data-lab="">${w.status === 'approved' ? '' : `<button class="btn sm" data-wl="approve" data-email="${esc(w.email)}">Approve</button>`}<button class="btn sm danger" data-wl="remove" data-email="${esc(w.email)}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
+          : '<p class="hint">No waitlist requests.</p>';
+        root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = () => {
+          const run = () => busy(b, async () => {
+            try { await api('/api/admin/waitlist', { email: b.dataset.email, action: b.dataset.wl }); if (gen === S.gen) await load(); }
+            catch (err) { if (gen === S.gen) alert0(err.message); }
+          });
+          // Removing drops the request (and an approved email's way in), so it asks first; Approve goes at once.
+          return b.dataset.wl === 'remove' ? armed(b, 'Confirm remove', run) : run();
+        }));
+      }
     };
     root.querySelector('#grant').onsubmit = async (e) => {
       e.preventDefault();
       await busy(e.target.querySelector('[type=submit]'), async () => {
         try {
           const r = await api('/api/admin/grant', { email: root.querySelector('#g-email').value.trim(), amount: +root.querySelector('#g-amt').value });
+          if (gen !== S.gen) return;
           flash('#g-flash', `Granted. ${esc(r.email)} balance: ${usd(r.balance)}.`, 'good'); await load();
-        } catch (err) { flash('#g-flash', err.message, 'bad'); }
+        } catch (err) { if (gen === S.gen) flash('#g-flash', err.message, 'bad'); }
       });
     };
-        const killShow = (k) => {
+    const killShow = (k) => {
       const st = root.querySelector('#k-state'), btn = root.querySelector('#k-btn');
       st.innerHTML = k.on || k.env_on
         ? `<span class="mk on">ON</span> New buys are halted${k.reason ? `: ${esc(k.reason)}` : ''}${k.by ? ` <small class="hint">by ${esc(k.by)}</small>` : ''}${k.env_on ? ' <small class="hint">(also set in the server env)</small>' : ''}`
@@ -85,20 +109,20 @@ window.TauPage('admin', (T) => {
       btn.className = k.on ? 'btn primary' : 'btn danger';
       btn.dataset.on = k.on ? '1' : '';
     };
-    api('/api/admin/kill-switch').then((k) => { killShow(k); }).catch((err) => { flash('#k-flash', err.message, 'bad'); });
+    api('/api/admin/kill-switch').then((k) => { if (gen !== S.gen) return; killShow(k); }).catch((err) => { if (gen === S.gen) flash('#k-flash', err.message, 'bad'); });
     root.querySelector('#kill').onsubmit = async (e) => {
       e.preventDefault();
       const btn = root.querySelector('#k-btn');
       const run = () => busy(btn, async () => {
         try {
           const k = await api('/api/admin/kill-switch', { on: !btn.dataset.on, reason: root.querySelector('#k-reason').value.trim() });
-          killShow(k);
-        } catch (err) { flash('#k-flash', err.message, 'bad'); }
+          if (gen !== S.gen) return; killShow(k);
+        } catch (err) { if (gen === S.gen) flash('#k-flash', err.message, 'bad'); }
       });
       // Halting goes at once; resuming lets new buys flow again, so it asks first.
       return btn.dataset.on ? armed(btn, 'Confirm resume', run) : run();
     };
-    await load();
+    try { await load(); } catch (err) { if (gen === S.gen) throw err; }
   }
 
   // ---------- system map ----------
@@ -182,6 +206,7 @@ window.TauPage('admin', (T) => {
     return { at, art: art.join(''), w: SYS_PW, h: y };
   }
   async function viewSystem() {
+    const gen = S.gen;
     const lay = phone() ? sysPhoneLayout() : null;
     const edges = lay ? lay.art : SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
     const nodes = SYS_NODES.map((n) => {
@@ -197,11 +222,11 @@ window.TauPage('admin', (T) => {
         <circle class="pulse" cx="${at.w - 13}" cy="15" r="4"></circle>
       </g>`;
     }).join('');
-    shell('/system', boardTitle('System', 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.'),
-      `<div class="sysmap">
+    shell('/system', boardTitle('System', tau ? 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.' : ''),
+      `<div id="sys-error"></div><div class="sysmap">
          <div class="sys-wrap"><svg viewBox="0 0 ${lay ? `${lay.w} ${lay.h}` : '900 540'}" preserveAspectRatio="xMidYMid meet" id="syssvg"${lay ? ' class="sys-stack"' : ''} aria-label="System map">${edges}${nodes}</svg></div>
          <aside class="sys-side" aria-label="Details and live activity">
-           <section class="panel" id="sys-detail"><h2>Pick a box</h2><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p></section>
+           <section class="panel" id="sys-detail">${tau ? '<h2>Pick a box</h2><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p>' : '<h2>Select a component</h2>'}</section>
            <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed" tabindex="0" aria-label="Live activity"></ol></section>
          </aside>
        </div>`);
@@ -214,9 +239,9 @@ window.TauPage('admin', (T) => {
       codeState = null;
       const n = sysNode(id), L = S.sysLive && S.sysLive[id];
       const open = n.ext ? '' : `<p style="margin-top:12px"><button class="btn sm" data-code-open="${esc(id)}">Open the code ›</button></p>`;
-      // Admin-only storage breakdown on the DB node: which tables eat the volume, so a refilling
+      // Tau's admin-only storage breakdown on the DB node: which tables eat the volume, so a refilling
       // table is visible long before the disk fills (the storage-full outage had no such warning).
-      const tbls = (id === 'db' && L && L.top_tables && L.top_tables.length)
+      const tbls = (tau && id === 'db' && L && L.top_tables && L.top_tables.length)
         ? `<div class="sys-tables"><b>Largest tables</b><ul>${L.top_tables.map((t) =>
             `<li><span>${esc(t.table)}</span><span>${t.mb >= 1024 ? (t.mb / 1024).toFixed(1) + ' GB' : num(t.mb) + ' MB'}</span></li>`).join('')}</ul></div>`
         : '';
@@ -326,7 +351,12 @@ window.TauPage('admin', (T) => {
       return e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '');
     };
     const load = async () => {
-      let d; try { d = await api('/api/admin/system'); } catch (e) { return; }
+      // A read that failed says so above the map (a 401 is already on its way to sign-in); the next good one clears it.
+      let d;
+      try { d = await api('/api/admin/system'); }
+      catch (err) { if (gen === S.gen && err.status !== 401) flash('#sys-error', err.message, 'bad'); return; }
+      if (gen !== S.gen) return;
+      root.querySelector('#sys-error').innerHTML = '';
       S.sysLive = d.nodes;
       SYS_NODES.forEach((n) => {
         const L = d.nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
@@ -348,7 +378,7 @@ window.TauPage('admin', (T) => {
       feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(sysVerdict(e)) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
     };
     await load();
-    poll(load, 4000);
+    if (gen === S.gen) poll(load, 4000);
   }
 
   return {viewAdmin, viewSystem};

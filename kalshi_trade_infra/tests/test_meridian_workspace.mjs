@@ -3202,6 +3202,27 @@ test('Billing swaps the welcome credit for a credit runway once there is usage t
   assert.match(figs, /Welcome credit/); assert.doesNotMatch(figs, /Credits last/);
 });
 
+// What only one theme's Admin draws stays its own in the shared file (page-admin.js): Meridian's waitlist, and none of
+// Tau's lines under the titles or its DB box's largest tables (test_frontend_merge.mjs).
+test('Meridian: Admin has the waitlist and no title line, and the System map no table breakdown', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/admin') return response({users: [], waitlist: [{email: 'waiting@example.invalid', note: '', created_at: '2026-10-25T10:00:00Z', status: 'requested'}]});
+    if (path === '/api/admin/kill-switch') return response({on: false, reason: '', by: '', env_on: false});
+    if (path === '/api/admin/system') return response({...systemData(), nodes: {db: {size_mb: 2048, rows: 5000, top_tables: [{table: 'markets', mb: 12}]}}});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.is_admin = true;
+  await f.viewAdmin(); await flush();
+  assert.match(f.root.querySelector('#waitlist').innerHTML, /waiting@example\.invalid/);
+  assert.doesNotMatch(f.root.innerHTML, /class="deck"|Operator tools/);
+  await f.viewSystem(); await flush();
+  assert.doesNotMatch(f.root.innerHTML, /class="deck"|A live map/);
+  assert.equal(f.root.querySelector('#sys-detail').innerHTML, '<h2>Select a component</h2>');
+  f.root.querySelector('.sys-node[data-id="db"]').dispatchEvent({type: 'click'});
+  assert.doesNotMatch(f.root.querySelector('#sys-detail').innerHTML, /sys-tables|Largest tables|markets/);
+  f.clearTimers();
+});
+
 test('System reports a current read failure and clears the notice after a successful poll', async () => {
   let reads = 0;
   const f = frontend({fetchImpl: path => {
@@ -6191,7 +6212,11 @@ test('Meridian: Strategies says under its name what the page is for, in Tau\'s w
 });
 
 test('Meridian: Deploy, Explore, Settings and Community each say under their name what the page is for, in Tau\'s words', async () => {
-  const tauSource = ['app.js', 'app-community.js'].map(file => readFileSync(new URL('../app/static/' + file, import.meta.url), 'utf8')).join('\n');
+  const tauSource = readFileSync(new URL('../app/static/app.js', import.meta.url), 'utf8');
+  // Community's page file is both themes' (page-community.js): one lede, Tau's heading's and Meridian's alike.
+  const community = readFileSync(new URL('../app/static/page-community.js', import.meta.url), 'utf8');
+  const said = (page, text) => tauSource.includes(`boardTitle('${page}', '${text}')`)
+    || page === 'Community' && community.includes(`const lede = '${text}';`) && community.includes(`boardTitle('Community', lede)`) && community.includes('${pageLede(lede)}');
   const LEDES = {
     Deploy: 'Your strategies trading now.',
     Explore: 'Every market Tau is tracking right now, across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.',
@@ -6199,7 +6224,7 @@ test('Meridian: Deploy, Explore, Settings and Community each say under their nam
     Community: 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.',
   };
   // Tau's heading says the same words: the two themes never describe one page two ways.
-  for (const [page, text] of Object.entries(LEDES)) assert.ok(tauSource.includes(`boardTitle('${page}', '${text}')`), page);
+  for (const [page, text] of Object.entries(LEDES)) assert.ok(said(page, text), page);
   const lede = (f, selector) => {
     const head = f.root.querySelector(selector).innerHTML;
     const [, line] = head.match(/<h1 class="page">[^<]+<\/h1>(?:\s|<div class="chips feed-filter"[^]*?<\/div>\s*)*<p class="lede page-lede">([^<]*)<\/p>/) || [];
