@@ -108,3 +108,28 @@ def test_the_list_version_moves_with_what_the_list_shows_and_nothing_else(conn):
     conn.commit()
     out = server.list_runs(server.Ctx(conn, empty, (), {"since": "anything"}, {}, None))
     assert out["v"] is None and not out["runs"] and not out.get("same")
+
+
+def test_older_sessions_page_past_the_newest_and_number_from_the_users_own_count(conn):
+    """A six-month account's 200 sessions: the list holds the newest RUNS_LISTED, its answer counts every own one
+    (own_total), and ?before=<the oldest shown> pages the rest, numbered as the newest page numbers them."""
+    from app import repository as repo
+    from app import server
+
+    cur = conn.cursor()
+    user, other = _user(cur), _user(cur)
+    mine = [repo.create_run(cur, user["id"], "research", "btc15m", "momentum") for _ in range(repo.RUNS_LISTED + 7)]
+    repo.create_run(cur, other["id"], "research", "btc15m", "momentum")  # never in this user's pages
+    conn.commit()
+    server._RUN_TOTALS.clear()
+    first = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))
+    assert first["own_total"] == len(mine)  # the seeded example left out, as in the session numbers
+    assert [r["id"] for r in first["runs"]] == mine[::-1][:repo.RUNS_LISTED]
+    assert first["runs"][-1]["seq"] == len(mine) - repo.RUNS_LISTED + 1
+    older = server.list_runs(server.Ctx(conn, user, (), {"before": str(first["runs"][-1]["id"])}, {}, None))
+    assert older["more"] is False
+    rest = [r for r in older["runs"] if not r["example"]]
+    assert [r["id"] for r in rest] == mine[::-1][repo.RUNS_LISTED:]
+    assert [r["seq"] for r in rest] == list(range(7, 0, -1))
+    assert sum(1 for r in older["runs"] if r["example"]) == 1  # the seeded example, on the last page
+    conn.commit()

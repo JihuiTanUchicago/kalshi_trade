@@ -122,11 +122,13 @@
     if (n < 0) return '−' + WJ + s;
     return signed && n > 0 ? '+' + WJ + s : s;
   };
-  // A share to one decimal of a percent, its sign the shown figure's (−0.0001 read "−0.0%").
+  // A share to one decimal of a percent, its sign the shown figure's (−0.0001 read "−0.0%"). Grouped in thousands as
+  // the dollar figures beside it are: a strategy's return on capital read "+1582.3%" (walked 2026-10-30).
+  const fmt1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const pct = (v, signed = true) => {
     if (v == null) return '—';
     const n = halfUp(+v * 100, 1);
-    return (n < 0 ? '−' : signed && n > 0 ? '+' : '') + Math.abs(n).toFixed(1) + '%';
+    return (n < 0 ? '−' : signed && n > 0 ? '+' : '') + fmt1.format(Math.abs(n)) + '%';
   };
   // Kalshi quotes some markets in tenths of a cent: 0.1¢ read as 0¢ and a 99.9¢ bid as 100¢.
   const cents = (v) => (v == null ? '—' : Math.round(v * 1000) / 10 + '¢');

@@ -22,6 +22,7 @@ import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {strategyListParityCases} from './strategy_list_parity_frontend_cases.mjs';
 import {countFormatCases} from './count_format_frontend_cases.mjs';
+import {largeAccountCases} from './large_account_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
@@ -276,6 +277,7 @@ strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend,
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 strategyListParityCases({name: 'Meridian', frontend, detailStrategy});
 countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
+largeAccountCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});

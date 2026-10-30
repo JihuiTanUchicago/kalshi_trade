@@ -538,7 +538,8 @@ window.TauPage('strategy', (T) => {
     // backtest stored it as failed, never judged on held-out data. Nothing picked it, so its words drop "which picked it".
     const splitOnly = !hasExp && (['passed', 'backtest-only'].includes(s.status) || !!s.no_gatekeeper_record);
     // The chart's cut label says it in the heading's words too (equityChart's own default says unseen data).
-    const cutWords = splitOnly ? { cutLabel: [`Later period${SEP}not held out →`, `Later${SEP}not held out →`, 'Later →'] } : {};
+    // `fit`: the y-axis gutter widens to its labels, so a backtest over $1,000 isn't cut off at the left edge.
+    const cutWords = splitOnly ? { fit: true, cutLabel: [`Later period${SEP}not held out →`, `Later${SEP}not held out →`, 'Later →'] } : { fit: true };
     // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
     // held out. "Never seen (out-of-sample)" stood beside a list that called the same figure "later period · unseen data".
     const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';

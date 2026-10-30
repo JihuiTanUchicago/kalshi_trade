@@ -308,11 +308,11 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       </div>
       ${pipelineFigure()}
       <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
-        <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
+        <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div><div id="runs-older"></div></section>`);
     } else {
       shell('/research', '', `
       <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${apLines}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose">${dispatchHtml}${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl><p class="stale-note" id="runs-stale" role="status"></p></section></div></div>
-        <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
+        <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div><div id="runs-older"></div></section></div>`);
     }
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
@@ -433,6 +433,10 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     // server answers {same: true} from two reads, and the page repaints from the answer it kept (its
     // relative times still move). Each region is rewritten only when its markup changed.
     let kept = null;
+    // The poll's answer holds the newest 50 sessions; "Show older sessions" asks /api/runs?before= for the 50 before
+    // the oldest one shown (never polled: a finished session's row doesn't move) and keeps them under the newest.
+    // A six-month account's list read "50 sessions" over its newest 50 of 200, the rest in no list (walked 2026-10-30).
+    let older = [], olderMore = true;
     const load = async () => {
       const got = await api('/api/runs' + (kept && kept.v ? '?since=' + encodeURIComponent(kept.v) : ''));
       const d = got.same && kept ? kept : (kept = got);
@@ -479,9 +483,13 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${num(active.hypotheses_tried || 0)}</dd></div><div><dt>Passed</dt><dd>${num(runPassed(active).ok)}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${+active.spent_usd > 0 ? `<span class="nobr">${spentSoFar(active.spent_usd)}</span>${CRED}` : spentSoFar(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
       // Meridian lists every session but that one; Tau lists them all.
-      const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
+      const newer = new Set(d.runs.map((r) => r.id));
+      const history = (active ? d.runs.filter((r) => r.id !== active.id) : d.runs).concat(older.filter((r) => !newer.has(r.id)));
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
       const own = history.filter((r) => !r.example).length, examples = history.length - own;
+      // Every session of the user's own (the server's own_total) when the list holds fewer: "50 of 200 sessions".
+      const ownAll = Math.max(own + (active && !active.example ? 1 : 0), +d.own_total || 0), shownOwn = own + (active && !active.example ? 1 : 0);
+      const ofAll = ownAll > shownOwn ? ` of ${num(ownAll)}` : '';
       const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
       if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
       const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
@@ -493,18 +501,38 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       if (tau) {
         // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
         const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
-        paint(root.querySelector('#rcount'), esc([own ? `${own} session${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(SEP)));
+        paint(root.querySelector('#rcount'), [own ? `${num(own)}${ofAll} session${own > 1 || ofAll ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(SEP));
       } else {
         // The heading counts what it lists: "Recent sessions 1" sat over two rows, the example one of them. The user's
         // own count stays bare and the example is named apart ("1 · 1 example"), as Tau's "1 session · 1 example".
-        paint(root.querySelector('#rcount'), [own ? String(own) : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(SEP));
+        paint(root.querySelector('#rcount'), [own ? num(own) + ofAll : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(SEP));
       }
       // The newest of all (on Meridian, the one at work when one runs: then no older row offers Add credits).
       const newest = d.runs.find((r) => !r.example);
       paintRows(root.querySelector('#runs'), history.map((r) => [r.id, runRow(r, r === newest)]), tau
         ? `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`
         : `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`);
+      const oldest = history.length ? history[history.length - 1] : null;
+      paint(root.querySelector('#runs-older'), ofAll && olderMore && oldest
+        ? `<button type="button" class="btn" data-older="${oldest.id}">Show older sessions</button>` : '');
     };
+    // Clicked, so asked once: a second click while the first is out does nothing (busy). A read that fails says so
+    // and leaves the button to try again.
+    const olderHost = root.querySelector('#runs-older');
+    if (olderHost) olderHost.addEventListener('click', async (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('button[data-older]');
+      if (!btn) return;
+      await busy(btn, async () => {
+        try {
+          const got = await api('/api/runs?before=' + encodeURIComponent(btn.getAttribute('data-older')));
+          older = older.concat(got.runs || []);
+          olderMore = !!got.more;
+          await load();
+        } catch (err) {
+          flash('#flash', errText(err), 'bad');
+        }
+      });
+    });
     await load();
     poll(load, 5000, 'runs-stale');
   }

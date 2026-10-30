@@ -38,6 +38,8 @@ def models(ctx: Ctx):
 def list_runs(ctx: Ctx):
     # The page polls every 5s and sends back its last answer's version as `since`: while nothing it
     # shows has moved, two statements answer "same" (services.research_list).
+    if ctx.query.get("before"):
+        return _older_runs(ctx)
     counts = repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before())
     judged: Dict = {}  # the headline's judged passes, when it read them this request: the rows reuse them
     totals = _research_totals(ctx.cur, ctx.uid, judged)
@@ -54,10 +56,20 @@ def list_runs(ctx: Ctx):
               "summary": pol.get("summary") if pol else None,
               "evolved_at": pol["updated_at"] if pol else None}
     runs = repo.list_runs(ctx.cur, ctx.uid)
+    own_total = _session_rows(ctx, runs, judged or None)
+    # own_total: every session of the user's own (the example left out), not just the newest RUNS_LISTED the list
+    # holds, so a six-month account's list says "50 of 200" instead of "50 sessions". No extra read: a full page
+    # is counted for its session numbers anyway.
+    return {"runs": runs, "counts": counts, "policy": policy, "totals": totals, "v": v, "own_total": own_total}
+
+
+def _session_rows(ctx: Ctx, runs: List[Dict], judged: Optional[Dict] = None, before: Optional[int] = None) -> int:
+    """Stamp a page of research sessions for the list (spend, example, passes not cleared, number, why it
+    stopped, wait, title, customer words); returns how many sessions of the user's own the numbering counted."""
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
-    _with_not_cleared(ctx.cur, ctx.uid, runs, judged or None)
-    _number_sessions(ctx.cur, ctx.uid, runs)
+    _with_not_cleared(ctx.cur, ctx.uid, runs, judged)
+    total = _number_sessions(ctx.cur, ctx.uid, runs, before)
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
         r.pop("out_of_credits", None)
@@ -66,7 +78,24 @@ def list_runs(ctx: Ctx):
         r["wait"] = _run_wait(r)
         r["title"] = session_title(r.get("prompt"), r.get("market"))
     customer_text.run_rows(runs)
-    return {"runs": runs, "counts": counts, "policy": policy, "totals": totals, "v": v}
+    return total
+
+
+def _older_runs(ctx: Ctx):
+    """GET /api/runs?before=<run id>: the next RUNS_LISTED sessions older than that one, for the list's "Show older
+    sessions" (clicked, never polled). The poll's answer holds only the newest RUNS_LISTED, so a six-month
+    account's first 150 sessions were in no list. {"runs", "more"}: `more` says whether older ones remain."""
+    try:
+        before = int(ctx.query.get("before"))
+    except (TypeError, ValueError):
+        raise ApiError(400, "Bad session id.")
+    if before <= 0:
+        raise ApiError(400, "Bad session id.")
+    runs = repo.list_runs(ctx.cur, ctx.uid, limit=repo.RUNS_LISTED + 1, before=before)
+    more = len(runs) > repo.RUNS_LISTED
+    runs = runs[:repo.RUNS_LISTED]
+    _session_rows(ctx, runs, None, before)
+    return {"runs": runs, "more": more}
 
 
 def example_run(ctx: Ctx):
@@ -113,15 +142,20 @@ def _with_not_cleared(cur, uid: int, runs: List[Dict], judged: Optional[Dict] = 
             r["not_cleared"] = n[int(r["id"])]
 
 
-def _number_sessions(cur, uid: int, runs: List[Dict]) -> None:
+def _number_sessions(cur, uid: int, runs: List[Dict], before: Optional[int] = None) -> int:
     """Stamp each of the user's own sessions with `seq`, its number among their sessions (1 = their
     first), so the list says "Session 3" instead of the global run id ("Session 8" on a first session).
     The seeded example gets none. `runs` is the newest first; a full page is counted once, a short one
-    already holds every session."""
+    already holds every session. An older page (`before`) counts the sessions older than its run id.
+    Returns the count the numbering started from: every own session (older than `before`, with it)."""
     own = [r for r in runs if not r.get("example")]
-    total = repo.count_own_research(cur, uid) if len(runs) >= repo.RUNS_LISTED else len(own)
+    if before:
+        total = repo.count_own_research(cur, uid, before=before)
+    else:
+        total = repo.count_own_research(cur, uid) if len(runs) >= repo.RUNS_LISTED else len(own)
     for k, r in enumerate(own):
         r["seq"] = total - k
+    return total
 
 
 def _with_spent(cur, uid: int, runs: List[Dict]) -> None:

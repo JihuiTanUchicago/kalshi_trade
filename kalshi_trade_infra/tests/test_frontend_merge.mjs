@@ -21,6 +21,7 @@ import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {strategyListParityCases} from './strategy_list_parity_frontend_cases.mjs';
 import {countFormatCases} from './count_format_frontend_cases.mjs';
+import {largeAccountCases} from './large_account_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
@@ -244,6 +245,7 @@ strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, post
 strategyListCases({name: 'Tau', frontend, detailStrategy});
 strategyListParityCases({name: 'Tau', frontend, detailStrategy});
 countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => emptyDashboard()});
+largeAccountCases({name: 'Tau', frontend, detailStrategy, strategyFrontend});
 explorePageCases({name: 'Tau', frontend});
 trackRecordTrustCases({name: 'Tau', frontend, Element, dashboard: () => emptyDashboard()});
 researchFormCases({name: 'Tau', frontend});
