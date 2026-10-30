@@ -3162,7 +3162,9 @@
   // Whole seconds, so the milliseconds between the read and the draw never tip an exact minute over (a 4320 s
   // read drawn 2 ms later read "1 hr 11 min").
   const closeLeft = (iso, skew) => Math.round((Date.parse(iso || '') - Date.now()) / 1000 + (+skew || 0));
-  const soonText = (s) => (s < 60 ? 'under a minute' : leftText(s));
+  // A countdown's number keeps its unit (a no-break space): Meridian's hot rail at 1280px ended a line on "in 58"
+  // with "min" on the next.
+  const soonText = (s) => (s < 60 ? 'under a minute' : leftText(s).replace(/(\d) /g, '$1\u00a0'));
   const CLOSE_FORM = {
     chip: (iso, s) => (s > 0 ? `closes ${settleAt(iso)}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${settleAt(iso)}`),
     left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
@@ -3207,13 +3209,36 @@
     const diff = Math.round((price - value) * 100) / 100;
     return { side: diff > 0 ? 'above' : diff < 0 ? 'below' : 'at', diff, pct: Math.round(diff / value * 1e5) / 1e3, yes: null };
   };
+  // Kalshi names an above/below Bitcoin contract by its threshold ("$113,000 or above", the heading of its page and
+  // its row's name), while the strike it stores is the cent under it (112,999.99, Yes when Bitcoin ends above it).
+  // Walked 2026-10-30: a page headed "$113,000 or above" said "Strike $112,999.99" under it, two prices for one line.
+  // Where the name's threshold is the strike's (the same, or a cent past it on the side that pays) the strike and the
+  // distance read in the name's terms: measured from $113,000, spot at $113,000.00 is "at" it, on the Yes side, and
+  // $112,999.99 a cent below it, on the No side, as against the stored strike. `inclusive` null takes either.
+  const HEAD_LINE = /\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s+or\s+(above|below)\b/i;
+  function headLine(texts, value, kind, inclusive) {
+    const h = texts.map((x) => HEAD_LINE.exec(String(x || ''))).find(Boolean);
+    if (!h || !(+value > 0)) return null;
+    const dir = h[3].toLowerCase(), at = +(h[1].replace(/,/g, '') + (h[2] || ''));
+    if (kind !== 'line' && kind !== dir) return null;
+    const gap = Math.round((at - value) * 100), past = dir === 'above' ? 1 : -1;
+    if (!(inclusive === true ? gap === 0 : inclusive === false ? gap === past : gap === 0 || gap === past)) return null;
+    return { value: at, dir, shift: gap / 100, text: '$' + (h[2] ? fmt2 : fmt0).format(at) };
+  }
+  // Spot against the strike (the server's `vs`) restated against the name's threshold: the same price, a cent apart.
+  const vsFromHead = (v, hl) => {
+    if (!hl || !v || !['above', 'below', 'at'].includes(v.side)) return v;
+    const diff = Math.round((+v.diff - hl.shift) * 100) / 100;
+    return { ...v, side: diff > 0 ? 'above' : diff < 0 ? 'below' : 'at', diff: diff || 0, pct: diff / hl.value * 100 || 0 };
+  };
   function marketSpot(s, d) {
     const sp = s.spot && s.spot.price != null ? s.spot : null, stored = s.strike && s.strike.value != null ? s.strike : null;
     const k = stored || titleStrike(d);
     const m15 = M15_CONTRACT.test((d && d.ticker) || s.ticker || '');
     // A target read from the contract's title is named as the title and Explore's list name it: "target price".
     const line = m15 || (k && k.from === 'title') ? 'target price' : 'strike', Line = line[0].toUpperCase() + line.slice(1);
-    const v = stored ? (s.vs && s.vs.side ? s.vs : null) : k && sp ? lineVs(+sp.price, k.value) : null;
+    const hl = stored && ['above', 'below', 'line'].includes(k.kind) ? headLine([d && d.sub, d && d.title], k.value, k.kind, k.kind === 'line' ? null : !!k.inclusive) : null;
+    const v = vsFromHead(stored ? (s.vs && s.vs.side ? s.vs : null) : k && sp ? lineVs(+sp.price, k.value) : null, hl);
     const bucket = k && k.kind === 'range', edges = bucket && k.lo != null && k.hi != null;
     const now = sp ? fig('Bitcoin now', btcUsd(sp.price), sp.stale ? { small: `Spot feed is ${spotOld(+sp.age_s || 0)} old`, cls: 'fig-behind' } : { small: `Coinbase${SEP}${spotAge(+sp.age_s || 0)}` })
       : fig('Bitcoin now', '—', { small: 'No stored price in the last day' });
@@ -3221,6 +3246,7 @@
       : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
       : bucket ? fig('Bucket centre', btcUsd(k.value), { small: 'its edges aren’t stored' })
       : k.from === 'title' ? fig(Line, btcUsd(k.value), { small: 'Read from the contract’s title' })
+      : hl ? fig(Line, hl.text, { small: `Yes at ${hl.text} or\u00a0${hl.dir}` })
       : fig(Line, btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind}\u00a0it` : 'Kalshi’s rules say which side pays' });
     // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
     // side of the contract that is when the strike says.
@@ -3359,8 +3385,11 @@
   // A row whose close has passed shows no distance: Bitcoin's price after the close doesn't decide the contract (Kalshi
   // settles on the index before it). Walked 2026-10-30, a closed 15-minute row said "Closed 04:15 UTC · Spot vs target
   // price +$72", read as its result. Worked out at each draw, as the row's close is.
-  const rowVs = (m) => (m.vs && !(m.ct && closeLeft(m.ct) <= 0) ? m.vs : null);
-  const vsHtml = (m) => (rowVs(m) ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
+  // Measured as its market page measures it: from the threshold in the row's name ("$113,000 or above") where that is
+  // the ticker's strike or a cent past it (headLine), so a row and its page agree at the line.
+  const rowHead = (m) => { const t = /^KXBTCD?-[A-Z0-9]+-T(\d+(?:\.\d+)?)$/.exec(m.t || ''); return t && m.vs.from !== 'title' ? headLine([m.su, m.ti], +t[1], 'line', null) : null; };
+  const rowVs = (m) => (m.vs && !(m.ct && closeLeft(m.ct) <= 0) ? vsFromHead(m.vs, rowHead(m)) : null);
+  const vsHtml = (m) => { const v = rowVs(m); return v ? `<span class="xspot"${v.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(v, m)}</b></span>` : ''; };
   // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
   // over rows that each said "target price". Both kinds on one list name both. The rows with a figure count; with
   // no figure to show (an old or missing spot), the Bitcoin rows that would have one: a 15-minute window's only with
@@ -4369,7 +4398,7 @@
   const condWide = (su) => TARGET_IN.test(su) || /\$\s*[\d,]+(?:\.\d+)?\s+to\s+\$?\s*[\d,]+/i.test(su);
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || comboTitle((m.ti || '').trim()) || contractName(m.t);
-    const when = (m.ct ? `${SEP}${esc(closeWords(m.ct, 'chip', 0, true))}` : '') + (rowVs(m) ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
+    const when = (m.ct ? `${SEP}${esc(closeWords(m.ct, 'chip', 0, true))}` : '') + (rowVs(m) ? `${SEP}${vsLab(m)} ${vsText(rowVs(m), m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     // A row opens the market's own page in Tau, as Explore's rows do: it opened Kalshi in a new tab, away from the

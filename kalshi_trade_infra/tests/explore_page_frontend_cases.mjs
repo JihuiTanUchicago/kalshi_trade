@@ -129,6 +129,40 @@ export function explorePageCases({name, frontend}) {
     assert.match(m15().innerHTML, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above\u00a0it</);
   });
 
+  // Walked 2026-10-30: a page headed "$113,000 or above" (Kalshi's name for the contract) said "Strike $112,999.99 \u00b7 Yes
+  // if Bitcoin settles above it" under it. Both are right, but one line read as two prices. The strike and the distance
+  // read in the heading's terms, and spot on either side of the line still lands on the side that pays.
+  test(`${name}: a page headed "$113,000 or above" gives its strike as $113,000, and measures spot from it`, async () => {
+    const HEAD = {sub: '$113,000 or above'};
+    const at = (price, vs) => openSpot(() => response({...SPOT, spot: {...SPOT.spot, price}, vs}), HEAD);
+    let {f, body} = await at(113420, SPOT.vs);
+    assert.match(f.root.querySelector('h1').textContent, /\$113,000 or above/);
+    let html = body().innerHTML;
+    assert.match(html, />Strike<\/dt><dd><span class="fig ">\$113,000<\/span><\/dd><dd class="sub-fig">Yes at \$113,000 or\u00a0above</);
+    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\+\$420\.00<\/span><\/dd><dd class="sub-fig">0\.37% above the strike\u00a0\u00b7 on the Yes side</);
+    assert.doesNotMatch(html, /112,999\.99|420\.01/);
+    f.clearTimers();
+    // Spot at $113,000.00 is a cent above the stored strike: at the heading's line, on the Yes side.
+    ({f, body} = await at(113000, {side: 'above', diff: 0.01, pct: 0, yes: true}));
+    assert.match(body().innerHTML, />Spot vs strike<\/dt><dd><span class="fig ">At the strike<\/span><\/dd><dd class="sub-fig">on the Yes side</);
+    f.clearTimers();
+    // Spot at $112,999.99 is on the stored strike, which doesn't pay: a cent under the heading's line, on the No side.
+    ({f, body} = await at(112999.99, {side: 'at', diff: 0, pct: 0, yes: false}));
+    assert.match(body().innerHTML, />Spot vs strike<\/dt><dd><span class="fig ">\u2212\$0\.01<\/span><\/dd><dd class="sub-fig">under 0\.01% below the strike\u00a0\u00b7 on the No side</);
+    f.clearTimers();
+    // A heading with cents keeps them ("$114,000.01 or above" over a $114,000 strike).
+    ({f, body} = await openSpot(() => response({...SPOT, strike: {...SPOT.strike, value: 114000}, vs: {side: 'below', diff: -580, pct: -0.509, yes: false}}),
+      {sub: '$114,000.01 or above'}));
+    html = body().innerHTML;
+    assert.match(html, />Strike<\/dt><dd><span class="fig ">\$114,000\.01<\/span><\/dd><dd class="sub-fig">Yes at \$114,000\.01 or\u00a0above</);
+    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\u2212\$580\.01<\/span><\/dd><dd class="sub-fig">0\.51% below the strike\u00a0\u00b7 on the No side</);
+    f.clearTimers();
+    // A heading whose figure isn't this strike's (the stored $112,999.99 under "$113,500 or above") keeps the stored strike.
+    ({f, body} = await openSpot(() => response(SPOT)));
+    assert.match(body().innerHTML, />Strike<\/dt>.*>\$112,999\.99<.*Yes if Bitcoin settles above\u00a0it/);
+    f.clearTimers();
+  });
+
   // Walk 2026-10-30: a 15-minute window's page went on measuring spot against its target after the close ("+$71.87 ·
   // 0.06% above the target price · on the Yes side" a minute later), read as its result. Past the close the figure says
   // Bitcoin's price since doesn't change it, on the poll after the close as on a page opened after it.
@@ -305,10 +339,10 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page({ticker: 'KXBTCD-26OCT2803-T112999.99', as_of: now.toISOString(), close_time: new Date(now.getTime() + 190e3).toISOString()}));
     const closes = () => f.root.querySelectorAll('.figures .m').find((m) => /^Clos/.test(m.querySelector('dt').textContent));
     assert.equal(closes().querySelector('dt').textContent, 'Closes');
-    assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'in 3 min');
+    assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'in 3\u00a0min', 'the number keeps its unit');
     const tick = async () => { for (const run of [...f.intervals.values()]) await run(); await settle(); };
     f.shiftClock(65000); await tick();
-    assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'in 2 min');
+    assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'in 2\u00a0min');
     f.shiftClock(130000); await tick();
     assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'Closed, result pending');
     // A market read after its close (Kalshi's "closed", the result not in) is headed "Closed" from the start.

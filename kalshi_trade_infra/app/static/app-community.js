@@ -87,7 +87,7 @@ window.TauPage('community', (T) => {
         ${postSnapshot(p.snapshot, snapOwner(p))}</div>
         <div class="reactions">${reactionChips(p.reactions)}</div>
         <div class="post-actions">
-          <button class="thread-link" data-act="comments">${ICON.comment}<span>${replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
+          <button class="thread-link" data-act="comments">${ICON.comment}<span>${replies ? `${num(replies)} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
           ${p.mine ? `<button class="thread-link" data-act="edit">${ICON.pencil}<span>Edit</span></button><button class="thread-link" data-act="delete"><span>Delete</span></button>` : ''}
         </div>
         <div class="comments" hidden></div>

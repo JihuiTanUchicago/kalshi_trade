@@ -40,6 +40,29 @@ export function countFormatCases({name, frontend, detailStrategy, strategyFronte
     }
   });
 
+  // The Strategies list's figures over the rows (Passed, Void, Rejected) and a Community post's reply count read
+  // "1201" beside the rows' "1,201".
+  test(`${name}: the Strategies list's figures count its strategies as "1,201"`, async () => {
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/strategies') ? response({strategies: [], matched: 0,
+      counts: {total: 3604, passed: 1201, failed: 1203, failed_no_record: 1, not_cleared: 1204, rejected: 1200}}) : response({}))});
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.viewStrategies(); await settle();
+    const figs = plain(f.root.querySelector('#sfigs').innerHTML);
+    for (const n of ['1,201', '1,202', '1,200', '1,204', '3,604']) assert.match(figs, new RegExp(n), n);
+    assert.doesNotMatch(figs, /\b120[0-4]\b|\b3604\b/);
+    if (f.clearTimers) f.clearTimers();
+  });
+
+  test(`${name}: a Community post counts its replies as "1,201"`, async () => {
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/community') ? response({posts: [{id: 1, body: 'Busy thread', author: 'Bob',
+      username: 'bob', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 1201, reactions: []}]}) : response({}))});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const link = f.root.querySelector('[data-act="comments"]');
+    assert.equal(link.textContent.trim(), '1,201 replies');
+    if (f.clearTimers) f.clearTimers();
+  });
+
   test(`${name}: the strategy page's details count its trades as "1,201"`, async () => {
     const f = strategyFrontend(detailStrategy({status: 'backtest-only', experiment: null, out_of_sample: big,
       in_sample: {...big, trades: 3300, days: 31}, recent_trades: []}), () => response({}));
