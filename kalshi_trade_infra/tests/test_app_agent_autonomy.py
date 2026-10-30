@@ -409,7 +409,8 @@ def test_an_angle_that_names_its_market_is_only_tested_there(monkeypatch):
     for market in (None, "btc_daily"):
         text, pid = agent.act(None, USER, {"type": "research", "market": market,
                               "idea": "Cross-strike arbitrage on BTC dailies: ladder monotonicity"}, True)
-        assert pid is None and "didn’t start" in text and "Bitcoin above $X at 5pm ET" in text, text
+        # The chat line names the market in the customer's words, never its label's "$X" placeholder (walked 2026-10-30).
+        assert pid is None and "didn’t start" in text and "Bitcoin above a set price at 5pm ET" in text and "$X" not in text, text
     assert rec["runs"] == []
     agent.act(None, USER, {"type": "research", "idea": "Order-flow imbalance near expiry"}, True)
     agent.act(None, USER, {"type": "research", "market": "btc_daily", "idea": "Another angle on overreaction."}, True)

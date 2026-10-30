@@ -180,14 +180,14 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
   // Every row leads with a plain name and the market chip the rest of the app uses, never the raw ticker.
   // Meridian printed the ticker (KXBTCD-26OCT2812-T112999.99) as a line of each row with no chip, and both
   // themes named an untitled contract by its ticker (Explore, the hot rail).
-  const NAMED = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', category: 'Crypto', close_hour_et: 17},
+  const NAMED = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', category: 'Crypto', close_hour_et: 17},
     {key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin 15-minute up/down', category: 'Crypto'}];
   const NAME_ROWS = [row('KXBTCD-26OCT2812-T112999.99', {ti: 'Bitcoin price at 12pm EDT?', su: '$113,000 or above', ct: LATER}),
     row('KXBTCD-26OCT2817-T112999.99', {ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above'}),
     row('KXBTC-26OCT2817-B113250', {ti: 'Bitcoin price range at 5pm EDT?', su: '$113,000 to 113,499.99'}),
     row('KXBTC15M-26OCT271145-45', {ti: 'BTC price up in next 15 mins?'}),
     row('KXFEDDECISION-26DEC-H0', {s: 'KXFEDDECISION', ti: '', su: '', ct: null})];
-  const CHIPS = ['BTC above $X at noon ET', 'BTC above $X at 5pm ET', 'BTC range at 5pm ET', 'BTC 15-min up/down', null];
+  const CHIPS = ['BTC above set price at noon ET', 'BTC above set price at 5pm ET', 'BTC range at 5pm ET', 'BTC 15-min up/down', null];
   const TICKER = /KX[A-Z0-9]+-\w/;
 
   test(`${name}: Explore's rows lead with the plain name and the market chip, never the raw ticker or series`, async () => {

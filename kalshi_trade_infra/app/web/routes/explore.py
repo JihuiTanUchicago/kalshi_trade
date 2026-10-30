@@ -107,7 +107,7 @@ def _ticker_close(ticker: Optional[str]) -> Optional[str]:
 # "BTC price up in next 15 mins?", so a search for "bitcoin" missed them until "Bitcoin 15-minute" counted.
 _SERIES_NAMES: Dict[str, str] = {}
 for _m in MARKETS.values():
-    _SERIES_NAMES[_m.series] = (_SERIES_NAMES.get(_m.series, "") + " " + _m.label).strip()
+    _SERIES_NAMES[_m.series] = (_SERIES_NAMES.get(_m.series, "") + " " + _m.customer_label).strip()
 
 
 def explore_list(ctx: Ctx):

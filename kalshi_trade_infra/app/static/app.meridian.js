@@ -427,9 +427,12 @@
   const MKT_SHORT = {
     // Each coin says the contract and its close, not just the coin and an hour ("BTC 5pm" was every kind),
     // with no " · " inside: lists and chips join labels with it, and "BTC above $X · 5pm ET" read as two.
+    // A 5pm ladder says its strike in words, as the server's customer_label does ("a set price"; a chip drops the "a"
+    // to fit a phone row's 30 characters), never "$X": walked 2026-10-30, Explore's chips read "BTC ABOVE $X AT 5PM ET".
+    // A contract fills its own strike in (strikeIn).
     btc15m: 'BTC 15-min up/down', btc15m_tick: 'BTC 15-min up/down, per second', btc_perp: 'BTC perpetual, no expiry',
-    btc_daily: 'BTC above $X at 5pm ET', eth15m: 'ETH 15-min up/down', eth_daily: 'ETH above $X at 5pm ET',
-    sol15m: 'SOL 15-min up/down', sol_daily: 'SOL above $X at 5pm ET', xrp15m: 'XRP 15-min up/down', xrp_daily: 'XRP above $X at 5pm ET',
+    btc_daily: 'BTC above set price at 5pm ET', eth15m: 'ETH 15-min up/down', eth_daily: 'ETH above set price at 5pm ET',
+    sol15m: 'SOL 15-min up/down', sol_daily: 'SOL above set price at 5pm ET', xrp15m: 'XRP 15-min up/down', xrp_daily: 'XRP above set price at 5pm ET',
     doge15m: 'DOGE 15-min up/down', near15m: 'NEAR 15-min up/down', zec15m: 'ZEC 15-min up/down', hype15m: 'HYPE 15-min up/down',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
     ncaaf_game: 'NCAAF winner', mlb_game: 'MLB winner', epl_game: 'EPL result',
@@ -456,8 +459,9 @@
   const hourET = (h) => (h === 12 ? 'noon' : h === 0 ? 'midnight' : `${h % 12}${h < 12 ? 'am' : 'pm'}`);
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
-  // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
-  // to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
+  // A ladder market's label says "a set price" for the strike; one contract says its own (-T68499.99), as its rules
+  // do, to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
+  const LADDER_WORDS = /above (?:a )?set price/;
   const strikeIn = (label, ticker) => {
     const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || ''));
     if (!k) return label;
@@ -466,17 +470,17 @@
     // above", the market page's heading. Walked 2026-10-30: the line under that heading said "Bitcoin above
     // $112,999.99 at 5pm ET", two prices for one line. Display only: the ticker and the stored strike are unchanged.
     // Any other strike, and a KXBTC -T end (the ticker doesn't say which way it points), keeps its exact figure.
-    if (/^KXBTCD-/.test(String(ticker)) && k[2] === '.99' && label.includes('above $X')) return label.replace('above $X', `$${num(+k[1] + 1)} or above`);
-    return label.replace('$X', '$' + num(k[1]) + (k[2] || ''));
+    if (/^KXBTCD-/.test(String(ticker)) && k[2] === '.99' && LADDER_WORDS.test(label)) return label.replace(LADDER_WORDS, `$${num(+k[1] + 1)} or above`);
+    return label.replace(LADDER_WORDS, 'above $' + num(k[1]) + (k[2] || ''));
   };
   // Bitcoin series the app shows (Explore, the hot rail, a market page, a position held at Kalshi) that no
   // market here covers: KXBTC's hourly price ranges. Each still says its contract and close as the markets above
   // do, [chip, name], never the raw series or another market's label. Every series of services/btc_spot.py's
   // BTC_SERIES is a market's or here (test_every_bitcoin_series_the_app_shows_has_a_label).
   const SERIES_SHORT = { KXBTC: ['BTC range at {h} ET', 'Bitcoin range at {h} ET'] };
-  // Another hour of a ladder a market here keeps to one close (KXBTCD-26OCT2612, the noon "Bitcoin above $X"
+  // Another hour of a ladder a market here keeps to one close (KXBTCD-26OCT2612, the noon "Bitcoin above a set price"
   // contract, beside btc_daily's 5pm): never that market's label, which names the wrong close, but the same
-  // words at its own hour read from the ticker, [chip, name] as SERIES_SHORT: "BTC above $X at noon ET".
+  // words at its own hour read from the ticker, [chip, name] as SERIES_SHORT: "BTC above set price at noon ET".
   const offHour = (ticker, h) => {
     const sib = ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
     if (!sib || h == null) return null;
@@ -509,7 +513,7 @@
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
   const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
   // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"), or its SERIES_SHORT or
-  // other-hour chip ("BTC range at 5pm ET", "BTC above $X at noon ET"); '' for any other, so a chip is left off
+  // other-hour chip ("BTC range at 5pm ET", "BTC above set price at noon ET"); '' for any other, so a chip is left off
   // rather than the raw series or another hour's market.
   const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : seriesLabel(ticker, 0); };
   // Link a strategy's market to its Kalshi series page.
@@ -3221,7 +3225,9 @@
     if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
     const k = encodeURIComponent(m.key);
     const own = (mine || []).includes(m.key) ? `<a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a>` : '';
-    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a>${own}</p>`;
+    // The button is on one contract's page, so it names that contract's strike as the line under the heading does
+    // ("Research BTC $113,000 or above at 5pm ET"), not the family's words; the session it starts researches the market.
+    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(strikeIn(marketShort(m.key), ticker))}</a>${own}</p>`;
   }
   // A Bitcoin contract's page says where Bitcoin is against its strike, from the price the collectors
   // stored (/api/explore/spot). It is its own read, started with the market's, and fills its own section,
@@ -3612,7 +3618,7 @@
         const conditionDisplay = compactCondition(separateCondition);
         const titleParts = title.split(' · ');
         const eventDisplay = titleParts.length > 1 ? `<strong>${esc(titleParts[0])}</strong>` : esc(title);
-        // Under the name, the market as the app names it (contractShort: "BTC above $X at noon ET"), as Tau's
+        // Under the name, the market as the app names it (contractShort: "BTC above set price at noon ET"), as Tau's
         // Explore chips it, then when the contract closes. The raw ticker (KXBTCD-26OCT2812-T112999.99) carries the
         // series key, so a row never prints it, as Tau's rows don't: the market page names it on its own line.
         const chip = contractShort(m.t), closes = m.ct ? closeWords(m.ct, 'chip', 0, true) : '';

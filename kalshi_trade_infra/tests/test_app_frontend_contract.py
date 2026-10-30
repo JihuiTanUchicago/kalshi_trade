@@ -580,10 +580,16 @@ def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
     assert set(btc) == {"btc15m", "btc15m_tick", "btc_daily", "btc_perp"}
     assert {k: short[k] for k in btc} == {
         "btc15m": "BTC 15-min up/down", "btc15m_tick": "BTC 15-min up/down, per second",
-        "btc_daily": "BTC above $X at 5pm ET", "btc_perp": "BTC perpetual, no expiry"}
+        "btc_daily": "BTC above set price at 5pm ET", "btc_perp": "BTC perpetual, no expiry"}
+    # The label keeps "$X" (the research model's market list and its pick match it); customers read customer_label,
+    # in words: walked 2026-10-30, a market page's button read "Research BTC above $X at 5pm ET".
     assert {k: m.label for k, m in btc.items()} == {
         "btc15m": "Bitcoin up or down in 15 minutes", "btc15m_tick": "Bitcoin up or down in 15 minutes, per-second data",
         "btc_daily": "Bitcoin above $X at 5pm ET", "btc_perp": "Bitcoin perpetual future, no expiry (research only)"}
+    assert {k: m.customer_label for k, m in btc.items()} == {
+        "btc15m": "Bitcoin up or down in 15 minutes", "btc15m_tick": "Bitcoin up or down in 15 minutes, per-second data",
+        "btc_daily": "Bitcoin above a set price at 5pm ET", "btc_perp": "Bitcoin perpetual future, no expiry (research only)"}, \
+        "a customer never reads the strike placeholder"
     assert {(m.series, m.close_hour_et) for m in btc.values()} == {
         ("KXBTC15M", None), ("BTC_PERP", None), ("KXBTCD", 17)}
     for k in btc:
@@ -593,8 +599,8 @@ def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
 @pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
 def test_every_crypto_label_says_the_contract_and_its_close_as_bitcoins_do(bundle):
     # "ETH 5pm" and "SOL 15-min" sat beside "BTC above $X at 5pm ET" and "BTC 15-min up/down". Every crypto
-    # market reads Bitcoin's way: a 5pm ladder pays above a strike the app fills in for "$X" per contract, a
-    # 15-minute one pays on up or down. Keys and series stay as stored.
+    # market reads Bitcoin's way: a 5pm ladder pays above a strike the app fills in per contract (its words "a set
+    # price" to a customer, never "$X"), a 15-minute one pays on up or down. Keys and series stay as stored.
     import re
     from pathlib import Path
     from app.trading import markets
@@ -609,7 +615,9 @@ def test_every_crypto_label_says_the_contract_and_its_close_as_bitcoins_do(bundl
     for k, m in crypto.items():
         long, tick = coins[m.underlying]
         if m.close_hour_et == 17:
-            assert (m.label, short[k]) == ("%s above $X at 5pm ET" % long, "%s above $X at 5pm ET" % tick), k
+            assert (m.label, m.customer_label, short[k]) == (
+                "%s above $X at 5pm ET" % long, "%s above a set price at 5pm ET" % long, "%s above set price at 5pm ET" % tick), \
+                (k, "a customer reads the strike in words, never the $X placeholder")
             assert m.series == "KX%sD" % tick, k
         else:
             assert (m.label, short[k]) == ("%s up or down in 15 minutes" % long, "%s 15-min up/down" % tick), k

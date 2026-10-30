@@ -654,7 +654,7 @@ FOCUS_WORDS = {"btc": "Bitcoin", "eth": "Ethereum", "sol": "Solana", "xrp": "XRP
 def focus_words(tokens: List[str]) -> str:
     """The focus in words ("Bitcoin", "crypto, sports"): a coin by its name, a market key by its label, a family
     by its name. Display only; the stored tokens are unchanged."""
-    return ", ".join(FOCUS_WORDS.get(t) or (MARKETS[t].label if t in MARKETS else str(t).replace("-", " "))
+    return ", ".join(FOCUS_WORDS.get(t) or (MARKETS[t].customer_label if t in MARKETS else str(t).replace("-", " "))
                      for t in tokens or [])
 
 
@@ -1001,7 +1001,7 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: Optional[Li
         words = set(re.findall(r"[a-z0-9]+", idea.lower()))
         k = max(choices, key=lambda c: len(words & set(re.findall(r"[a-z0-9]+", (c + " " + choices[c].label).lower()))))
         r = {"market": k, "why": "The pick reply was unusable, so I took the market that best matches the idea."}
-    log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].label, r["why"]),
+    log("step", "Chose to research %s. %s" % (MARKETS[r["market"]].customer_label, r["why"]),
         {"phase": "pick_market", "market": r["market"]})
     return r["market"]
 
@@ -2762,7 +2762,7 @@ def run_research(
         log("step", "%s %s…"
             % ("Resuming — re-using %d explored hypotheses, preparing" % len(tried) if resuming
                else "Research started — preparing",
-               MARKETS[market].label if market in MARKETS else "the chosen market"),
+               MARKETS[market].customer_label if market in MARKETS else "the chosen market"),
             {"phase": "start", "market": market or None, "resumed": resuming,
              "screen_model": screen_pick.key if screen_pick else None})
         if market and market not in MARKETS and run.get("brief") and not ckpt.get("market"):
@@ -2776,7 +2776,7 @@ def run_research(
             # A delegated run queued on a market outside the user's focus (an older queue entry, or
             # another path): keep the angle, let the picker choose inside the focus.
             log("step", "%s is outside your autopilot focus — picking a market inside it for this angle."
-                % (MARKETS[market].label if market in MARKETS else market))
+                % (MARKETS[market].customer_label if market in MARKETS else market))
             market = None
         if market and run.get("brief") and not ckpt.get("market") and not autopilot_scope_ok(market):
             # A delegated run queued on a coin the autopilot no longer researches (before the scope
@@ -2818,11 +2818,11 @@ def run_research(
         # first heartbeat/event — the proven startup-hang site (prod run 397/407: claimed, then
         # zero events/heartbeat for 20 min). Announce it (so a stall is visible to the phase), beat
         # the heartbeat while it runs, and hard-bound it so a wedge fails fast with a clear error.
-        log("step", "Loading %s market data…" % MARKETS[market].label, {"phase": "loading", "market": market})
-        ds = _load("Loading %s data" % MARKETS[market].label, load, market,
+        log("step", "Loading %s market data…" % MARKETS[market].customer_label, {"phase": "loading", "market": market})
+        ds = _load("Loading %s data" % MARKETS[market].customer_label, load, market,
                    beat=lambda: repo.heartbeat(cur, run_id))
         if len(ds.frames) < MIN_FRAMES:
-            raise NoData("Not enough market history collected yet for %s." % MARKETS[market].label)
+            raise NoData("Not enough market history collected yet for %s." % MARKETS[market].customer_label)
         # The agent picks the window that fits its thesis; re-load the narrower slice if it
         # chose less, and keep the fuller one if the slice is too thin to be worth it.
         checkpoint()  # a cancel must stop before we spend a model call on planning
@@ -2837,17 +2837,17 @@ def run_research(
             # 1-minute sports market is ~0.5-1GB of snapshots on its own. A too-thin slice (rare)
             # pays one more load of the full set instead.
             ds = None
-            narrowed = _load("Loading %s data" % MARKETS[market].label, load, market, lookback,
+            narrowed = _load("Loading %s data" % MARKETS[market].customer_label, load, market, lookback,
                              beat=lambda: repo.heartbeat(cur, run_id))
             if len(narrowed.frames) >= MIN_FRAMES:
                 ds = narrowed
             else:
                 narrowed = None
-                ds = _load("Loading %s data" % MARKETS[market].label, load, market,
+                ds = _load("Loading %s data" % MARKETS[market].customer_label, load, market,
                            beat=lambda: repo.heartbeat(cur, run_id))
         s = ds.summary()
         log("step", "Loaded %s of %s history: %s decision points over %s contracts."
-            % (_span_words(ds), MARKETS[market].label, s["decision_points"], s["contracts"]),
+            % (_span_words(ds), MARKETS[market].customer_label, s["decision_points"], s["contracts"]),
             dict(s, phase="data_loaded"))
         playbook = _rsi_choose(cur, user_id, market, run_id, log)
         if playbook:
@@ -4417,7 +4417,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                     return ("I didn’t start that: this angle is about %s, which was researched in the last few "
                             "hours, and no other market can test it. I’ll come back to it after the cooldown "
                             "or pick an angle for another market." % " and ".join(
-                                MARKETS[k].label for k in named)), None
+                                MARKETS[k].customer_label for k in named)), None
         # Dedup/cooldown: don't re-launch a line on a market that's already running or just finished
         # — the review should hunt a DIFFERENT market, not re-spam the same dead/running idea. Only
         # when a market is named; market=None lets the proposer pick, so there's nothing to dedup yet.
@@ -4425,7 +4425,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             why = _market_research_recent(cur, user_id, market)
             if why and (not autopilot or why.startswith("a research line is already running")):
                 # `why` names the market by its key for the review's context; the customer reads its label.
-                said = why.replace(market, MARKETS[market].label, 1) if market in MARKETS else why
+                said = why.replace(market, MARKETS[market].customer_label, 1) if market in MARKETS else why
                 # ...and never the run's row number ("(run #41)"), which the review's context keeps.
                 said = _RUN_REF.sub("", said).replace("'", "’")
                 return ("I didn’t start that — %s. I’ll hunt a different market instead of "
@@ -4442,7 +4442,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 # run id, which the review's context keeps but the customer never needs.
                 return ("Started a fresh research session on a market the research specialist picks. %s %s, "
                         "so this angle goes to one that isn’t on cooldown. Follow it on the Research page."
-                        % (MARKETS[market].label if market in MARKETS else market,
+                        % (MARKETS[market].customer_label if market in MARKETS else market,
                            "keeps failing today" if "backed off" in why else "was researched in the last few hours")), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
@@ -4453,7 +4453,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if not sid and off_scope:
             return ("Crypto research is %s only now, so I started this angle on a market the research "
                     "specialist picks instead of %s. Follow it on the Research page."
-                    % (_scope_coin_words("and"), MARKETS[off_scope].label if off_scope in MARKETS else off_scope)), None
+                    % (_scope_coin_words("and"), MARKETS[off_scope].customer_label if off_scope in MARKETS else off_scope)), None
         if not sid and unsupported:
             return ("%s isn’t a market Tau supports, so I started this angle on a supported market the "
                     "research specialist picks. Follow it on the Research page." % unsupported), None
@@ -4462,7 +4462,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         # key and three terms of art. It keeps its first words (chat_repository.last_autopilot_action).
         return ("Started a fresh research session on %s. Anything it finds has to pass the same tests as "
                 "any session before it trades, even on paper. Follow it on the Research page."
-                % (MARKETS[market].label if market in MARKETS else (market or "a market I’ll choose")), None)
+                % (MARKETS[market].customer_label if market in MARKETS else (market or "a market I’ll choose")), None)
     # Should be unreachable for a well-formed action. Log the raw dict so a genuinely new/malformed
     # action kind is diagnosable from the agents journal instead of only this opaque chat line.
     print("[agents] copilot emitted an unhandled action: %r" % (action,), flush=True)
@@ -4573,7 +4573,7 @@ def false_live_line(text: str, deps: List[Dict], customer: bool = False) -> Opti
 
 def _market_words(key: Optional[str]) -> str:
     """A market as a customer reads it: its label, never its raw key."""
-    return MARKETS[key].label if key in MARKETS else "an unlisted market"
+    return MARKETS[key].customer_label if key in MARKETS else "an unlisted market"
 
 
 def _deployment_words(d: Dict) -> str:

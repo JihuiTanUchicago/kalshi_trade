@@ -469,7 +469,7 @@ def _strategy_names(rows: List[Dict]) -> Dict[int, str]:
         if len(sids) < 2:
             continue
         sids.sort(key=lambda s: (_iso_utc(first[s].get("strategy_created")), s))  # the order they were made
-        market = {s: MARKETS[first[s]["strategy_market"]].label if first[s].get("strategy_market") in MARKETS
+        market = {s: MARKETS[first[s]["strategy_market"]].customer_label if first[s].get("strategy_market") in MARKETS
                   else "" for s in sids}
         for how in ((), (False,), (True,)):
             tags = {s: ", ".join(p for p in [market[s]] + [_made(first[s].get("strategy_created"), m) for m in how] if p)

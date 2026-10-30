@@ -8,7 +8,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 
-const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', category: 'Crypto', close_hour_et: 17},
+const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', category: 'Crypto', close_hour_et: 17},
   {key: 'nba_game', series: 'KXNBAGAME', label: 'NBA game winner', category: 'Sports'}];
 const page = (over) => ({ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', title: 'Bitcoin price at 5pm EDT?', sub: '$113,500 or above',
   status: 'active', yes_bid: '0.55', yes_ask: '0.57', last: '0.55', volume_24h: '15234', open_interest: '40211',
@@ -31,7 +31,12 @@ export function explorePageCases({name, frontend}) {
     assert.ok(next, 'the market page says what to do next');
     const links = next.querySelectorAll('a');
     assert.deepEqual(links.map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily', '/strategies?market=btc_daily']);
-    assert.deepEqual(links.map((a) => a.textContent), ['Research BTC above $X at 5pm ET', 'Your BTC above $X at 5pm ET strategies']);
+    // Walked 2026-10-30: the button read "Research BTC above $X at 5pm ET", the family label's placeholder. On one
+    // contract's page it names that contract's strike as the line under the heading does; "Your … strategies" are the
+    // market's, so they keep the family's words. Neither ever says "$X".
+    assert.deepEqual(links.map((a) => a.textContent), ['Research BTC $113,500 or above at 5pm ET', 'Your BTC above set price at 5pm ET strategies'],
+      'the research button names this contract\u2019s strike, never the placeholder');
+    assert.doesNotMatch(next.textContent, /\$[A-Z]\b/, 'no strike placeholder on the market page');
     // "Your … strategies" showed to a reader with none on this market (and opened an empty list): it shows only when the
     // server says they have one there; with none, or that read failed (null), only Research is offered.
     for (const mine of [[], ['nba_game'], null]) {
