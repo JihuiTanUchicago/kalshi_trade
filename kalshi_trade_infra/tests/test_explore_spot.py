@@ -432,3 +432,29 @@ def test_a_failed_stored_strikes_read_falls_back_to_the_title_and_ticker(monkeyp
     assert d["markets"][0]["vs"] == {"side": "below", "diff": -92.08, "pct": -0.081, "from": "title"}
     assert "Lost connection" not in repr(d) and "list strikes read failed" in capsys.readouterr().out
     assert explore_routes._STRIKE_CACHE == {}, "a failed read is not remembered as 'none stored'"
+
+
+# Walk 2026-10-30: a KXBTC bucket the collector hasn't stored read "Spot vs bucket +$133" on its Explore row (edges from
+# its ladder in the feed) and "+$383.42 above its centre" on its own page. The page takes the edges the same way, from
+# the feed copy already held; it never fetches the feed for it, and a bucket alone in its ladder still reads its centre.
+def test_a_market_page_bucket_takes_its_edges_from_its_ladder_as_its_row_does(monkeypatch):
+    def no_fetch():
+        raise AssertionError("the spot read never fetches the feed")
+    monkeypatch.setattr(explore_routes, "_fetch_explore_feed", no_fetch)
+    _stub(monkeypatch, spot={"at": _now(), "price": 113633.42}, record=None)
+    ladder = _feed("KXBTC-26OCT2717-B113250", "KXBTC-26OCT2717-B113750", "KXBTC-26OCT2717-B114250", "KXBTCD-26OCT2717-T112999.99")
+    monkeypatch.setattr(explore_routes, "_EXPLORE_CACHE", {"at": 0.0, "data": ladder, "refreshing": True})
+    d = _get("KXBTC-26OCT2717-B113250")
+    assert d["strike"] == {"kind": "range", "value": 113250.0, "lo": 113000.0, "hi": 113499.99, "inclusive": True, "from": "ticker"}
+    assert (d["vs"]["side"], d["vs"]["diff"]) == ("above", 133.43)
+    row = next(m for m in _list(monkeypatch, ladder)["markets"] if m["t"] == "KXBTC-26OCT2717-B113250")
+    assert (row["vs"]["side"], row["vs"]["diff"]) == (d["vs"]["side"], d["vs"]["diff"]), "the row and its page agree"
+    inside = _get("KXBTC-26OCT2717-B113750")
+    assert inside["vs"]["side"] == "inside" and inside["vs"]["yes"] is True
+    # Alone in its ladder, or with no feed held yet: its centre, as before.
+    for held in (_feed("KXBTC-26OCT2717-B113250"), None):
+        monkeypatch.setattr(explore_routes, "_EXPLORE_CACHE", {"at": 0.0, "data": held, "refreshing": True})
+        explore_routes._STRIKE_CACHE.clear()
+        d = _get("KXBTC-26OCT2717-B113250")
+        assert (d["strike"]["lo"], d["strike"]["hi"]) == (None, None)
+        assert (d["vs"]["side"], d["vs"]["diff"]) == ("above", 383.42)
