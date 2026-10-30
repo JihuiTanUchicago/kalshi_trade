@@ -76,7 +76,7 @@ window.TauPage('billing', (T) => {
            <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div><div id="bledger">${ledgerTable(d)}</div></section>`
         : `<div id="blow">${lowNote(d)}</div><div class="detail bill-detail">
             <div>
-              <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
+              <section class="panel"><h2>Payment method</h2><div id="cards">${cardLines}</div>
                 <div id="card-add" style="margin-top:14px">
                   <div class="field"><span>${d.cards.length ? 'Add another card' : 'Add a card'}</span><div id="card-el" class="card-el"></div></div>
                   <div id="card-flash"></div>
@@ -96,7 +96,7 @@ window.TauPage('billing', (T) => {
               <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div><div id="bledger">${ledgerTable(d)}</div></section>
             </div>
             <aside aria-label="Add credits">
-              <section class="panel"><h3>Add credits</h3>
+              <section class="panel"><h2>Add credits</h2>
                 <label class="field"><span>Amount (USD)</span><input class="input" id="topup-amt" type="number" min="${d.min_topup}" max="${d.max_topup}" step="1" value="20"></label>
                 <p class="hint" id="topup-note" style="margin-top:8px">${feeNote}</p>
                 <button class="btn primary" id="topup-btn" style="margin-top:12px;width:100%" ${d.cards.length ? '' : 'aria-disabled="true"'}>Buy credits</button>
@@ -154,6 +154,9 @@ window.TauPage('billing', (T) => {
         const amount = Math.max(d.min_reload_amount, +arAmt.value || d.min_reload_amount);
         const threshold = Math.max(d.min_reload_threshold, +arThr.value || d.min_reload_threshold);
         arPaint(on, amount, threshold);
+        // Locking the controls blurs the one in use (the switch, or an amount saved with Enter), which left a
+        // keyboard user at the top of the page: focus goes back to it once they unlock, as the autopilot switch's does.
+        const had = [arBox, arAmt, arThr].find((x) => x === document.activeElement);
         [arBox, arAmt, arThr].forEach((x) => { x.disabled = true; });
         const waited = waitNote(arBox.closest('.switch') || arBox);
         try {
@@ -166,7 +169,11 @@ window.TauPage('billing', (T) => {
           syncMeBilling(d);
           if (gen === S.gen) flash('#autorel-flash', on ? `On${SEP}reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
         } catch (err) { arPaint(arSaved.on, arSaved.amount, arSaved.threshold); if (gen === S.gen) flash('#autorel-flash', err.message, 'bad'); }
-        finally { [arBox, arAmt, arThr].forEach((x) => { x.disabled = false; }); }
+        finally {
+          [arBox, arAmt, arThr].forEach((x) => { x.disabled = false; });
+          const a = document.activeElement;
+          if (had && had.isConnected && (!a || a === document.body) && had.focus) had.focus({ preventScroll: true });
+        }
       };
       arBox.onchange = saveAutoReload;
       arAmt.onchange = arThr.onchange = () => { if (arBox.checked) saveAutoReload(); };
