@@ -3352,6 +3352,8 @@ test('a hypothesis in the log says its search-data result and verdict in plain w
   const log = f.root.querySelectorAll('li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
   assert.doesNotMatch(log, /Gatekeeper/);
   assert.match(log, /class="hx-tag pass">Verdict/);
+  // "View strategy →" stands apart from the sentence before it: it read "…it never saw.VIEW STRATEGY →".
+  assert.match(log, /<\/span> <a class="hx-viewstrat" href="\/strategies\/42">View strategy →<\/a><\/div>/);
   assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
 });
 
@@ -6003,5 +6005,47 @@ test('Tau: the composer’s hint fits its one line at 390px, with a curly apostr
   assert.ok(!hint.includes("'") && hint.length <= 34);
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
   assert.match(css, /@media \(max-width: 680px\) \{[^\n]*\.post-tools > \.post-strat-f \{ flex-basis: 100%; \}/);
+  f.clearTimers();
+});
+
+test('Tau: the Passed filter with nothing passed says so and points to Research, not "Try another filter"', async () => {
+  // A first session where every idea failed: the dashboard's "See passed strategies" opens /strategies?status=passed.
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 2, passed: 0, failed: 0, rejected: 2}}) : response({}))});
+  f.S.me.user.autopilot = false;
+  f.location.pathname = '/strategies'; f.location.search = '?status=passed';
+  await f.viewStrategies(); await flush(); await flush();
+  let empty = f.root.querySelector('#slips .empty');
+  assert.match(empty.innerHTML, /None of your strategies has passed its tests yet\. Most ideas fail; the ones that pass land here\./);
+  assert.doesNotMatch(empty.innerHTML, /Try another filter/);
+  assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), ['/research']);
+  // A filter that matches nothing for another reason (a market with no passes while others passed) still says to try another.
+  const g = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
+  g.location.pathname = '/strategies'; g.location.search = '?status=passed&market=nba';
+  await g.viewStrategies(); await flush(); await flush();
+  empty = g.root.querySelector('#slips .empty');
+  assert.match(empty.innerHTML, /Try another filter\./);
+  assert.equal(empty.querySelectorAll('a.btn').length, 0);
+  f.clearTimers(); g.clearTimers();
+});
+
+test('Tau Research: with nothing tested yet the status line names the first step instead of repeating the subtitle', async () => {
+  const example = {id: 1, status: 'succeeded', prompt: 'Example', market: 'btc15m', example: true, created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 0};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/research/estimate') return response({yours: null, sessions: 0, typical: {}});
+    if (path === '/api/runs') return response({runs: [example], totals: {tried: 0, passed: 0, not_cleared: 0}, counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 0}});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  f.location.pathname = '/research'; f.location.search = '';
+  await f.viewResearch(); await flush(); await flush();
+  const said = f.root.querySelector('#rstatus .said').innerHTML;
+  assert.equal(said, 'Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.');
+  assert.doesNotMatch(said, /tests each on data it never saw/);
   f.clearTimers();
 });

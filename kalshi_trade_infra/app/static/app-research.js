@@ -427,7 +427,9 @@ window.TauPage('research', (T) => {
         ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
         : tried
           ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
-          : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
+          // Nothing tested yet: it repeated the page's subtitle word for word ("describe an idea, it writes strategies
+          // and tests each on data it never saw"), under a form that already asks for the idea.
+          : `Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.`;
       paint(root.querySelector('#rstatus .said'), said);
       paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Waiting', num(queued)) +
         // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
@@ -701,7 +703,9 @@ window.TauPage('research', (T) => {
         const said = upper1(dd.note || (dd.status === 'abandoned' && dd.why) || tail);
         if (dd.strategy_id != null) li.dataset.sid = dd.strategy_id;  // "Ideas tested" jumps here
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
+        // A space before "View strategy →": it ran into the sentence ("…it never saw.VIEW STRATEGY →"), and a
+        // space, unlike a margin, collapses when the link wraps to a line of its own.
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? ` <a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
       },
       // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
       // to what the user runs) land on its own card; they were loose lines stamped VOID.

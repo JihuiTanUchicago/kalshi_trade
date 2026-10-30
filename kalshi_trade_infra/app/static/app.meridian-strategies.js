@@ -342,7 +342,10 @@ window.TauPage('strategies', (T) => {
       const depChip = root.querySelector('[data-toggle="deployed"]');
       if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
       if (!d.matched) {
-        const noneKept = total && !kept && !f.status && !f.q && !f.market && !f.deployed;  // a new user's default view, not a filter miss
+        // A new user's default view, not a filter miss. The Passed filter with nothing passed is that view too: the
+        // dashboard's "See passed strategies" lands there after a first session where every idea failed, and
+        // "Try another filter" left it with no next step.
+        const noneKept = total && !f.q && !f.market && !f.deployed && (f.status ? f.status === 'passed' && !c('passed') : !kept);
         // With autopilot on, the empty list says it is on instead of asking for a session (not "researching":
         // the autopilot panel may be reporting a stale check-in or a billing pause).
         const apOn = !!(S.me && S.me.user && S.me.user.autopilot);

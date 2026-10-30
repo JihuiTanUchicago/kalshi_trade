@@ -122,6 +122,16 @@ def test_load_scoreboard_reads_runs_then_their_verdicts():
     assert cur.sql[0][1] == [3, 2] and "kind='verdict'" in cur.sql[1][0]
 
 
+def test_scoreboard_leaves_out_the_seeded_example_session():
+    # A brand-new account's only session is the example it was seeded with: the board counted it as
+    # research the user ran ("2 ideas tried, 1 session, $0.00 spent").
+    from app.adapters.db.strategy_repository import DEMO_DIRECTION
+    cur = _Cur()
+    rsi.recent_runs(cur, days=14, user_id=2)
+    sql = cur.sql[0][0]
+    assert "(direction IS NULL OR direction <> '%s')" % DEMO_DIRECTION in sql
+
+
 def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
     from types import SimpleNamespace
     from app import server

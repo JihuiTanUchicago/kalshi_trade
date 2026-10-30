@@ -362,9 +362,13 @@ def trend(cards: List[Dict], min_ideas: int = 8) -> Optional[Dict]:
 
 
 def recent_runs(cur, days: int = 7, user_id: Optional[int] = None) -> List[Dict]:
+    """Finished research sessions of the last `days`. The example session every new account is seeded
+    with (direction 'random_walk', strategy_repository.DEMO_DIRECTION) is left out: nobody ran it, so a
+    brand-new account's "Is research getting better?" read "2 ideas tried, 1 session, $0.00 spent"."""
     sql = ("SELECT id, user_id, market, status, error, model, hypotheses_tried, strategies_passed, input_tokens, "
            "output_tokens, created_at FROM app_agent_runs WHERE kind='research' "
-           "AND created_at >= UTC_TIMESTAMP() - INTERVAL %s DAY AND status IN ('succeeded','stopped','failed')")
+           "AND created_at >= UTC_TIMESTAMP() - INTERVAL %s DAY AND status IN ('succeeded','stopped','failed') "
+           "AND (direction IS NULL OR direction <> 'random_walk')")
     args: List = [int(days)]
     if user_id is not None:
         sql += " AND user_id=%s"
