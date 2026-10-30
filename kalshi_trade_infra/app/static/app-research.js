@@ -701,7 +701,9 @@ window.TauPage('research', (T) => {
         const said = upper1(dd.note || (dd.status === 'abandoned' && dd.why) || tail);
         if (dd.strategy_id != null) li.dataset.sid = dd.strategy_id;  // "Ideas tested" jumps here
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
+        // A space before "View strategy →": it ran into the sentence ("…it never saw.VIEW STRATEGY →"), and a
+        // space, unlike a margin, collapses when the link wraps to a line of its own.
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? ` <a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
       },
       // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
       // to what the user runs) land on its own card; they were loose lines stamped VOID.

@@ -3352,6 +3352,8 @@ test('a hypothesis in the log says its search-data result and verdict in plain w
   const log = f.root.querySelectorAll('li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
   assert.doesNotMatch(log, /Gatekeeper/);
   assert.match(log, /class="hx-tag pass">Verdict/);
+  // "View strategy →" stands apart from the sentence before it: it read "…it never saw.VIEW STRATEGY →".
+  assert.match(log, /<\/span> <a class="hx-viewstrat" href="\/strategies\/42">View strategy →<\/a><\/div>/);
   assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
 });
 
