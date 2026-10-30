@@ -87,6 +87,9 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.match(css, /\.switch input:focus-visible, input\[type=range\]:focus-visible, input\[type=file\]:focus-visible \{ outline: 2px solid var\(--ink\); outline-offset: 2px; \}/);
     assert.match(css, /\.mktrow-r:checked:focus-visible \+ \.mktrow-face \{ outline-color: var\(--stock-raised\); outline-offset: -4px; \}/);
     assert.match(css, /\.mktrow-r:checked \+ \.mktrow-face \{ background: var\(--ink\);/);
+    // A plain checkbox (the Strategies list's pick boxes, Select all) has no border to change either: Tab landed on it
+    // with nothing drawn (keyboard walk, 2026-10-30). Its ring outranks `input:focus { outline: none }`.
+    assert.match(css, /^input\[type=checkbox\]:focus-visible \{ outline: 2px solid var\(--ink\); outline-offset: 2px; \}$/m);
   });
 
   test(`${bundle}: only focus a script hands to a page or section drops its ring; every control keeps the ink ring`, () => {

@@ -191,7 +191,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const picks = f.root.querySelectorAll('.pick');
     assert.equal(picks.length, 1); assert.equal(picks[0].dataset.id, '45');
     list[1].deployed = true;  // every strategy on the page running: no selection column at all
-    assert.doesNotMatch(f.strategySlip(list[0], null, {pick: true}), /Select for deployment/);
+    assert.doesNotMatch(f.strategySlip(list[0], null, {pick: true}), /aria-label="Select [^"]* for deployment"/);
   });
 
   test(`${name}: a deployed strategy row shows its real P&L beside the backtest`, async () => {
@@ -716,7 +716,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(f.root.querySelector('#pick-all'), null); assert.equal(f.root.querySelector('.pick'), null);
     assert.equal(f.root.querySelector('#bulkbar').hidden, true);
     const output = f.strategySlip(list[0], null, {pick: true});
-    assert.match(output, /Research only/); assert.doesNotMatch(output, /Select for deployment|>Live<|>Deployed</);
+    assert.match(output, /Research only/); assert.doesNotMatch(output, /aria-label="Select [^"]* for deployment"|>Live<|>Deployed</);
     assert.equal(postRequests(f).length, 0);
   });
 

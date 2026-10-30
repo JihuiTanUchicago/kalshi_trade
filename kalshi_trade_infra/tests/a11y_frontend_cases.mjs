@@ -40,6 +40,18 @@
 // - A strategy page's Deploy with live money, unavailable while live trading is closed, was a dimmed button
 //   with its reason in the line under it and nothing tying the two: a screen reader heard the button, not why.
 //   Meridian's undeployed strategy page skipped from the h1 to the research sections' h3s.
+//
+// From a keyboard-only and screen-reader walk of the main flows (Tab, Shift+Tab, Enter, Space, Escape; ARIA snapshots
+// and axe-core 4.14; both themes, 390px and 1280px, a seeded account, 2026-10-30):
+// - Focus fell to <body> after a Strategies filter chip (the list is drawn again, the chip with it), after Enter on an
+//   Explore row and after Back (a market's page is the same path, /explore?m=, so it wasn't a "page change"), after
+//   "Show older sessions" and after the last "Show older entries" (each button went away with nothing to land on).
+// - "Show older entries" and a typed Explore search changed the page in silence; Meridian's session page said nothing
+//   on Pause or Resume.
+// - Every Strategies pick box was "Select for deployment"; Billing's auto-reload amounts were bare spin buttons, and
+//   the button that opens them read "Reload $25 at $8" as if it charged the card. A plain checkbox showed no focus.
+// - The open autopilot panel's story, a live region, was written again with the same words on each status read.
+// - A session's spinner carried aria-label="in process" on a <span>, a name nothing reads (axe aria-prohibited-attr).
 import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
@@ -237,17 +249,17 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     const label = pulse.querySelector('[data-plabel]');
     if (label) assert.match(label.textContent, /^Queued · 20\ds$/);  // Tau counts the wait in the foot
     assert.equal(said(), '', 'the first paint and the ticks say nothing');
+    // Meridian has no foot, and nothing above it was a live region: a press of Pause or Resume said nothing (walk
+    // 2026-10-30). Both say a change of state once, in the same words.
     stream.state('running');
-    if (label) {
-      assert.equal(said(), 'Researching');
-      for (const tick of [...f.intervals.values()]) tick();
-      stream.state('running');
-      assert.equal(said(), 'Researching', 'the same state again is not said again');
-      stream.state('paused');
-      assert.equal(said(), 'Paused — resume and it picks up exactly where it left off.');
-    } else {
-      assert.equal(said(), '');  // Meridian has no foot: its run status is said by the page above
-    }
+    assert.equal(said(), 'Researching');
+    for (const tick of [...f.intervals.values()]) tick();
+    stream.state('running');
+    assert.equal(said(), 'Researching', 'the same state again is not said again');
+    stream.state('paused');
+    assert.equal(said(), 'Paused — resume and it picks up exactly where it left off.');
+    stream.state('running');
+    assert.equal(said(), 'Researching', 'and Resume');
     f.clearTimers();
     // On the page, the foot that ticks is not itself a live region, and the log is a list that announces.
     const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
@@ -495,6 +507,207 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     assert.match(g.root.querySelector('#dep-demo-why').textContent, /^Trades Kalshi’s demo exchange with your own demo key/);
     assert.equal(g.root.querySelector('#dep-live').getAttribute('aria-describedby'), null);
     assert.equal(g.root.querySelector('#dep-live-why'), null);
+    g.clearTimers();
+  });
+
+  // From a keyboard and screen-reader walk of the main flows (Tab, Enter, Space and Escape only, both themes, 390px and
+  // 1280px, seeded account, 2026-10-30): the places focus fell to <body>, a result that said nothing, and controls named
+  // only by their place on screen.
+  const settle = async () => { for (let i = 0; i < 8; i++) await flush(); };
+  // Tau's harness marks the element (focused), Meridian's moves document.activeElement.
+  const focusedOn = (f, el) => el.focused === true || f.document.activeElement === el;
+  const said = (f) => { f.elapse(50); const el = f.document.getElementById('sr-status'); return el ? el.textContent : ''; };
+
+  test(`${name}: a Strategies filter chip keeps focus once it draws the list again, and a market's page from Explore takes it to its heading`, async () => {
+    const oos = {pnl: 3.1, trades: 40, win_rate: 0.6, days: 9};
+    const rows = [detailStrategy({id: 61, title: 'Cleared pass', status: 'passed', out_of_sample: oos})];
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/strategies') ? response({counts: {total: 1, passed: 1}, matched: 1, pages: 1, strategies: rows}) : response({}))});
+    f.S.me.markets = [{key: 'btc15m', category: 'Crypto'}];
+    f.location.pathname = '/strategies'; f.location.search = '';
+    await f.render(); await settle();
+    // Space on "Passed": the chip is drawn again with the list (the filter rides in the URL), and focus fell to <body>.
+    const chip = f.root.querySelector('[data-f="status"][data-v="passed"]');
+    f.document.activeElement = chip;
+    chip.onclick(); await settle();
+    assert.equal(f.location.search, '?status=passed');
+    const now = f.root.querySelector('[data-f="status"][data-v="passed"]');
+    assert.notEqual(now, chip, 'the list was drawn again');
+    assert.equal(now.getAttribute('aria-pressed'), 'true');
+    assert.equal(now.focusOptions && now.focusOptions.preventScroll, true, 'focus is on the chip that was pressed');
+    assert.equal(f.root.querySelector('main h1').focusOptions, undefined, 'not sent up to the heading');
+    // Pressed again, it draws the same URL again: focus stays with it too.
+    f.document.activeElement = now;
+    now.onclick(); await settle();
+    const again = f.root.querySelector('[data-f="status"][data-v="passed"]');
+    assert.notEqual(again, now);
+    assert.equal(again.focusOptions && again.focusOptions.preventScroll, true);
+    assert.equal(f.root.querySelector('main h1').focusOptions, undefined);
+    // The market select keeps it too (found by its id).
+    f.document.activeElement = f.root.querySelector('#strat-market');
+    f.root.querySelector('#strat-market').value = 'btc15m'; f.root.querySelector('#strat-market').onchange(); await settle();
+    assert.equal(f.root.querySelector('#strat-market').focusOptions.preventScroll, true);
+    f.clearTimers();
+
+    // Explore's list and a market's page are one path (/explore, /explore?m=): Enter on a row left focus on <body>.
+    const at = new Date(Date.now() + 5 * 3600e3).toISOString();
+    const feed = {at: new Date().toISOString(), total: 2, shown: 1, matched: 1, page: 0, per: 40, sort: 'v24', spot: null,
+      markets: [{t: 'KXBTCD-26OCT2617-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .48, ask: .52, last: .5, v24: 9, oi: 5, ct: at}]};
+    const market = {ticker: 'KXBTCD-26OCT2617-T112999.99', series: 'KXBTCD', title: 'Bitcoin price at 5pm EDT?', sub: '$113,000 or above', status: 'active',
+      yes_bid: '0.55', yes_ask: '0.57', last: '0.55', volume_24h: '15', open_interest: '40', close_time: at, as_of: new Date().toISOString(), rules: 'Resolves Yes above 112999.99.',
+      period_min: 1, points: Array.from({length: 30}, (_, i) => ({t: Math.floor(Date.now() / 1000) - 1800 + 60 * i, yes: .5, vol: 1})), mine: {open: [], closed: []}};
+    const g = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?') ? response(market) : path.startsWith('/api/explore?') ? response(feed)
+      : path.startsWith('/api/explore/spot?') ? response({spot: null}) : response({}))});
+    g.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', category: 'Crypto', close_hour_et: 17}];
+    g.location.pathname = '/explore'; g.location.search = '';
+    await g.render(); await settle();
+    g.document.activeElement = g.root.querySelector('#xrows a');
+    g.location.search = '?m=KXBTCD-26OCT2617-T112999.99'; await g.render(); await settle();  // the row's link (go)
+    const heading = g.root.querySelector('main h1');
+    assert.match(heading.textContent, /Bitcoin price at 5pm EDT\?/);
+    assert.equal(heading.focusOptions && heading.focusOptions.preventScroll, true, "the market's heading takes focus");
+    // And Back to the list lands on the list's heading, not <body>.
+    g.document.activeElement = g.document.body;
+    g.location.search = ''; await g.render(); await settle();
+    assert.equal(g.root.querySelector('main h1').textContent.trim(), 'Explore');
+    assert.equal(g.root.querySelector('main h1').focusOptions.preventScroll, true);
+    g.clearTimers();
+  });
+
+  test(`${name}: each Strategies pick box says which strategy it picks`, () => {
+    const f = frontend();
+    const slip = f.strategySlip(detailStrategy({id: 61, title: 'BTC <snapback> #4', status: 'passed'}), null, {pick: true});
+    // Every row's box was "Select for deployment": Tab down the list said the same words on each.
+    assert.match(slip, /<input type="checkbox" class="pick" data-id="61" aria-label="Select BTC &lt;snapback&gt; #4 for deployment">/);
+    // Its focus ring: test_ui_contrast.mjs (the stylesheets).
+  });
+
+  test(`${name}: Show older sessions hands focus to the first session it lists, not <body>`, async () => {
+    const run = (id) => ({id, seq: id, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Idea ' + id,
+      hypotheses_tried: 9, strategies_passed: 1, spent_usd: 0.5, error: null, created_at: '2026-10-25T08:00:00Z', stop_reason: 'limit'});
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/runs?before=')) return response({runs: [run(50), run(49)], more: false});
+      if (path.startsWith('/api/runs')) return response({runs: Array.from({length: 50}, (_, k) => run(100 - k)), counts: {research_running: 0, research_queued: 0, research_paused: 0},
+        policy: null, totals: {tried: 9, passed: 1}, v: 'v1', own_total: 52});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    const host = f.root.querySelector('#runs-older'), btn = host.querySelector('button[data-older]');
+    f.document.activeElement = btn;
+    await host.listeners.get('click')({target: btn}); await settle();
+    assert.equal(host.querySelector('button[data-older]'), null, 'the last page: the button is gone');
+    const first = f.root.querySelector('#runs a[href="/research/50"]');
+    assert.ok(focusedOn(f, first), 'focus is on the first older session');
+    assert.equal(first.focusOptions, undefined, 'and the page scrolls to it');
+    f.clearTimers();
+  });
+
+  test(`${name}: Show older entries says how many came in, and past the last page focus goes to the line that says so`, async () => {
+    const entry = (id) => ({id, kind: 'trade', amount: -1.25, created_at: new Date(Date.UTC(2026, 4, 1) + id * 36e5).toISOString(), memo: `Bought 5 YES KXBTC15M-26OCT241200-00 @ 0.25 (#${id})`});
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/funds/ledger?before=')) {
+        const before = +path.split('=')[1], ids = Array.from({length: before - 1}, (_, k) => before - 1 - k);
+        return response({ledger: ids.slice(0, 50).map(entry), more: ids.length > 50});
+      }
+      if (path === '/api/funds') return response({...fundsData(), paper: {cash: 1234.56, equity: 1240.06, realized_pnl: 12.5, closed_trades: 40, open_positions: 0,
+        ledger: Array.from({length: 50}, (_, k) => entry(120 - k))}});
+      return response({});
+    }});
+    f.location.pathname = '/funds';
+    await f.viewFunds(); await settle();
+    let btn = f.root.querySelector('#ledger-older-btn');
+    f.document.activeElement = btn;
+    await f.root.querySelector('#ledger-older').onclick({target: btn}); await settle();
+    assert.equal(f.root.querySelectorAll('.t-ledger tbody tr').length, 100);
+    assert.equal(said(f), '50 older entries shown.', 'the rows came in with nothing said');
+    btn = f.root.querySelector('#ledger-older-btn');
+    f.document.activeElement = btn;
+    await f.root.querySelector('#ledger-older').onclick({target: btn}); await settle();
+    assert.equal(f.root.querySelector('#ledger-older-btn'), null);
+    const end = f.root.querySelector('.ledger-end');
+    assert.equal(end.getAttribute('tabindex'), '-1');
+    assert.ok(focusedOn(f, end), 'focus fell to <body> with the button');
+    assert.equal(end.focusOptions, undefined, 'and the line, under the rows just added, scrolls into view');
+    f.clearTimers();
+  });
+
+  test(`${name}: Billing's auto-reload amounts have names, and the button that opens them says it changes them`, async () => {
+    const f = billingPage(cardedBilling());
+    await f.viewBilling(); await flush();
+    // The two fields in "Reload [25] dollars when my balance drops to [8] dollars." were read as bare spin buttons.
+    assert.equal(f.root.querySelector('#reload-amt').getAttribute('aria-label'), 'Reload amount, in dollars');
+    assert.equal(f.root.querySelector('#reload-thr').getAttribute('aria-label'), 'Reload when my balance drops to, in dollars');
+    assert.equal(f.root.querySelector('#reload-amt').getAttribute('aria-describedby'), 'autorel-flash');
+    // "Reload $25 at $8" alone, out of context, sounded like a button that charges the card.
+    const edit = f.root.querySelector('#autorel-edit');
+    assert.equal(edit.querySelector('#autorel-sum').textContent, 'Reload $25 at $8', 'the words it shows lead its name');
+    assert.equal(edit.querySelector('.vh').textContent, ' (change amounts)');
+    f.clearTimers();
+  });
+
+  test(`${name}: the autopilot panel's story is written only when its words change, not on every status read`, async () => {
+    const store = new Map([['tau_ap_open', '1']]);
+    const f = frontend({storage: storageFor(store), fetchImpl: (path) => {
+      if (path.startsWith('/api/chat?')) return response({messages: [], agent_busy: false});
+      if (path === '/api/models') return response({models: [], default: ''});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, user: {...(f.S.me && f.S.me.user), id: 7, autopilot: true}};
+    f.S.ap = {...f.S.ap, autopilot: true, mode: 'paper', paper_running: 2};
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    f.renderAutopilot(box, null); await flush(); await flush();
+    const story = box.querySelector('#apf-story');
+    assert.equal(story.getAttribute('aria-live'), 'polite');
+    f.apUpdate(box, {...f.S.ap});
+    const writes = story.writes, words = story.innerHTML;
+    for (let i = 0; i < 3; i++) f.apUpdate(box, {...f.S.ap});
+    assert.equal(story.writes, writes, 'the same story left the live region alone');
+    f.apUpdate(box, {...f.S.ap, idle: {code: 'no_ideas', line: 'Nothing to do until the next review.'}});
+    assert.equal(story.writes, writes + 1, 'a new story is written, once');
+    assert.notEqual(story.innerHTML, words);
+    f.clearTimers();
+  });
+
+  test(`${name}: a search typed on Explore says how many markets match, and a poll says nothing`, async () => {
+    const ct = new Date(Date.now() + 5 * 3600e3).toISOString();
+    const row = (t, ti) => ({t, s: t.split('-')[0], ti, su: '', bid: .48, ask: .52, last: .5, v24: 9, oi: 5, ct});
+    const f = frontend({fetchImpl: (path) => {
+      if (!path.startsWith('/api/explore?')) return response({});
+      const q = new URLSearchParams(path.split('?')[1]).get('q') || '';
+      const markets = [row('KXBTCD-26OCT2617-T1', 'Bitcoin price at 5pm EDT?'), row('KXBTCD-26OCT2617-T2', 'Bitcoin price at 5pm EDT, higher?')].filter((m) => !q || m.ti.toLowerCase().includes(q));
+      return response({at: new Date().toISOString(), total: 2, shown: markets.length, matched: markets.length, page: 0, per: 40, sort: 'v24', spot: null, markets});
+    }});
+    f.S.me.markets = [];
+    f.location.pathname = '/explore';
+    await f.viewExplore(); await settle();
+    assert.equal(said(f), '', 'the first list says nothing');
+    const type = async (words) => { const q = f.root.querySelector('#xq'); q.value = words; q.listeners.get('input')({target: q}); f.elapse(220); await settle(); };
+    await type('bitcoin');
+    assert.equal(said(f), '2 markets match “bitcoin”.');
+    await type('higher');
+    assert.equal(said(f), '1 market matches “higher”.');
+    await type('zzz');
+    assert.equal(said(f), 'No markets match “zzz”.');
+    f.document.getElementById('sr-status').textContent = '';
+    for (const tick of [...f.intervals.values()]) { await tick(); await settle(); }
+    assert.equal(said(f), '', 'the list kept current says nothing');
+    f.clearTimers();
+  });
+
+  test(`${name}: a session's working spinner is hidden from a screen reader, not named "in process"`, async () => {
+    // A <span aria-label> with no role is a name nothing reads (axe aria-prohibited-attr): the word beside it says it.
+    const f = frontend();
+    const row = f.runRow({id: 9, seq: 3, status: 'running', market: 'btc15m', direction: 'momentum', prompt: 'Idea', hypotheses_tried: 2, strategies_passed: 0, created_at: '2026-10-25T08:00:00Z'});
+    assert.doesNotMatch(row, /aria-label="in process"/);
+    for (const m of row.matchAll(/<span class="working"[^>]*>/g)) assert.match(m[0], /aria-hidden="true"/);
+    const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+    const g = frontend({fetchImpl: () => response({run, events: []})});
+    await g.viewRun(9); await settle();
+    const figs = g.root.querySelector('#runfigs');
+    assert.doesNotMatch(figs ? figs.innerHTML : '', /aria-label="in process"/);
     g.clearTimers();
   });
 }

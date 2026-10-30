@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, errText, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, olderRows, openCost, pageAssets, PAPER_NET,
+    announce, api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, errText, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, olderRows, openCost, pageAssets, PAPER_NET,
     paint, painted, poll, refreshed, root, S, SEP, settleAt, shell, tone, usd, when
   } = T;
 
@@ -221,7 +221,8 @@ window.TauPage('funds', (T) => {
     // "Show older entries": the next page before the oldest entry the history holds, kept under the newest page, then
     // the history drawn again from the answer shown (load's `got`: no other read). Asked once per click (busy); one that
     // fails says so under the history and leaves the button to try again; one that no longer joins (the history was
-    // reset while it was out) is dropped.
+    // reset while it was out) is dropped. Focus stays on the button and a screen reader hears how many came in (the rows
+    // arrived in silence); past the last page the button goes, and focus goes to the line that says so, not the page top.
     const showOlder = (btn) => holdFocus(null, () => busy(btn, async () => {
       const base = shown ? shown.paper.ledger.concat(older) : [], last = base[base.length - 1];
       if (!last || last.id == null) return;
@@ -230,9 +231,14 @@ window.TauPage('funds', (T) => {
         if (gen !== S.gen || !shown) return;
         const kept = olderRows(shown.paper.ledger, base.concat(page.ledger || []), LEDGER_PAGE);
         if (!kept) return;
+        const added = kept.length - older.length;
         older = kept; olderMore = !!page.more; paged = true;
         const fl = root.querySelector('#lflash'); if (fl) fl.innerHTML = '';
         await load(null, shown);
+        if (olderMore && added > 0) announce(`${num(added)} older ${added === 1 ? 'entry' : 'entries'} shown.`);
+        // Brought into view as it takes focus: it sits under the rows just added, off the screen.
+        const end = !olderMore && root.querySelector('.ledger-end'), a = document.activeElement;
+        if (end && end.focus && (a === btn || !a || a === document.body || !a.isConnected)) end.focus();
       } catch (err) { if (gen === S.gen) flash('#lflash', errText(err), 'bad'); }
     }));
     // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.
@@ -322,7 +328,7 @@ window.TauPage('funds', (T) => {
         : liveSec + demoSec + paperSec;
       const hist = d.paper.ledger.concat(older), full = d.paper.ledger.length >= LEDGER_PAGE, done = paged && !olderMore;
       const ledgerHow = `${LEDGER_HOW}${full && !done ? ` The latest ${num(hist.length)} entries.` : ''}`, ledgerBody = hist.map(ledgerRow).join('');
-      const ledgerMore = !full ? '' : done ? `<p class="hint ledger-end">${LEDGER_END}</p>` : '<button type="button" class="btn" id="ledger-older-btn">Show older entries</button>';
+      const ledgerMore = !full ? '' : done ? `<p class="hint ledger-end" tabindex="-1">${LEDGER_END}</p>` : '<button type="button" class="btn" id="ledger-older-btn">Show older entries</button>';
       const histSpots = [['#ledger-how', ledgerHow], ['#ledger-rows', ledgerBody], ['#ledger-older', ledgerMore]];
       const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">

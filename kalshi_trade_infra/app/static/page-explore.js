@@ -8,7 +8,7 @@
 window.TauPage('explore', (T) => {
   'use strict';
   const {
-    api, boardTitle, BTC_CONTRACT, cents, clock, closeClock, closeLeft, closeWords, comboTitle, compactCondition,
+    announce, api, boardTitle, BTC_CONTRACT, cents, clock, closeClock, closeLeft, closeWords, comboTitle, compactCondition,
     contractMarket, contractMkt, contractShort, errText, esc, exitWord, EXPLORE_NO_FEED, EXPLORE_WAIT, exploreEmpty,
     exploreNoBtc, exploreNoFeed, exploreShowChips, fig, hourET, ICON, kalshiRef, kalshiUrl, keepFocus, keepZone,
     liveClose, loading, markedAt, marketShort, marketSpot, markFig, markOld, midOf, MKT_GONE, MKT_STATUS, mktLabel,
@@ -255,7 +255,9 @@ window.TauPage('explore', (T) => {
     // the line under the figures says how old it is. Only the newest read draws: a poll answering after a
     // search doesn't put the old list back.
     let seq = 0, shown = null;
-    const load = async (cfg) => {
+    // `typed`: the read a search typed asked for. The list changed under the box with nothing said (the figures aren't a
+    // live region: their age ticks on every poll), so that read says how many markets match, or that none do.
+    const load = async (cfg, typed) => {
       const mine = ++seq;
       let d;
       try { d = await api('/api/explore?' + exploreParams(f), undefined, cfg); }
@@ -266,6 +268,7 @@ window.TauPage('explore', (T) => {
       }
       if (mine !== seq || !tau && gen !== S.gen) return;
       paintFigs(d);
+      if (typed && f.q) announce(d.markets.length ? `${num(d.matched)} ${+d.matched === 1 ? 'market matches' : 'markets match'} “${f.q}”.` : `No markets match “${f.q}”.`);
       if (!d.markets.length) {
         // No search and no markets is the feed not having arrived yet, not a search that missed. With the feed in,
         // an empty Bitcoin list is no Bitcoin market open, and says so.
@@ -326,7 +329,7 @@ window.TauPage('explore', (T) => {
         if (sortFocused) Array.from(body.querySelectorAll('[data-sort]')).find(b => b.dataset.sort === sortFocused)?.focus({ preventScroll: true });
       }
     };
-    let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
+    let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(undefined, true); }, 220); });
     if (tau) root.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; root.querySelectorAll('[data-sort]').forEach((o) => o.setAttribute('aria-pressed', o === b)); sync(); load(); });
     const setShow = (btc) => { f.btc = btc; f.page = 0; root.querySelectorAll('[data-show]').forEach((o) => o.setAttribute('aria-pressed', String(btc === (o.dataset.show === 'bitcoin')))); sync(); load(); };
     root.querySelectorAll('[data-show]').forEach((b) => b.onclick = () => setShow(b.dataset.show === 'bitcoin'));
