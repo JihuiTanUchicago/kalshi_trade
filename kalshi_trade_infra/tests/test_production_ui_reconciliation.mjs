@@ -272,7 +272,9 @@ test('the panel says how often the autopilot checks in, beside its last check-in
   assert.match(f.box.querySelector('#apf-story').innerHTML, /Check-ins: one is under way now\./);
   assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>Reviewing now<\/dd>/);
   f.apUpdate(f.box, status({checkin_every_min: 10, review_wait: {state: 'queued', seconds: 400, overdue: true}, last_review_at: ago(7), idle}));
-  assert.match(f.box.querySelector('#apf-story').innerHTML, /Check-ins: one is waiting for a free worker\./);
+  assert.match(f.box.querySelector('#apf-story').innerHTML, /Check-ins: one is queued for a free worker\./);
+  // Queued is "Queued" in the panel as on the research pages; "waiting" named the same state twice.
+  assert.doesNotMatch(f.box.querySelector('#apf-story').innerHTML, /waiting for a free worker/i);
   // No cadence (an older server, autopilot off or paused by billing): nothing is said, and the figure is as before.
   f.apUpdate(f.box, status({checkin_every_min: null, last_review_at: ago(8), idle}));
   assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>8m ago<\/dd>/);
@@ -318,14 +320,17 @@ test('the autopilot pulse and Review figure say how long a run has waited once p
     chatReply = {messages: [], agent_busy: true, agent_wait: {state: 'queued', seconds: 420, overdue: true}};
     f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
     const pulse = f.box.querySelector('#apf-pulse').innerHTML;
-    assert.match(pulse, /Waiting for a free worker for 7 min, longer than usual/);
+    assert.match(pulse, /Queued for a free worker for 7 min, longer than usual/);
+    assert.match(pulse, /<span class="vh">Queued for a free worker for longer than usual<\/span>/);
+    assert.doesNotMatch(pulse, /Waiting/);
     assert.doesNotMatch(pulse, /Working on its next move|class="working"/);
     chatReply = {messages: [], agent_busy: true, agent_wait: {state: 'silent', seconds: 5340, overdue: true}};
     f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
     assert.match(f.box.querySelector('#apf-pulse').innerHTML, /No word from it for 89 min, longer than usual/);
     const at = new Date().toISOString();
     f.apUpdate(f.box, status({reviewing: false, review_wait: {state: 'queued', seconds: 300, overdue: true}, last_review_at: at}));
-    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Check-in<\/dt><dd>Waiting 5 min<\/dd>/);
+    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Check-in<\/dt><dd>Queued 5 min<\/dd>/);
+    assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Waiting/);
     f.apUpdate(f.box, status({reviewing: false, review_wait: {state: 'silent', seconds: 7200, overdue: true}, last_review_at: at}));
     assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Check-in<\/dt><dd>Silent 2 hr<\/dd>/);
     assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /In progress/);

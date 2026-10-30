@@ -81,6 +81,33 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     assert.match(await page(session({status: 'succeeded', spent_usd: 0.83, hypotheses_tried: 2, strategies_passed: 1, finished_at: '2026-10-27T22:05:00Z'})), /Cost\s*\$0\.83/);
   });
 
+  // A finished session that spent nothing read "Cost: $0.00 in credits" on its row and "Cost $0.00" on its page, a
+  // figure that looked like a charge. Finished is final, so it says "none" (a live one says "none yet"); a sliver
+  // says "under $0.01", a real cost its figure. Display only: the free example keeps its own words.
+  test(`${name}: a finished session that spent nothing says "Cost: none", not "Cost: $0.00 in credits"`, async () => {
+    const done = (o) => session({id: 9, status: 'succeeded', hypotheses_tried: 2, strategies_passed: 0, run_forever: 0,
+      stop_reason: 'limit', finished_at: '2026-10-27T22:05:00Z', ...o});
+    const rows = async (r) => {
+      const f = await researchPage([r], false); f.clearTimers();
+      return f.root.querySelector('#runs').textContent;
+    };
+    const none = await rows(done({spent_usd: 0}));
+    assert.match(none, /Cost: none/);
+    assert.doesNotMatch(none, /Cost: \$0\.00|none yet|none in credits/);
+    assert.match(await rows(done({spent_usd: 0.003})), /Cost: under \$0\.01\s*in\s*credits/);
+    assert.match(await rows(done({spent_usd: 0.42})), /Cost: \$0\.42\s*in\s*credits/);
+    const page = async (r) => {
+      const g = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9') ? response({run: r, events: [], strategies: []}) : response({})});
+      await g.viewRun(9); await flush(); g.clearTimers();
+      return g.root.querySelector('#runfigs').textContent;
+    };
+    const figs = await page(done({spent_usd: 0}));
+    assert.match(figs, /Cost\s*None/);
+    assert.doesNotMatch(figs, /from your credits/, 'none came from the credits');
+    assert.doesNotMatch(figs, /Cost\s*\$0\.00/);
+    assert.match(await page(done({spent_usd: 0.83})), /Cost\s*\$0\.83\s*from your credits/);
+  });
+
   // Autopilot's first session running: Last 24 hours said "It started 1 research session" while the card's week said
   // "nothing yet ... once it starts". While a session runs (and nothing in the week has landed) it says that.
   test(`${name}: the autopilot card's empty week says a session is running instead of "once it starts"`, async () => {

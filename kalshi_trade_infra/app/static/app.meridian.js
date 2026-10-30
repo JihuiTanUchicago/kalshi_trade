@@ -529,7 +529,9 @@
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   // The server's title for a session whose prompt is an instruction to the agent (the autopilot's research
   // floor), else the idea as typed.
-  const sessionTitle = (r) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + SEP + marketShort(r.market));
+  // `market` false leaves the market out of an untitled session's title, for a row whose own Market column names
+  // it: the research list read "Session · BTC 15-min up/down" beside a Market column saying "BTC 15-min up/down".
+  const sessionTitle = (r, market = true) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + (market ? SEP + marketShort(r.market) : ''));
   // A session's number among the user's own (the server's `seq`: 1 is their first), never the global run
   // id, which read "Session 8" on someone's first session. The example and an answer without it get none.
   const sessionNo = (r) => r && +r.seq > 0 ? `Session ${num(+r.seq)}` : '';
@@ -4139,7 +4141,7 @@
   function apCadence(d = S.ap) {
     if (!d || !d.autopilot || d.billing_blocked || !(+d.checkin_every_min > 0)) return '';
     if (d.reviewing) return 'one is under way now';
-    if (d.review_wait && d.review_wait.state === 'queued') return 'one is waiting for a free worker';
+    if (d.review_wait && d.review_wait.state === 'queued') return 'one is queued for a free worker';
     const ago = d.last_review_at && !d.review_wait ? apAgo(d.last_review_at) : '';
     return `usually every ${num(+d.checkin_every_min)} min${ago ? `; last one ${ago}` : ''}`;
   }

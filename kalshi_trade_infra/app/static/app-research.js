@@ -472,7 +472,9 @@ window.TauPage('research', (T) => {
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
   // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
   // in a list a reader could take for a loss.
-  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? ' in credits' : ''}` : `Cost: ${usd(r.spent_usd)} in credits`;
+  // A finished session that spent nothing says "Cost: none" (final, so not "none yet"), in the words a live one
+  // uses ("Spent so far: none yet"): "Cost: $0.00 in credits" read as a charge. Display only.
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? ' in credits' : ''}` : `Cost: ${spentSoFar(r.spent_usd, 'none')}${+r.spent_usd > 0 ? ' in credits' : ''}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -1376,10 +1378,11 @@ window.TauPage('research', (T) => {
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : runDoneText(r);
+      // A finished session that spent nothing reads "Cost None", without "from your credits" under it: none came from them.
       repaintFigs = () => paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' + (usual != null && !active ? `${SEP}sessions like it usually cost about ${usd(usual)}` : '') }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : r.example ? usd(r.spent_usd) : spentSoFar(r.spent_usd, 'None'), { small: r.example ? 'free: Tau ran it for you' : [active || +r.spent_usd > 0 ? 'from your credits' : '', usual != null && !active ? `sessions like it usually cost about ${usd(usual)}` : ''].filter(Boolean).join(SEP) }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       repaintFigs();
       if (!active) askUsual(r);

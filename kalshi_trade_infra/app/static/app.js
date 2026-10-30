@@ -3947,7 +3947,7 @@
   function apCadence(d = S.ap) {
     if (!d || !d.autopilot || d.billing_blocked || !(+d.checkin_every_min > 0)) return '';
     if (d.reviewing) return 'one is under way now';
-    if (d.review_wait && d.review_wait.state === 'queued') return 'one is waiting for a free worker';
+    if (d.review_wait && d.review_wait.state === 'queued') return 'one is queued for a free worker';
     const ago = d.last_review_at && !d.review_wait ? apAgo(d.last_review_at) : '';
     return `usually every ${num(+d.checkin_every_min)} min${ago ? `; last one ${ago}` : ''}`;
   }
