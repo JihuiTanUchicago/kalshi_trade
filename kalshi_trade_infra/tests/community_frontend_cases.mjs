@@ -245,4 +245,29 @@ export function communityCases({name, frontend}) {
       assert.ok(art.querySelector('.cmt-form'), 'with its reply box');
     } finally { if (had) proto.click = was; else delete proto.click; }
   });
+  test(`${name}: a grouped post's time says its zone, and its date on another day than today`, async () => {
+    // Walk 2026-10-30 (Meridian at 390px most of all): a post grouped under its author's header showed a bare "07:49",
+    // with no zone and no date, under a header that says "Oct 17". It reads as settleAt does: the date on another day.
+    const now = Date.now(), iso = (ms) => new Date(ms).toISOString();
+    const posts = [post(14, {created_at: iso(now - 60000)}), post(13, {created_at: iso(now - 120000)}),
+      post(12, {created_at: '2026-10-17T10:02:00Z'}), post(11, {created_at: '2026-10-17T10:00:00Z'})];
+    const f = community(posts);
+    await f.viewCommunity(); await settle();
+    const feed = f.root.querySelector('#feed');
+    const at = (id) => feed.querySelector(`.post[data-id="${id}"]`);
+    assert.ok(at(13).querySelector('.gutter-time') && at(11).querySelector('.gutter-time'), 'each run groups under its header');
+    assert.equal(at(14).querySelector('.gutter-time'), null, 'a header post keeps its avatar, no gutter time');
+    assert.equal(at(12).querySelector('.gutter-time'), null);
+    const time = (id) => at(id).querySelector('.gutter-time');
+    const shown = (id) => time(id).textContent.replace(/ /g, ' ');
+    const stamp = (s, o) => new Intl.DateTimeFormat(undefined, o).format(new Date(s));
+    const zone = (s) => new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date(s)).find((p) => p.type === 'timeZoneName').value;
+    // Another day: the date, the clock and the zone, as a market's close says them.
+    assert.equal(shown(11), stamp(posts[3].created_at, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}));
+    assert.ok(shown(11).endsWith(' ' + zone(posts[3].created_at)), shown(11));
+    // Today: the clock and its zone (just after midnight the minute before falls on yesterday, with its date).
+    assert.ok(shown(13).includes(stamp(posts[1].created_at, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'})), shown(13));
+    assert.ok(shown(13).endsWith(' ' + zone(posts[1].created_at)), shown(13));
+    assert.equal(time(13).getAttribute('datetime'), posts[1].created_at);
+  });
 }

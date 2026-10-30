@@ -2529,7 +2529,9 @@
       // Its P&L is realized from closed trades, the figure the track record, Deploy and the strategy page show.
       const paperUsed = p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper');
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
-      // every user something was wrong that they couldn't act on).
+      // every user something was wrong that they couldn't act on). It stays red there: no Bitcoin spot candles, or
+      // none for 45 minutes, means the collector is down and new backtests run on missing prices. It names the feed it
+      // means: "No backtest history yet" beside a passed strategy read as that strategy having no backtest (walked 2026-10-30).
       const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
       const agentsBusy = d.agents.research_running + d.agents.research_queued;
       // A deployment that places no orders (depIdle: live while live trading is closed) isn't counted running.
@@ -2544,7 +2546,7 @@
         // Paused rows list first; with nothing else on, the count is the whole story and Deploy is where to act on it.
         paused ? `<a class="needs-link" href="${running || idle ? '#dash-deps' : '/deploy'}"><em>${num(paused)} paused, needs you</em></a>` : '',
         agentsBusy ? `${num(agentsBusy)} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
-        stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
+        stale ? `<em>${d.freshness.btc == null ? 'No Bitcoin price history collected yet' : 'Bitcoin price history ' + age(d.freshness.btc) + ' behind'}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       // A live cash still being checked reads Checking\u2026 (or its last figure, with its age), never $0 (cashFig).
       // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.

@@ -1504,7 +1504,7 @@ body.landing-body { background: #FBFBFA; }
 .post + .post:not(.grouped) { margin-top: 6px; }
 .post.grouped { padding-top: 2px; padding-bottom: 2px; }
 .post-gutter { grid-column: 1; display: flex; justify-content: center; padding-top: 2px; }
-.gutter-time { font-family: var(--f-nar); font-size: 11px; line-height: 1.7; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .08s var(--ease); }
+.gutter-time { font-family: var(--f-nar); font-size: 11px; line-height: 1.7; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .08s var(--ease); text-align: center; }
 .post.grouped:hover .gutter-time { opacity: 1; }
 .post-col { grid-column: 2; min-width: 0; }
 .post-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; flex-wrap: wrap; }
@@ -1654,6 +1654,13 @@ a.snap:hover { border-color: var(--ink-3); }
 .cmt-form .input { min-height: 38px; }
 /* On a phone the strategy picker takes its own row: beside Photo it read "Attach a strategy… (optiona". */
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } .post-tools > .post-strat-f { flex-basis: 100%; } .composer-post:has(textarea:placeholder-shown):has(#post-strat option[value=""]:checked):not(:has(.armed)) .post-hint { display: none; } }
+/* On a phone the pinned composer takes about a quarter of the screen, and it covered the bottom of an open thread, its
+   reply box with it, until the feed was scrolled (walked 2026-10-30 at 390px). While a thread or an edit box is open in
+   the feed, the composer gives up its pin and waits in its place at the feed's end; closing the thread pins it again.
+   Desktop keeps it pinned. */
+@media (max-width: 680px) {
+  .feedwrap:has(#feed .comments:not([hidden])) .composer-post, .feedwrap:has(#feed .edit-form) .composer-post { position: static; box-shadow: none; }
+}
 
 /* ===== app fixes for Tau markup on Kursbuch ===== */
 .wordmark a { display: inline-flex; align-items: center; gap: 7px; }

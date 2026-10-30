@@ -715,7 +715,11 @@ test('only the admin view shows backtest-history lag on the dashboard status lin
   }});
   f.S.me.is_admin = true;
   await f.viewDashboard(); await flush();
-  assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
+  // It names the feed it means: "No backtest history yet" beside a passed strategy read as that strategy having no
+  // backtest (walked 2026-10-30). It stays red ("needs you"): the Bitcoin price collector is down.
+  const body = f.root.querySelector('#boardbody').innerHTML;
+  assert.match(body, /class="statusline needs"><p class="said">[^<]*(<span class="sep">\/<\/span>[^<]*)*<em>No Bitcoin price history collected yet<\/em>/);
+  assert.doesNotMatch(body, /backtest history/i);
 });
 
 test('a backtest-only strategy’s Deploy row says its backtest estimate is later-period, not unseen', async () => {

@@ -824,6 +824,21 @@ test('Overview demo monitors say they are the sandbox, what they copy, and why t
   assert.equal(line(monitors[2]), null);  // paper says nothing of the sort
 });
 
+test('Overview: only the admin view shows Bitcoin price collector lag, red, naming the feed it means', async () => {
+  // Walk 2026-10-30: "No backtest history yet", red beside a passed strategy, read as that strategy having no backtest.
+  // It is the Bitcoin price collector's lag (operator's to fix, so admin only), and stays red: new backtests lack prices.
+  for (const [btc, admin, said] of [[null, true, 'No Bitcoin price history collected yet'], [3 * 3600, true, 'Bitcoin price history 3h behind'],
+    [null, false, null], [60, true, null]]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({freshness: {btc}})); }});
+    f.S.me.is_admin = admin;
+    await f.viewDashboard(); await flush();
+    const line = f.root.querySelector('.dashboard-status');
+    if (said) { assert.ok(line && /\bneeds\b/.test(line.className), 'red, as a problem the operator must fix'); assert.match(line.innerHTML, new RegExp(`<em>${said}</em>`)); }
+    else assert.doesNotMatch(f.root.querySelector('#boardbody').innerHTML, /Bitcoin price history/, JSON.stringify([btc, admin]));
+    assert.doesNotMatch(f.root.querySelector('#boardbody').innerHTML, /backtest history/i);
+  }
+});
+
 test('Overview live summary says it is Kalshi cash, apart from what Tau trades realized', async () => {
   const status = {...apStatus, live_running: 1, today_live_pnl: -2};
   const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance: 3333, open_positions: 2}}), status);
@@ -832,7 +847,12 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   const live = f.root.querySelector('.live-summary');
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
-  assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Live realized today \(UTC\)−\$2\.00/);
+  assert.match(live.textContent, /Live open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Live realized today \(UTC\)−\$2\.00/);
+  // Walk 2026-10-30: "Open positions 1" sat beside a positions table headed "2 paper · 1 live" without saying which
+  // book it counted. Each live figure in the band names its book, as "Live realized today" does.
+  assert.match(live.textContent, /Live open positions2/);
+  const labs = [...live.querySelectorAll('.portfolio-detail .lab')].map((el) => el.textContent);
+  assert.ok(labs.length >= 3, labs.join(' | ')); assert.deepEqual(labs.filter((t) => /^Open/.test(t)), [], labs.join(' | '));
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
 });
 

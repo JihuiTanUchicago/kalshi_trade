@@ -206,6 +206,32 @@ test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions ar
   assert.equal(decl(all, '.btn.sm', 'min-height'), '24px');
 });
 
+// Walk 2026-10-30 at 390px: Tau's pinned Community composer took about a quarter of the screen and covered the bottom of
+// an open thread, its reply box with it, until the feed was scrolled. On a phone, while a thread or an edit box is open,
+// the composer is unpinned (it waits at the feed's end); desktop keeps it pinned. Meridian's composer is never pinned:
+// it opens from "New post" above the feed, so nothing floats over a thread there.
+test('Tau: on a phone the Community composer stops floating over an open thread or edit box; desktop keeps it pinned', () => {
+  const all = rules(read('app.css'));
+  const FEED_PHONE = '@media (max-width: 680px)';
+  assert.equal(decl(all, '.composer-post', 'position'), 'sticky');
+  assert.equal(decl(all, '.composer-post', 'bottom'), '12px');
+  for (const sel of ['.feedwrap:has(#feed .comments:not([hidden])) .composer-post', '.feedwrap:has(#feed .edit-form) .composer-post']) {
+    assert.equal(decl(all, sel, 'position', FEED_PHONE), 'static', sel);
+    assert.equal(decl(all, sel, 'position'), undefined, `${sel} only on a phone`);
+    for (const r of all.filter((x) => sels(x).includes(sel))) assert.equal(r.media, FEED_PHONE, sel);
+  }
+});
+
+test('Meridian: the Community composer is never pinned over the feed', () => {
+  const all = rules(read('app.meridian.css'));
+  for (const r of all.filter((x) => /\.composer-post|\.community-compose/.test(x.sel))) {
+    assert.doesNotMatch(r.body, /position\s*:\s*(sticky|fixed)/, `${r.media} ${r.sel}`);
+  }
+  // Its New post form sits above the feed in the page's markup (app.meridian-community.js).
+  const page = readFileSync(new URL('../app/static/app.meridian-community.js', import.meta.url), 'utf8');
+  assert.ok(page.indexOf('id="composer-post"') < page.indexOf('<div id="feed">'), 'the form comes before the feed');
+});
+
 // Walk 2026-10-27 (Meridian, 390x844, Tau the same): the open autopilot sheet's close button reaches 2px from the
 // screen's right edge and 1px from its top (its 44px target's negative margin into the header's padding), so the
 // focus ring drawn 2px outside it was cut off on the right and at the top. The ring sits inside the button there.
