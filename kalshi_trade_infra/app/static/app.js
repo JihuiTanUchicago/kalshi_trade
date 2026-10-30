@@ -3060,10 +3060,15 @@
     const yes = v && v.yes === true ? 'on the Yes side' : v && v.yes === false ? 'on the No side' : '';
     // Measured from an old price, the label says so beside the figure, not only under Bitcoin's.
     const lab = (l) => (sp && sp.stale ? `${l}, ${spotAge(+sp.age_s || 0)}` : l);
-    const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor${SEP}${usd(v.to_hi)} below its top${SEP}on the Yes side` })
+    const skew = s.close_time ? s.secs_left - (Date.parse(s.close_time) - Date.now()) / 1000 : 0;
+    // Once the close has passed, Bitcoin's price no longer decides the contract (Kalshi settles on the index before the
+    // close): walked 2026-10-30, a closed 15-minute window's page went on saying "+$71.87 · on the Yes side" from spot
+    // a minute after its close, read as the result. It says so instead of measuring spot against the line.
+    const closed = s.secs_left === 0 || (!!s.close_time && closeLeft(s.close_time, skew) <= 0);
+    const vs = closed ? fig(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line, '—', { small: 'Closed: Bitcoin’s price since the close doesn’t change the result' })
+      : !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor${SEP}${usd(v.to_hi)} below its top${SEP}on the Yes side` })
       : v.side === 'at' ? fig(lab('Spot vs ' + line), 'At the ' + line, { small: yes })
       : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${pctText(v.pct, 2)} ${where}`, yes].filter(Boolean).join(SEP) });
-    const skew = s.close_time ? s.secs_left - (Date.parse(s.close_time) - Date.now()) / 1000 : 0;
     const left = s.secs_left == null ? fig('Time left', '—') : !s.close_time ? fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed')
       : fig('Time left', liveClose(s.close_time, 'left', { skew }), { small: liveClose(s.close_time, 'when', { skew }) });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
@@ -3096,7 +3101,7 @@
       // A market Kalshi doesn't have (404) won't come back on a retry: it says so in words, without the raw code
       // from the link ("Kalshi has no market KXNOPE-…"), and offers only the way back to Explore.
       const gone = e.status === 404;
-      root.querySelector('#main').innerHTML = notice(gone ? MKT_GONE : e.message, 'bad') + `<p style="margin-top:12px">${gone ? '' : '<button class="btn sm" type="button" id="mk-retry">Try again</button> '}<a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      root.querySelector('#main').innerHTML = notice(gone ? MKT_GONE : e.message, 'bad') + `<p style="margin-top:12px">${gone ? '' : '<button class="btn sm" type="button" id="mk-retry">Try again</button> '}<a class="btn sm" href="${esc(exploreBackHref())}">← Back to Explore</a></p>`;
       if (!gone) root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
       return;
     }
@@ -3142,7 +3147,7 @@
           : priceChart(d.points)}</div></section>
       <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${d.history_unavailable ? 'Not loaded' : `${num(d.points.length)} ${gran} points${d.points.length ? `${SEP}newest first` : ''}`}</p></div>
         <div id="rawsect"></div></section>
-      <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
+      <div class="xpage"><a class="btn sm" href="${esc(exploreBackHref())}">← Back to Explore</a>
         <span class="xpage-acts"><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
         <a class="btn sm" href="${kalshiLink}" target="_blank" rel="noopener">View on Kalshi ↗</a></span></div>`);
     const retry = root.querySelector('#mk-retry');
@@ -3183,7 +3188,11 @@
   const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
     : `${+v.diff < 0 ? '−' : '+'}${WJ}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${pctText(v.pct, Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}`);
   const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
-  const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
+  // A row whose close has passed shows no distance: Bitcoin's price after the close doesn't decide the contract (Kalshi
+  // settles on the index before it). Walked 2026-10-30, a closed 15-minute row said "Closed 04:15 UTC · Spot vs target
+  // price +$72", read as its result. Worked out at each draw, as the row's close is.
+  const rowVs = (m) => (m.vs && !(m.ct && closeLeft(m.ct) <= 0) ? m.vs : null);
+  const vsHtml = (m) => (rowVs(m) ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
   // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
   // over rows that each said "target price". Both kinds on one list name both. The rows with a figure count; with
   // no figure to show (an old or missing spot), the Bitcoin rows that would have one: a 15-minute window's only with
@@ -3220,6 +3229,17 @@
   const EXPLORE_SHOW = [['all', 'All markets'], ['bitcoin', 'Bitcoin']];
   const exploreShowChips = (btc) => `<div class="chips xshow" role="group" aria-label="Show">${EXPLORE_SHOW.map(([v, l]) => `<button class="chip" type="button" data-show="${v}" aria-pressed="${btc === (v === 'bitcoin')}">${l}</button>`).join('')}</div>`;
   const exploreParams = (f) => new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page), ...(f.btc ? { show: 'bitcoin' } : {}) });
+  // Where a market page's "Back to Explore" goes: the Explore list this tab last showed, with its search, sort, page and
+  // Bitcoin choice. It went to /explore, which dropped them: a reader who picked Bitcoin came back to every market. Kept
+  // for the tab (sessionStorage), so a reload of the market page keeps it; a tab that never showed the list gets Explore.
+  const XBACK = 'tau_xback';
+  let xBack = '';
+  const exploreKeep = (f) => { xBack = '/explore?' + exploreParams(f); try { sessionStorage.setItem(XBACK, xBack); } catch (e) { /* private mode */ } };
+  const exploreBackHref = () => {
+    let h = xBack;
+    if (!h) try { h = sessionStorage.getItem(XBACK) || ''; } catch (e) { /* private mode */ }
+    return /^\/explore\?/.test(h) && !new URLSearchParams(h.slice(9)).has('m') ? h : '/explore';
+  };
   // A Bitcoin list with nothing in it says so in plain words, with the way back to every market.
   const exploreNoBtc = (q) => `<div class="empty"><h2>${q ? `No Bitcoin markets match “${esc(q)}”` : 'No Bitcoin markets are open right now'}</h2><p>${q ? 'Try a broader search, or clear it to see every open Bitcoin market.' : 'Kalshi opens new Bitcoin markets through the day, and they show here within about a minute.'}</p><p>${q ? '' : '<button class="btn sm" type="button" data-xretry>Try again</button> '}<button class="btn sm" type="button" data-xall>Show all markets</button></p></div>`;
   async function viewExplore() {
@@ -3236,7 +3256,8 @@
       </div>
       <div id="xbody" style="margin-top:16px">${loading(240)}</div>`);
     const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs');
-    const sync = () => history.replaceState(null, '', '/explore?' + exploreParams(f));
+    const sync = () => { exploreKeep(f); history.replaceState(null, '', '/explore?' + exploreParams(f)); };
+    exploreKeep(f);
     // "Live now" was the hottest markets the list carries, not what's live; Matching shows only when a
     // search narrows the list. The list refreshes each minute, so an older one says it's behind.
     const figsHtml = (d) => {
@@ -4256,7 +4277,7 @@
   }
   // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
   // from its strike; a rail with no fresh spot says why above its rows, as the list does.
-  const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? liveClose(m.ct, 'chip', { cap: true }) : ''}${vsHtml(m)}</span>` : '');
+  const hotWhen = (m) => (m.ct || rowVs(m) ? `<span class="hot-when">${m.ct ? liveClose(m.ct, 'chip', { cap: true }) : ''}${vsHtml(m)}</span>` : '');
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;

@@ -129,6 +129,39 @@ export function explorePageCases({name, frontend}) {
     assert.match(m15().innerHTML, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above\u00a0it</);
   });
 
+  // Walk 2026-10-30: a 15-minute window's page went on measuring spot against its target after the close ("+$71.87 ·
+  // 0.06% above the target price · on the Yes side" a minute later), read as its result. Past the close the figure says
+  // Bitcoin's price since doesn't change it, on the poll after the close as on a page opened after it.
+  test(`${name}: past its close a Bitcoin contract's page stops measuring spot against the strike`, async () => {
+    const CLOSED = />Spot vs strike<\/dt><dd><span class="fig ">—<\/span><\/dd><dd class="sub-fig">Closed: Bitcoin’s price since the close doesn’t change the result</;
+    const {f, body} = await openSpot(() => response({...SPOT, secs_left: 0}));
+    const html = body().innerHTML;
+    assert.match(html, CLOSED);
+    assert.doesNotMatch(html, /on the (Yes|No) side|\+\$420|above the strike/);
+    assert.match(html, />Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00</, 'the price now still shows');
+    assert.match(html, />Time left<\/dt>.*>Closed</);
+    f.clearTimers();
+    // Open across the close: the poll after it drops the side.
+    let reads = 0;
+    const g = await openSpot(() => response({...SPOT, secs_left: ++reads === 1 ? 40 : 0}));
+    assert.match(g.body().innerHTML, /on the Yes side/);
+    for (const run of [...g.f.intervals.values()]) await run(); await settle();
+    assert.ok(reads >= 2, 'the spot poll read again');
+    assert.match(g.body().innerHTML, CLOSED);
+    g.f.clearTimers();
+    // A 15-minute window's line read from its title, and a bucket, say theirs.
+    const m15 = await openSpot(() => response({...SPOT, strike: null, vs: null, secs_left: 0}),
+      {ticker: 'KXBTC15M-26OCT262345-45', series: 'KXBTC15M', title: 'BTC price up in next 15 mins?', sub: 'Target Price: $113,512.08'});
+    assert.match(m15.body().innerHTML, />Spot vs target price<\/dt><dd><span class="fig ">—</);
+    assert.doesNotMatch(m15.body().innerHTML, /below the target price|on the No side/);
+    m15.f.clearTimers();
+    const b = await openSpot(() => response({...SPOT, strike: {kind: 'range', value: 113250, lo: 113000, hi: 113499.99, inclusive: true, from: 'record'},
+      vs: {side: 'inside', diff: 0, pct: 0, yes: true, to_lo: 420, to_hi: 79.99}, secs_left: 0}), {ticker: 'KXBTC-26OCT2617-B113250', series: 'KXBTC'});
+    assert.match(b.body().innerHTML, />Spot vs bucket<\/dt><dd><span class="fig ">—</);
+    assert.doesNotMatch(b.body().innerHTML, /Inside|on the Yes side/);
+    b.f.clearTimers();
+  });
+
   // A 15-minute window's page said "This window's start price isn't stored yet" under a heading reading "Target Price:
   // $113,512.08" (Kalshi's subtitle): with no stored strike the page takes it from the contract's own name and says so.
   test(`${name}: a 15-minute window with no stored strike reads its target price from the contract's title, and says so`, async () => {

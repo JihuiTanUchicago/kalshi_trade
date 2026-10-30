@@ -378,4 +378,68 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     assert.equal(n.f.root.querySelector('#xbody .empty h2').textContent, 'No markets to show yet');
     n.f.clearTimers();
   });
+
+  // Walk 2026-10-30: a 15-minute row a minute past its close said "Closed 04:15 UTC · Spot vs target price +$72", read as
+  // its result, though Bitcoin's price after the close doesn't decide it. A row past its close shows no distance, on
+  // Explore's list and on the hot rail; an open row beside it keeps its own.
+  test(`${name}: a Bitcoin row past its close shows no distance from spot, on the list and the rail`, async () => {
+    const PAST = new Date(Date.now() - 60e3).toISOString().replace(/\.\d+Z$/, 'Z');
+    const shut = row('KXBTC15M-26OCT300015-15', {ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,180.52', ct: PAST, vs: {side: 'above', diff: 71.87, pct: 0.064}});
+    const {f, rows, note} = await list({markets: [shut, ROWS[0]], spot: SPOT});
+    assert.equal(rows[0].querySelector('.xspot'), null);
+    assert.match(rows[0].querySelector('td.name').textContent, /closed \S/i, 'it still says it closed');
+    assert.doesNotMatch(rows[0].textContent, /\+\$72|Spot vs/);
+    assert.equal(rows[1].querySelector('.xspot').textContent.replace(/ /g, ' '), 'Spot vs strike +$420 · 0.4%');
+    assert.ok(note, 'the open row still measures from the spot the note names');
+    f.clearTimers();
+    const {f: g, el} = await rail({markets: [shut, ROWS[0]].map((m) => ({...m, h: [.4, .5]})), spot: SPOT});
+    const hot = el.querySelectorAll('.hot-row');
+    assert.match(hot[0].querySelector('.hot-when').textContent, /^Closed \S/);
+    assert.doesNotMatch(hot[0].textContent + (hot[0].getAttribute('aria-label') || ''), /Spot vs|\+\$72/);
+    assert.match(hot[1].querySelector('.hot-when').textContent, /Spot vs strike \+\$420/);
+    g.clearTimers();
+  });
+
+  // Walk 2026-10-30: Explore → Bitcoin → a Bitcoin market, then the page's own "← Back to Explore" went to /explore, which
+  // dropped the Bitcoin choice (and the search and sort): the reader came back to every market. It now returns to the
+  // list the reader left, kept for the tab so a reload of the market page keeps it too.
+  test(`${name}: a market page's Back to Explore returns to the Bitcoin list the reader left`, async () => {
+    const T = 'KXBTCD-26OCT2717-T112999.99';
+    const market = {ticker: T, series: 'KXBTCD', title: 'Bitcoin price on Oct 27, 2026 at 5pm EDT?', sub: '$113,000 or above', points: [], yes_bid: '0.48', yes_ask: '0.52', close_time: LATER, status: 'active'};
+    const fetchImpl = (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 6, shown: 6, page: 0, per: 40, sort: 'oi', ...byShow(path)})
+      : path.startsWith('/api/explore/market?') ? (path.includes('KXGONE') ? response({error: 'Kalshi has no market here.'}, 404) : response(market)) : response({}));
+    const tab = new Map(), session = {getItem: (k) => tab.get(k) ?? null, setItem: (k, v) => tab.set(k, String(v)), removeItem: (k) => tab.delete(k)};
+    const back = (f) => f.root.querySelectorAll('a').find((a) => /Back to Explore/.test(a.textContent)).getAttribute('href').replace(/&amp;/g, '&');
+    const f = frontend({fetchImpl, session});
+    f.location.pathname = '/explore'; f.location.search = '?q=5pm&sort=oi&page=0&show=bitcoin';
+    await f.viewExplore(); await settle();
+    f.location.search = '?m=' + T;
+    await f.viewMarketDetail(T); await settle();
+    assert.equal(back(f), '/explore?q=5pm&sort=oi&page=0&show=bitcoin', 'Bitcoin, the search and the sort are still on');
+    f.clearTimers();
+    // A reload of the market page in the same tab keeps it, and so does the page Kalshi has no market for.
+    const g = frontend({fetchImpl, session});
+    await g.viewMarketDetail(T); await settle();
+    assert.equal(back(g), '/explore?q=5pm&sort=oi&page=0&show=bitcoin');
+    await g.viewMarketDetail('KXGONE-1'); await settle();
+    assert.equal(back(g), '/explore?q=5pm&sort=oi&page=0&show=bitcoin');
+    g.clearTimers();
+    // Picking All markets again is what Back returns to.
+    const a = frontend({fetchImpl, session});
+    a.location.pathname = '/explore'; a.location.search = '?show=bitcoin';
+    await a.viewExplore(); await settle();
+    a.root.querySelector('[data-show="all"]').onclick(); await settle();
+    await a.viewMarketDetail(T); await settle();
+    assert.equal(back(a), '/explore?q=&sort=v24&page=0');
+    a.clearTimers();
+    // A tab that never showed the list (a shared link), or storage that throws, goes to Explore as it opens.
+    const h = frontend({fetchImpl});
+    await h.viewMarketDetail(T); await settle();
+    assert.equal(back(h), '/explore');
+    h.clearTimers();
+    const odd = frontend({fetchImpl, session: {getItem: () => '/explore?m=KXBTCD-X', setItem() { throw new Error('private mode'); }}});
+    await odd.viewMarketDetail(T); await settle();
+    assert.equal(back(odd), '/explore', 'never back to a market page');
+    odd.clearTimers();
+  });
 }
