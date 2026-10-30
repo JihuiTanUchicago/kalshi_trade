@@ -2959,7 +2959,9 @@
   // 01:39 CDT" with no time left, and went on saying so after 01:39 had passed. A row says how long is left inside
   // the last hour and "closed" once it has passed; the page's Closes figure counts down under the time. `skew` (s)
   // lines the reader's clock up with the server's when it read (as_of, the spot read's secs_left).
-  const closeLeft = (iso, skew) => (Date.parse(iso || '') - Date.now()) / 1000 + (+skew || 0);
+  // Whole seconds, so the milliseconds between the read and the draw never tip an exact minute over (a 4320 s
+  // read drawn 2 ms later read "1 hr 11 min").
+  const closeLeft = (iso, skew) => Math.round((Date.parse(iso || '') - Date.now()) / 1000 + (+skew || 0));
   const soonText = (s) => (s < 60 ? 'under a minute' : leftText(s));
   const CLOSE_FORM = {
     chip: (iso, s) => (s > 0 ? `closes ${settleAt(iso)}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${settleAt(iso)}`),
