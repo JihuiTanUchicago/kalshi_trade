@@ -21,6 +21,7 @@ import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {strategyListParityCases} from './strategy_list_parity_frontend_cases.mjs';
+import {exploreParityCases} from './explore_parity_frontend_cases.mjs';
 import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {largeAccountCases} from './large_account_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
@@ -277,6 +278,7 @@ moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async 
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 strategyListParityCases({name: 'Meridian', frontend, detailStrategy});
+exploreParityCases({name: 'Meridian', frontend});
 countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
 largeAccountCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
 explorePageCases({name: 'Meridian', frontend});
@@ -6219,7 +6221,8 @@ test('Meridian: Strategies says under its name what the page is for, in Tau\'s w
 });
 
 test('Meridian: Deploy, Explore, Settings and Community each say under their name what the page is for, in Tau\'s words', async () => {
-  const tauSource = readFileSync(new URL('../app/static/app.js', import.meta.url), 'utf8');
+  // Explore is one file for both themes (page-explore.js): Tau's heading is in it, beside Meridian's.
+  const tauSource = ['app.js', 'page-explore.js'].map((f) => readFileSync(new URL('../app/static/' + f, import.meta.url), 'utf8')).join('\n');
   // Community's page file is both themes' (page-community.js): one lede, Tau's heading's and Meridian's alike.
   const community = readFileSync(new URL('../app/static/page-community.js', import.meta.url), 'utf8');
   const said = (page, text) => tauSource.includes(`boardTitle('${page}', '${text}')`)

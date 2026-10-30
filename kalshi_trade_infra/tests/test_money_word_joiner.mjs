@@ -72,22 +72,23 @@ for (const bundle of ['app.js', 'app.meridian.js']) {
     window.getSelection = () => ({toString: () => '$5.00 a trade', rangeCount: 1, getRangeAt: () => range});
     copy[0](plainEvent);
   });
-
-  test(`${bundle}: the market page's CSV download is plain numbers`, () => {
-    // Built from the raw points, never from a formatter: no joiner, no sign glyph, no "$".
-    const csv = /const csv = '([^']*)' \+ d\.points\.map\(\(p\) => `([^`]*)`\)/.exec(readFileSync(new URL(`../app/static/${bundle}`, import.meta.url), 'utf8'));
-    assert.ok(csv, 'the CSV line');
-    assert.equal(csv[1], 'time_utc,unix_ts,yes_price,volume\\n');
-    assert.doesNotMatch(csv[2], /usd\(|cents\(|\$\{(?!new Date|p\.t|p\.yes|Math\.round)/);
-  });
 }
+
+// The market page is one file for both themes (page-explore.js).
+test('the market page\'s CSV download is plain numbers, in both themes', () => {
+  // Built from the raw points, never from a formatter: no joiner, no sign glyph, no "$".
+  const csv = /const csv = '([^']*)' \+ d\.points\.map\(\(p\) => `([^`]*)`\)/.exec(readFileSync(new URL('../app/static/page-explore.js', import.meta.url), 'utf8'));
+  assert.ok(csv, 'the CSV line');
+  assert.equal(csv[1], 'time_utc,unix_ts,yes_price,volume\\n');
+  assert.doesNotMatch(csv[2], /usd\(|cents\(|\$\{(?!new Date|p\.t|p\.yes|Math\.round)/);
+});
 
 test('the page files glue their own signed amounts (Billing’s sub-cent charges) and share WJ from the bundle', () => {
   for (const f of ['app-billing.js', 'app.meridian-billing.js']) {
     const src = readFileSync(new URL(`../app/static/${f}`, import.meta.url), 'utf8');
     assert.match(src, /\(n < 0 \? '−' : '\+'\) \+ WJ \+ '\$'/, f);
   }
-  for (const f of ['app.js', 'app.meridian.js']) {
+  for (const f of ['app.js', 'app.meridian.js', 'page-explore.js']) {  // and Explore's market page, one file for both themes
     const src = readFileSync(new URL(`../app/static/${f}`, import.meta.url), 'utf8');
     // No hand-built sign before "$" outside usd(), except the signed-out landing's static demo and chart axis text.
     const loose = src.split('\n').filter((l) => /['`]\s*:\s*'[−+]'\)?\}?\s*\$\$\{|'[−+]'\) \+ '\$'/.test(l) && !/paper → live|pnlEl|wholePaperAxis/.test(l));
