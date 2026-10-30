@@ -160,3 +160,35 @@ def test_features_falling_behind_the_raw_archive_is_flagged():
     assert a["severity"] == "high" and a["kind"] == "features_stale" and "30h behind" in a["detail"]
     assert rw.freshness_anomalies(rw.data_freshness(S3(raw), now))[0]["kind"] == "features_stale"
     assert rw.freshness_anomalies(None) == []
+
+
+def test_the_report_shows_the_long_term_memory(monkeypatch):
+    """rsi_sleep: each run says whether the proposer read the memory, and the report lists every
+    family's newest memory with what it calls exhausted."""
+    from app.research import rsi_sleep
+    now = datetime(2026, 10, 30, 8, 0)
+    run = {"id": 7, "user_id": 1, "market": "btc15m", "status": "succeeded", "created_at": now,
+           "started_at": now, "finished_at": now}
+    events = [{"kind": "step", "message": "Using long-term research memory for crypto markets.",
+               "data": {"phase": "memory"}, "created_at": now},
+              {"kind": "step", "message": "Loaded data", "data": {"phase": "data_loaded"}, "created_at": now}]
+    assert rw.run_summary(run, events, now)["memory"] == ["Using long-term research memory for crypto markets."]
+    led = rsi_sleep.fold({}, [{"run_id": i, "market": "btc15m", "day": "2026-10-30", "message": "x",
+                               "data": {"status": "abandoned", "title": "Stale quote lag", "why": "loses"}}
+                              for i in range(12)])
+
+    class Cur:
+        def execute(self, sql, args=None):
+            pass
+
+        def fetchall(self):
+            return [{"user_id": 1, "family": "crypto"}]
+
+    monkeypatch.setattr(rsi_sleep, "latest", lambda cur, u, f: {
+        "user_id": u, "family": f, "version": 3, "created_at": now, "ledger": led, "lessons": [{}, {}],
+        "changes": "kept"})
+    rows = rw.memory_rows(Cur())
+    assert rows == [{"user_id": 1, "family": "crypto", "version": 3, "created_at": str(now), "runs": 12,
+                     "ideas": 12, "lessons": 2, "changes": "kept",
+                     "exhausted": {"btc15m": ["Kalshi lags spot (stale quotes)"]}}]
+    assert rw.build_report([run], {7: events}, now, 3.0, memory=rows)["memory"] == rows

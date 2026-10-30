@@ -104,6 +104,9 @@ def run_summary(run: Dict, events: List[Dict], now: datetime) -> Dict:
         "developed": card["developed"], "underpowered": card["underpowered"],
         "challenger_rejected": card["challenger_rejected"], "not_finalist": card["not_finalist"],
         "deaths": card["deaths"], "death_kinds": card["death_kinds"], "drops": _kept_drops(drops),
+        # rsi_sleep: whether the proposer read the long-term memory, and any consolidation this run did
+        "memory": [" ".join((e.get("message") or "").split())[:300] for e in events
+                   if e.get("kind") == "step" and (e.get("data") or {}).get("phase") == "memory"],
     }
 
 
@@ -227,8 +230,25 @@ def load_idle(cur, now: datetime) -> List[Dict]:
     return out
 
 
+def memory_rows(cur) -> List[Dict]:
+    """Each (user, family)'s newest long-term memory (rsi_sleep): version, size and what it calls
+    exhausted per market, so the watch shows whether consolidation runs and what the proposer reads."""
+    from app.research import rsi_sleep
+    cur.execute("SELECT k.user_id, k.family FROM app_rsi_knowledge k GROUP BY k.user_id, k.family")
+    out = []
+    for r in cur.fetchall():
+        k = rsi_sleep.latest(cur, r["user_id"], r["family"])
+        led = k["ledger"]
+        out.append({"user_id": k["user_id"], "family": k["family"], "version": k["version"],
+                    "created_at": str(k["created_at"]), "runs": led.get("runs"), "ideas": led.get("ideas"),
+                    "lessons": len(k["lessons"]), "changes": (k.get("changes") or "")[:300],
+                    "exhausted": {m: rsi_sleep.exhausted(led, m) for m in sorted(led.get("markets") or {})}})
+    return out
+
+
 def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime, hours: float,
-                 idle: Optional[List[Dict]] = None, freshness: Optional[Dict] = None) -> Dict:
+                 idle: Optional[List[Dict]] = None, freshness: Optional[Dict] = None,
+                 memory: Optional[List[Dict]] = None) -> Dict:
     summaries = [run_summary(r, events.get(r["id"], []), now) for r in runs]
     finished = [s for s in summaries if s["status"] in ("succeeded", "stopped", "failed")]
     cards = [rsi.run_card(r, [e for e in events.get(r["id"], []) if e.get("kind") == "verdict"])
@@ -245,6 +265,7 @@ def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime,
         "anomalies": freshness_anomalies(freshness) + idle_anomalies(idle or []) + anomalies(summaries),
         "idle_users": idle or [],
         "data_freshness": freshness,
+        "memory": memory,
         "runs": sorted(summaries, key=lambda s: -s["run_id"]),
     }
 
@@ -331,6 +352,11 @@ def main() -> None:
         except Exception as e:  # noqa: BLE001 - the run report still goes out without it
             print("[watch] idle check failed: %r" % e, flush=True)
             idle = []
+        try:
+            memory = memory_rows(cur)
+        except Exception as e:  # noqa: BLE001 - the run report still goes out without it
+            print("[watch] memory read failed: %r" % e, flush=True)
+            memory = None
     finally:
         conn.close()
     try:
@@ -339,7 +365,7 @@ def main() -> None:
     except Exception as e:  # noqa: BLE001 - the run report still goes out without it
         print("[watch] freshness check failed: %r" % e, flush=True)
         freshness = None
-    report = build_report(runs, events, now, a.hours, idle, freshness)
+    report = build_report(runs, events, now, a.hours, idle, freshness, memory)
     print(json.dumps({k: report[k] for k in ("generated_at", "status_counts", "anomalies")}, default=str), flush=True)
     if not a.no_s3:
         try:
