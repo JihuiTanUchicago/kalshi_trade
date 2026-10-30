@@ -304,4 +304,78 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     assert.match(close()[0], /^closed \S/i);
     f.clearTimers();
   });
+
+  // Explore's Bitcoin filter: one "All markets / Bitcoin" choice beside the search, read by the server (?show=bitcoin
+  // keeps the Bitcoin series' contracts) and kept in the address with the search and sort, so a reload keeps it.
+  const BTC_ROWS = ROWS.slice(0, 5);
+  const explore = async (search, answer) => {
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 6, shown: 6, page: 0, per: 40, sort: 'v24',
+      ...(typeof answer === 'function' ? answer(path) : answer)}) : response({}))});
+    f.location.pathname = '/explore'; f.location.search = search;
+    await f.viewExplore(); await settle();
+    return {f, asked: () => f.requests.map(({path}) => path).filter((p) => p.startsWith('/api/explore?'))};
+  };
+  const pressed = (f) => f.root.querySelectorAll('[data-show]').map((b) => [b.textContent, b.getAttribute('aria-pressed')]);
+  const byShow = (path) => (path.includes('show=bitcoin') ? {markets: BTC_ROWS, matched: 5, show: 'bitcoin', spot: SPOT} : {markets: ROWS, matched: 6, show: 'all', spot: SPOT});
+
+  test(`${name}: Explore's Bitcoin choice shows only Bitcoin markets, and All markets puts every market back`, async () => {
+    const {f, asked} = await explore('', byShow);
+    const group = f.root.querySelector('.xshow');
+    assert.equal(group.getAttribute('role'), 'group'); assert.equal(group.getAttribute('aria-label'), 'Show');
+    assert.deepEqual(pressed(f), [['All markets', 'true'], ['Bitcoin', 'false']]);
+    assert.deepEqual(asked(), ['/api/explore?q=&sort=v24&page=0'], 'every market until Bitcoin is picked');
+    f.root.querySelector('[data-show="bitcoin"]').onclick(); await settle();
+    assert.equal(asked().at(-1), '/api/explore?q=&sort=v24&page=0&show=bitcoin');
+    assert.equal(f.location.search, '?q=&sort=v24&page=0&show=bitcoin', 'the choice is kept in the address');
+    assert.deepEqual(pressed(f), [['All markets', 'false'], ['Bitcoin', 'true']]);
+    assert.equal(f.root.querySelectorAll('#xbody tbody tr').length, 5);
+    assert.match(f.root.querySelector('#xfigs').textContent, /Bitcoin markets\s*5/);
+    // The list's poll keeps asking for Bitcoin, and a sort or search keeps it too.
+    for (const run of [...f.intervals.values()]) await run(); await settle();
+    assert.equal(asked().at(-1), '/api/explore?q=&sort=v24&page=0&show=bitcoin');
+    f.root.querySelectorAll('[data-sort="oi"]')[0].onclick(); await settle();
+    assert.equal(asked().at(-1), '/api/explore?q=&sort=oi&page=0&show=bitcoin');
+    f.root.querySelector('[data-show="all"]').onclick(); await settle();
+    assert.equal(asked().at(-1), '/api/explore?q=&sort=oi&page=0');
+    assert.equal(f.location.search, '?q=&sort=oi&page=0');
+    assert.deepEqual(pressed(f), [['All markets', 'true'], ['Bitcoin', 'false']]);
+    assert.equal(f.root.querySelectorAll('#xbody tbody tr').length, 6);
+    assert.doesNotMatch(f.root.querySelector('#main').textContent, /KXBTC|show=|BTC_SERIES/);
+    f.clearTimers();
+  });
+
+  test(`${name}: a reload of Explore with Bitcoin picked keeps Bitcoin, the search and the sort`, async () => {
+    const {f, asked} = await explore('?q=5pm&sort=oi&page=0&show=bitcoin', byShow);
+    assert.deepEqual(asked(), ['/api/explore?q=5pm&sort=oi&page=0&show=bitcoin']);
+    assert.deepEqual(pressed(f), [['All markets', 'false'], ['Bitcoin', 'true']]);
+    // Any other value is every market, never an error.
+    const g = await explore('?show=nonsense', byShow);
+    assert.deepEqual(g.asked(), ['/api/explore?q=&sort=v24&page=0']);
+    assert.deepEqual(pressed(g.f), [['All markets', 'true'], ['Bitcoin', 'false']]);
+    f.clearTimers(); g.f.clearTimers();
+  });
+
+  test(`${name}: with no Bitcoin market open, Explore says so plainly and offers every market`, async () => {
+    const {f, asked} = await explore('?show=bitcoin', (path) => (path.includes('show=bitcoin') ? {markets: [], matched: 0, show: 'bitcoin'} : {markets: ROWS, matched: 6}));
+    const empty = f.root.querySelector('#xbody .empty');
+    assert.equal(empty.querySelector('h2').textContent, 'No Bitcoin markets are open right now');
+    assert.equal(empty.querySelector('p').textContent, 'Kalshi opens new Bitcoin markets through the day, and they show here within about a minute.');
+    assert.doesNotMatch(empty.textContent, /KX|series|show=|error|null|undefined/i);
+    empty.querySelector('[data-xretry]').onclick(); await settle();
+    assert.equal(asked().at(-1), '/api/explore?q=&sort=v24&page=0&show=bitcoin', 'Try again asks for Bitcoin again');
+    f.root.querySelector('#xbody [data-xall]').onclick(); await settle();
+    assert.equal(asked().at(-1), '/api/explore?q=&sort=v24&page=0');
+    assert.deepEqual(pressed(f), [['All markets', 'true'], ['Bitcoin', 'false']]);
+    assert.equal(f.root.querySelectorAll('#xbody tbody tr').length, 6);
+    f.clearTimers();
+    // A search that finds no Bitcoin market says that, not that none is open.
+    const s = await explore('?q=ethereum&show=bitcoin', {markets: [], matched: 0, show: 'bitcoin'});
+    assert.equal(s.f.root.querySelector('#xbody .empty h2').textContent, 'No Bitcoin markets match “ethereum”');
+    assert.ok(s.f.root.querySelector('#xbody [data-xall]'), 'a way back to every market');
+    s.f.clearTimers();
+    // Before the feed's first copy there is no list at all: that says the list hasn't come in, not that Bitcoin is closed.
+    const n = await explore('?show=bitcoin', {at: null, total: 0, shown: 0, markets: [], matched: 0});
+    assert.equal(n.f.root.querySelector('#xbody .empty h2').textContent, 'No markets to show yet');
+    n.f.clearTimers();
+  });
 }

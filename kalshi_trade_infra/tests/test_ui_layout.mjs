@@ -510,6 +510,26 @@ test('Meridian: Explore\'s search box shows focus with the field\'s border, as e
   assert.equal(decl(all, '.t-explore .xlink a:focus-visible', 'outline-offset'), '-4px');
 });
 
+// Explore's All markets / Bitcoin choice: its own full-width row over the list in Meridian's heading grid (row 4 on a
+// desktop, row 5 under the search and freshness rows of a phone's two-column grid), wrapping, never wider than the
+// page; a touch pointer gets 44px tabs. Tau's sits in the filter row, which wraps at 390px.
+test('both themes: Explore\'s Bitcoin choice takes its own row and wraps, so 390px and desktop never scroll sideways', () => {
+  const m = rules(read('app.meridian.css')), t = rules(read('app.css'));
+  assert.equal(decl(m, '.explore-filters .xshow', 'grid-column'), '1 / -1');
+  assert.equal(decl(m, '.explore-filters .xshow', 'grid-row'), '4');
+  assert.equal(decl(m, '.explore-filters .xshow', 'min-width'), '0');
+  assert.equal(decl(m, '.explore-filters .xshow', 'grid-row', '@container work (max-width: 599px)'), '5');
+  assert.equal(decl(m, '.explore-freshness', 'grid-row', '@container work (max-width: 599px)'), '4');
+  assert.equal(decl(m, '.chips', 'flex-wrap'), 'wrap');
+  assert.equal(decl(m, '.explore-filters .xshow .chip', 'min-height', '@media (hover: none), (pointer: coarse)'), '44px');
+  assert.equal(decl(m, '.explore-filters .xshow .chip', 'text-transform'), 'none');
+  assert.equal(decl(t, '.section-head', 'flex-wrap'), 'wrap');
+  assert.equal(decl(t, '.chips', 'flex-wrap'), 'wrap');
+  for (const name of ['app.js', 'app.meridian.js']) {
+    assert.match(read(name), /class="chips xshow" role="group" aria-label="Show"/, name);
+  }
+});
+
 // Overlap walk 2026-10-28 (Playwright at 360, 390 and 768px with a touch pointer, both themes, every signed-in page,
 // the bell, the account menu and the autopilot sheet, seeded with 80-character strategy titles and one 82-character
 // title with no spaces): every interactive box was checked against every other one and against every text line,
