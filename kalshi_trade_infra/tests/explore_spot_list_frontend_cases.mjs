@@ -10,9 +10,11 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 
+// Closes a few hours from now: a close already past reads "Closed" (the market page's and Explore's own walk, 2026-10-28).
+const LATER = new Date(Date.now() + 5 * 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
 const SPOT = {price: 113420, at: '2026-10-27T11:00:00Z', age_s: 4, stale: false};
 const row = (t, over = {}) => ({t, s: t.split('-')[0], ti: 'Bitcoin price on Oct 27, 2026 at 5pm EDT?', su: '', bid: .48, ask: .52, v24: 900, oi: 50,
-  ct: '2026-10-27T21:00:00Z', ...over});
+  ct: LATER, ...over});
 const ROWS = [row('KXBTCD-26OCT2717-T112999.99', {su: '$113,000 or above', vs: {side: 'above', diff: 420.01, pct: 0.372}}),
   row('KXBTCD-26OCT2717-T114000', {su: '$114,000.01 or above', vs: {side: 'below', diff: -580, pct: -0.509}}),
   row('KXBTC-26OCT2717-B113250', {su: '$113,000 to 113,499.99', vs: {side: 'inside', diff: 0, pct: 0}}),
@@ -180,7 +182,7 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
   // themes named an untitled contract by its ticker (Explore, the hot rail).
   const NAMED = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', category: 'Crypto', close_hour_et: 17},
     {key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin 15-minute up/down', category: 'Crypto'}];
-  const NAME_ROWS = [row('KXBTCD-26OCT2812-T112999.99', {ti: 'Bitcoin price at 12pm EDT?', su: '$113,000 or above', ct: '2026-10-28T16:00:00Z'}),
+  const NAME_ROWS = [row('KXBTCD-26OCT2812-T112999.99', {ti: 'Bitcoin price at 12pm EDT?', su: '$113,000 or above', ct: LATER}),
     row('KXBTCD-26OCT2817-T112999.99', {ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above'}),
     row('KXBTC-26OCT2817-B113250', {ti: 'Bitcoin price range at 5pm EDT?', su: '$113,000 to 113,499.99'}),
     row('KXBTC15M-26OCT271145-45', {ti: 'BTC price up in next 15 mins?'}),
@@ -255,6 +257,28 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     assert.match(el.querySelector('.hot-note').textContent, /^Bitcoin’s spot feed is 14 min old/);
     assert.equal(el.querySelectorAll('.xspot').length, 0);
     assert.match(el.querySelectorAll('.hot-when')[0].textContent, /^Closes /, 'the close times stay');
+    f.clearTimers();
+  });
+
+  // Walked 2026-10-28 with a 15-minute window three minutes from its close: its row said "closes 01:39 CDT" with no
+  // time left, said the same once 01:39 had passed, and a $5 distance read "0.00%".
+  test(`${name}: an Explore row in its last hour says how long is left, counts down with the list, and says closed once past`, async () => {
+    const at = (s) => new Date(Date.now() + s * 1000).toISOString();
+    const markets = [row('KXBTC15M-26OCT280239-39', {ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,165.84', ct: at(190),
+      vs: {side: 'below', diff: -4.6, pct: -0.004, from: 'title'}}), row('KXBTCD-26OCT2803-T112999.99', {su: '$113,000 or above', ct: at(-120)}),
+      row('KXBTCD-26OCT2817-T112999.99', {su: '$113,000 or above', ct: at(5 * 3600)})];
+    const {f, rows} = await list({markets, spot: SPOT});
+    const close = () => f.root.querySelectorAll('#xbody tbody tr').map((r) => r.querySelector('[data-close]').textContent.replace(/ /g, ' '));
+    const [soon, past, later] = close();
+    assert.match(soon, /^closes \S.* · in 3 min$/i);
+    assert.match(past, /^closed \S/i); assert.doesNotMatch(past, / in /);
+    assert.match(later, /^closes \S/i); assert.doesNotMatch(later, / in /, 'a close hours off needs no count');
+    assert.equal(rows[0].querySelector('.xspot').textContent.replace(/ /g, ' '), 'Spot vs target price −$5 · under 0.01%');
+    // The list's own poll works the count out again: a minute on it reads 2 min, and past the close "closed".
+    f.shiftClock(60000); for (const run of [...f.intervals.values()]) await run(); await settle();
+    assert.match(close()[0], /^closes \S.* · in 2 min$/i);
+    f.shiftClock(150000); for (const run of [...f.intervals.values()]) await run(); await settle();
+    assert.match(close()[0], /^closed \S/i);
     f.clearTimers();
   });
 }

@@ -768,13 +768,13 @@ test('an Overview row’s backtest estimate says later-period for a strategy who
 test('an Explore row’s chip breaks only at its "·", never inside the market’s name or its close', async () => {
   // Walk 2026-10-27 at 390px: "BTC above $X at 5pm ET · closes Oct 28, 02:45" filled a line and "UTC" sat alone on the next.
   const m = {t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price on Oct 27, 2026 at 5pm EDT?', su: '$113,000 or above', bid: .48, ask: .52,
-    v24: 900, oi: 50, ct: '2026-10-27T21:00:00Z'};
+    v24: 900, oi: 50, ct: new Date(Date.now() + 5 * 3600e3).toISOString()};
   const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 1, shown: 1, matched: 1, page: 0, per: 40, markets: [m]}) : response({}))});
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   f.location.pathname = '/explore'; f.location.search = '';
   await f.viewExplore(); for (let i = 0; i < 6; i++) await flush();
   const chip = f.root.querySelector('#xrows td.name .mk.quiet');
-  assert.match(chip.innerHTML, /^<span class="nobr">BTC above \$X at 5pm ET<\/span> · <span class="nobr">closes [^<]+<\/span>$/);
+  assert.match(chip.innerHTML, /^<span class="nobr">BTC above \$X at 5pm ET<\/span> · <span class="nobr" data-close="[^"]+" data-form="chip">closes [^<]+<\/span>$/);
   assert.match(chip.textContent, /^BTC above \$X at 5pm ET · closes /);
   f.clearTimers();
 });
@@ -1541,7 +1541,7 @@ test('Explore tells same-titled markets from different events apart by market an
   const row = (t, ev, ct) => ({t, s: 'KXBTCD', ev, ct, ti: 'Bitcoin price on Oct 25, 2026?', su: '$80,500 or above', last: '0.5', bid: '0.49', ask: '0.51', v24: '10', oi: '5', st: 'active'});
   const f = frontend({fetchImpl: path => {
     if (path.startsWith('/api/explore?')) return response({at: '2026-10-25T15:00:00Z', total: 3, shown: 3, matched: 3, page: 0, per: 50, sort: 'v24',
-      markets: [row('KXBTCD-26OCT2512-T80499.99', 'KXBTCD-26OCT2512', '2026-10-25T16:00:00Z'), row('KXBTCD-26OCT2517-T80499.99', 'KXBTCD-26OCT2517', '2026-10-25T21:00:00Z'),
+      markets: [row('KXBTCD-26OCT2512-T80499.99', 'KXBTCD-26OCT2512', new Date(Date.now() + 26 * 3600e3).toISOString()), row('KXBTCD-26OCT2517-T80499.99', 'KXBTCD-26OCT2517', new Date(Date.now() + 31 * 3600e3).toISOString()),
         {...row('KXNBAGAME-26OCT25MINDEN-MIN', 'KXNBAGAME-26OCT25MINDEN', null), s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota'}]});
     return response({});
   }});
