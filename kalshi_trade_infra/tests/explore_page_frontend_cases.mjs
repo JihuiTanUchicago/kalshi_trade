@@ -424,6 +424,43 @@ export function explorePageCases({name, frontend}) {
     assert.doesNotMatch(f.root.innerHTML, /Result expected/);
   });
 
+  // Walked 2026-10-30: the reader's own position in a 15-minute contract past its close, not settled yet, read "Open,
+  // settles 04:15 UTC" in its Status cell, a time already gone, under a status line saying "Closed, result pending".
+  // It says the same as the line once the close passes, on the same clock, without a reload; before the close and for
+  // a settled position it reads as before. Display only: the row is still open, with its cost and its book's sums.
+  test(`${name}: the reader's open position past its contract's close says "Closed, result pending", flipping at the close`, async () => {
+    const now = Date.now(), soon = new Date(now + 150.5e3).toISOString(), gone = new Date(now - 90.5e3).toISOString();
+    const ticker = 'KXFEDDECISION-26DEC-H0';
+    const held = (over) => ({id: 1, title: 'Drift', strategy_id: 1, ticker, side: 'yes', qty: 3, entry_price: .22, cost: .68, unrealized: null,
+      mode: 'paper', status: 'open', market_close_time: soon, ...over});
+    const done = held({id: 2, status: 'closed', close_reason: 'settled', exit_price: 1, pnl: .76, closed_at: gone, market_close_time: gone});
+    let reads = 0;
+    const body = page({ticker, series: 'KXFEDDECISION', title: 'Fed decision in Dec 2026?', sub: 'Hike 0bps', as_of: new Date(now).toISOString(),
+      close_time: soon, mine: {open: [held()], closed: [done]}});
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?') ? (reads++, response(body)) : response({}))});
+    f.S.me.markets = MARKETS; f.location.pathname = '/explore'; f.location.search = '?m=' + ticker;
+    await f.viewExplore(); await settle();
+    // A cell's own text, or its clock span's (the harness rewrites only the span the clock writes to).
+    const status = () => f.root.querySelectorAll('td').filter((td) => td.getAttribute('data-lab') === 'Status').map((td) => (td.querySelector('[data-close]') || td).textContent);
+    const [openWas, doneWas] = status();
+    assert.match(openWas, /^Open, settles (?:[A-Z][a-z]{2} \d{1,2}, )?\d\d:\d\d \S+$/, 'before the close: as before');
+    assert.match(doneWas, /^Closed \(settled\) @ /);
+    const sums = f.root.querySelector('.mk-book .hint').textContent;
+    assert.match(sums, /^1 open at cost \+ fees \$0\.68/);
+    const before = reads;
+    f.shiftClock(180e3); for (const run of [...f.intervals.values()]) await run(); await settle();
+    assert.equal(reads, before, 'no reload');
+    assert.deepEqual(status(), ['Closed, result pending', doneWas], 'the open row follows the clock; the settled row is unchanged');
+    assert.equal(f.root.querySelector('.mk-book .hint').textContent, sums, 'still one open position, at the same cost');
+    f.clearTimers && f.clearTimers();
+    // Read after its close (Kalshi still settling it): it says so from the start.
+    const late = await open(page({ticker, series: 'KXFEDDECISION', status: 'closed', close_time: gone, mine: {open: [held({market_close_time: gone})], closed: []}}));
+    const cell = late.root.querySelectorAll('td').find((td) => td.getAttribute('data-lab') === 'Status');
+    assert.equal(cell.textContent, 'Closed, result pending');
+    assert.doesNotMatch(late.root.innerHTML, /Open, settles/);
+    late.clearTimers && late.clearTimers();
+  });
+
   // Walked 2026-10-28: a far strike nobody had traded (no bid, a 2¢ ask) read "—" over only "as of 01:36 CDT".
   test(`${name}: a contract nobody has traded says so under its price, with the side of the book there is`, async () => {
     const f = await open(page({yes_bid: '0', yes_ask: '0.02', last: '0', volume_24h: '0', open_interest: '0'}));

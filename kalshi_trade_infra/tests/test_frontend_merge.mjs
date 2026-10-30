@@ -9,7 +9,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
-import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyDisplayCases, pastCloseCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
 import {moneyAgreementCases} from './money_agreement_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
@@ -357,8 +357,8 @@ test('the current strategy page renders an escaped research paper and a separate
 });
 
 test('the sidebar lists each holding with every figure instead of a clipped five-column table', async () => {
-  const holdings = [{ticker: 'KXBTC15M-<x>', side: 'no', qty: 4, entry_price: 0.37, cost: 1.5, unrealized: null, mode: 'paper', market_close_time: '2026-10-25T07:30:00Z'},
-    {ticker: 'KXBTC15M-B', side: 'yes', qty: 2, entry_price: 0.6, cost: 1.2, unrealized: -0.3, mode: 'live', market_close_time: '2026-10-25T07:45:00Z',
+  const holdings = [{ticker: 'KXBTC15M-<x>', side: 'no', qty: 4, entry_price: 0.37, cost: 1.5, unrealized: null, mode: 'paper', market_close_time: '2030-10-25T07:30:00Z'},
+    {ticker: 'KXBTC15M-B', side: 'yes', qty: 2, entry_price: 0.6, cost: 1.2, unrealized: -0.3, mode: 'live', market_close_time: '2030-10-25T07:45:00Z',
       why: 'Entered at 60¢: edge ≥ 2¢ after fees · Holds to settlement'}];
   const f = strategyFrontend(detailStrategy({holdings})); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('#main').innerHTML;
@@ -4071,7 +4071,7 @@ test('money pages: an open position names its market and settles with a date and
     unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
   const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}];
   const f = frontend({fetchImpl: path => path === '/api/deployments'
-    ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date().toISOString()})]}) : response({})});
+    ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date(Math.min(Date.now() + 60e3, new Date().setHours(23, 59, 59, 0))).toISOString()})]}) : response({})});
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
@@ -4086,7 +4086,7 @@ test('money pages: an open position names its market and settles with a date and
   // The strategy page's holding says its cost includes the fee, and settles the same way.
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
   const side = s.root.querySelector('#main').innerHTML;
-  assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
+  assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span data-close="[^"]+" data-form="settles" data-cap="1">Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
   assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="pos-name"><a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin \$68,500 or above at 5pm ET<\/a>/);
   // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L, and
   // the same cost as Deploy's and the strategy page's: with its fee ($9.00 + $0.41), never "$9.00 at cost" beside "$9.41".
@@ -5598,6 +5598,7 @@ freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unmarkedPositionCases({name: 'Tau', frontend});
 moneyAgreementCases({name: 'Tau', frontend});
+pastCloseCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 

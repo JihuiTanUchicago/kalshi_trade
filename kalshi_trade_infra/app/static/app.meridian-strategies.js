@@ -4,12 +4,12 @@
 window.TauPage('strategies', (T) => {
   'use strict';
   const {
-    actionLink, announce, api, ApiError, apNudge, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
+    actionLink, announce, api, ApiError, closeClock, liveClose, apNudge, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, pageLede, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
+    researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -848,7 +848,7 @@ window.TauPage('strategies', (T) => {
             // Beside a Live or Demo row a paper one says Paper too: untagged, it read as the real-money book.
             return `<section class="panel"><h3>Holding right now</h3>
             <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : books.length > 1 ? '<span class="mk">Paper</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
-              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? 'not marked yet' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</li>`).join('')}</ul>
+              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? 'not marked yet' : money(p.unrealized)}</span>${liveClose(p.market_close_time, 'settles', { cap: true })}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
@@ -900,6 +900,8 @@ window.TauPage('strategies', (T) => {
           </details>
         </aside>
       </div>`;
+    // A holding past its close reads "Closed, result pending" (not "Settles" a time gone) without a reload.
+    if (!restricted && s.holdings && s.holdings.length) closeClock();
     // Second equity line: the strategy's unseen window replayed read-only against
     // the Kalshi demo environment. Fetched after the page so a slow/absent demo
     // never blocks the view; absent -> the chart simply stays sim-only. Until it answers,
