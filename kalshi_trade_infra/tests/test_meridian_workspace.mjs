@@ -1538,6 +1538,27 @@ test('Overview paper context follows the whole displayed book through mode chang
   assert.equal(reads, cases.length);
 });
 
+test('Overview: an open position whose market has closed says so under its expiry; one still to close and a settled row do not', async () => {
+  // Walk 2026-10-30: a live position still held a day after its close read only "Oct 29, 07:48 UTC" under Expiry, a date
+  // that read as still to come. Tau's dashboard said "closed, result pending" for the same row.
+  const past = new Date(Date.now() - 3 * 3600e3).toISOString(), future = new Date(Date.now() + 40 * 60e3).toISOString();
+  const f = frontend({fetchImpl: () => response(dashboardData({
+    open_positions: [dashboardPosition(1, {market_close_time: past, mode: 'live'}), dashboardPosition(2, {market_close_time: future}),
+      dashboardPosition(3, {market_close_time: 'not-a-date'})],
+    recent_closed: [dashboardPosition(4, {market_close_time: past})]}))});
+  await f.viewDashboard();
+  const rows = f.root.querySelectorAll('.open-position'); assert.equal(rows.length, 3);
+  const cell = (row) => row.querySelector('.position-expiry-cell');
+  assert.equal(cell(rows[0]).querySelector('.position-expired').textContent, 'Closed, result pending');
+  assert.equal(cell(rows[0]).querySelector('time').getAttribute('datetime'), past, 'the date stays beside it');
+  assert.equal(cell(rows[1]).querySelector('.position-expired'), null, 'a market still open says nothing more');
+  assert.equal(cell(rows[2]).querySelector('.position-expired'), null); assert.equal(cell(rows[2]).querySelector('.vh').textContent, 'Expiry unavailable');
+  const settled = f.root.querySelector('.settled-position'); assert.ok(settled);
+  assert.equal(cell(settled).querySelector('.position-expired'), null, 'a settled row needs no pending note');
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.position-expired \{ display: block;/);
+});
+
 test('Overview contract identities use the catalog and expiry, keep the raw ticker in the details only, and fall back safely', async () => {
   const samples = [
     {ticker: 'KXBTC15M-26OCT181230-B105000', title: 'Strategy <script>unsafe</script>', label: 'Bitcoin', known: true, expiry: true},
