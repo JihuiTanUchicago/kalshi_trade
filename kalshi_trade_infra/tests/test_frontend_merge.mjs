@@ -1656,7 +1656,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin \$113,500 or above at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   // Each piece holds together ("bid 58¢" ended a 390px line and "/ ask 61¢" began the next), breaking only at "·".
   assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));
@@ -4077,7 +4077,7 @@ test('money pages: an open position names its market and settles with a date and
   const html = f.root.querySelector('#openpos').innerHTML;
   // The market's plain name leads, its own strike filled in; the raw ticker sits on a small line under it, there to
   // find the contract on Kalshi. An unknown series gets no guessed label.
-  assert.match(html, /<a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T68499\.99<\/span>/);
+  assert.match(html, /<a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin \$68,500 or above at 5pm ET<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T68499\.99<\/span>/);
   assert.match(html, /<a href="\/explore\?m=KXOTHER-1">Kalshi contract<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXOTHER-1<\/span>/);
   assert.doesNotMatch(html, />KX[A-Z]+-[^<]*<\/a>/);
   // Another day carries its date; today only the time; both name the zone (a bare "21:17" read as today, zone unknown).
@@ -4087,7 +4087,7 @@ test('money pages: an open position names its market and settles with a date and
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
   const side = s.root.querySelector('#main').innerHTML;
   assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
-  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="pos-name"><a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a>/);
+  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="pos-name"><a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin \$68,500 or above at 5pm ET<\/a>/);
   // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L, and
   // the same cost as Deploy's and the strategy page's: with its fee ($9.00 + $0.41), never "$9.00 at cost" beside "$9.41".
   const g = frontend({fetchImpl: path => {
