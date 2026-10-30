@@ -224,7 +224,7 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     const running = async (st) => {
       await f.apUpdate(box, st); await settle();
       const html = box.querySelector('#apf-stats').innerHTML;
-      return /<dt>Running<\/dt><dd>(.*?)<\/dd>/.exec(html)[1];
+      return /<dt>Strategies running<\/dt><dd>(.*?)<\/dd>/.exec(html)[1];
     };
     const one = await running(status);
     assert.equal(one, '<span class="apf-live-wait" title="Live trading isn’t open yet, so it places no orders.">1 live (waiting)'
@@ -239,6 +239,21 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     // Open, it is the plain live count.
     f.S.me.live_trading_available = true;
     assert.equal(await running(status), '<span class="apf-live">1 live</span> · 2 paper');
+    f.clearTimers();
+  });
+
+  // Walk 2026-10-30 (new user, autopilot just on, a session researching): the panel read "Running None" over
+  // "a research session is running". The figure counts strategies, and says so, as the dashboard card does.
+  test(`${name}: the autopilot panel's running figure names strategies, so research running beside "None" doesn't contradict it`, async () => {
+    const f = frontend({fetchImpl: () => response({messages: [], models: []})});
+    f.S.me.user.autopilot = true;
+    const box = new (f.root.constructor)('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
+    await f.apUpdate(box, {autopilot: true, mode: 'paper', research: {active: [{id: 5, market: 'btc15m'}], tested_7d: 0, passed_7d: 0},
+      live_running: 0, paper_running: 0, demo_running: 0, today_paper_pnl: 0, story: []});
+    await settle();
+    const html = box.querySelector('#apf-stats').innerHTML;
+    assert.match(html, /<dt>Strategies running<\/dt><dd>None<\/dd>/);
+    assert.doesNotMatch(html, /<dt>Running<\/dt>/);
     f.clearTimers();
   });
 

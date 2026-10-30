@@ -421,6 +421,20 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(main(g), /<p class="hint ap-paper" data-ap-next hidden>/);
   });
 
+  // Walk 2026-10-30: a rejected strategy's ladder said "Next rung, paper: nothing needed" beside the Deploy panel's
+  // red "It wasn't validated, so deploying it is your call and your risk".
+  test(`${name}: a void or rejected strategy's next rung doesn't say "nothing needed"`, async () => {
+    for (const status of ['rejected', 'failed']) {
+      const f = await open({status, out_of_sample: null, experiment: {classification: status === 'failed' ? 'inconclusive' : 'rejected'}});
+      const ladder = f.root.querySelector('#ladder-body').textContent;
+      assert.match(ladder, /Next rung, paper: it didn’t pass its tests, so putting it there is your call\. Deploy it on paper below\./, status);
+      assert.doesNotMatch(ladder, /nothing needed/, status);
+      assert.match(main(f), /is your call and your risk/, status);
+    }
+    const passed = await open({status: 'passed'});
+    assert.match(passed.root.querySelector('#ladder-body').textContent, /Next rung, paper: nothing needed\. Deploy it on paper below\./);
+  });
+
   test(`${name}: the ideas-tested figure says "Ideas tested" over the session's count, in the words the lists use`, async () => {
     // Walk 2026-10-27: Tau's figure read "Hypotheses tested 1 of 18" while Meridian and both strategy lists
     // said "Ideas tested" over 18; Meridian's abstract still said "hypotheses tested this run".
