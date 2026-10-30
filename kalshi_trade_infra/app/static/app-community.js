@@ -34,8 +34,10 @@ window.TauPage('community', (T) => {
       // under it: "(later period · unseen data)" beside a dash described a figure that wasn't there (walked 2026-10-28).
       // A Void card the server flags (no_gatekeeper_record on a failed one: the first version's simple backtest stored it
       // as failed, never judged on held-out data) says "not held out" too, without "which picked it": nothing picked it.
-      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date${snap.status === 'failed' ? '' : ', which picked it'} (later\u00a0period${SEP}not\u00a0held\u00a0out).`
-        : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data).`;
+      // The note ends ", not paper or live trading." as Meridian's card does: Tau's said only "Backtest…", and a
+      // "+$42.17" beside a Passed stamp in a feed of paper and live results could pass for money made (walked 2026-10-30).
+      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date${snap.status === 'failed' ? '' : ', which picked it'} (later\u00a0period${SEP}not\u00a0held\u00a0out), not paper or live trading.`
+        : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data), not paper or live trading.`;
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
       return owner ? `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
@@ -283,8 +285,14 @@ window.TauPage('community', (T) => {
           const inp = frm.querySelector('input'); const body = inp.value.trim(); if (!body) return;
           await busy(frm.querySelector('button'), async () => {
             try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
-              // refresh reply counts + thread affordance (also re-collapses the thread)
+              // Refresh reply counts and the thread link. The repaint closes every thread, so this one opens again
+              // with the new reply in it: walked 2026-10-30, a sent reply vanished with its thread, and only "3 replies"
+              // turning "4 replies" said it had gone through.
               if (!(await refreshed(load(true)))) flash(box.querySelector('.form-flash'), 'Reply sent.' + BEHIND, 'good');
+              else {
+                const again = feed.querySelector(`.post[data-id="${pid}"]`);
+                if (again && (again.querySelector('.comments') || {}).hidden) again.querySelector('[data-act="comments"]').click();
+              }
             } catch (err) { flash(box.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };

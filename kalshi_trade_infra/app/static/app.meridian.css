@@ -2192,6 +2192,7 @@ body.landing-body .apf { display: none; }
 .position-side, .position-quantity { font-size: 15px; line-height: 20px; font-weight: 500; white-space: nowrap; }
 .t-positions td.position-expiry-cell { color: var(--ink-2); }
 .position-expiry { white-space: normal; font-size: 13px; line-height: 20px; }
+.position-expired { display: block; font-size: 12px; line-height: 18px; color: var(--ink-3); }
 .t-positions td.position-entry, .position-cost { font-size: 16px; line-height: 22px; }
 .position-entry { text-align: right; }
 .position-pnl { font-size: 18px; line-height: 24px; font-weight: 600; }

@@ -198,11 +198,51 @@ export function communityCases({name, frontend}) {
         else assert.doesNotMatch(html, /snap-note/, JSON.stringify(over));
       }
     }
+    // Walk 2026-10-30: Tau's card said only "Backtest…" under "+$42.17" and a Passed stamp, in a feed of paper and live
+    // results; Meridian's said "not paper or live trading". Every card with a figure says so now, for its owner and anyone.
+    for (const over of [{}, {no_gatekeeper_record: true}, {status: 'backtest-only'}, {status: 'failed', no_gatekeeper_record: true}]) {
+      for (const owner of ['', '@maya']) {
+        assert.match(f.postSnapshot({...card, ...over}, owner), /\), not paper or live trading\./, JSON.stringify(over) + owner);
+      }
+    }
     // A Void, Rejected or missed-final idea's figure is never green: Meridian's card toned "+$42.17" under a Void
     // stamp, where its row on Strategies mutes it.
     for (const over of [{status: 'failed'}, {status: 'rejected'}, {verdict: 'missed_final'}]) {
       const html = f.postSnapshot({...card, pnl: 42.17, ...over}, '');
       assert.match(html, /\+\$42\.17/); assert.doesNotMatch(html, /class="[^"]*\b(gain|loss)\b[^"]*">\+\$42\.17/, JSON.stringify(over));
     }
+  });
+  test(`${name}: a sent reply shows in its thread, which opens again after the feed repaints`, async () => {
+    // Walk 2026-10-30: the repaint after a reply closed every thread, so the reply vanished with its thread and only
+    // "3 replies" turning "4 replies" said it had gone through.
+    let count = 1;
+    const replies = [{body: 'First', author: 'Ana', username: 'ana', created_at: '2026-10-17T10:00:00Z'}];
+    const f = frontend({fetchImpl: (path, options) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/11/comments' && options && options.method === 'POST') {
+        replies.push({body: JSON.parse(options.body).body, author: 'Dev', username: 'dev', created_at: '2026-10-17T10:05:00Z'}); count += 1;
+        return response({ok: true});
+      }
+      if (path === '/api/community/11/comments') return response({comments: replies.slice()});
+      if (path.startsWith('/api/community')) return response({posts: [post(11, {comments: count})]});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const feed = f.root.querySelector('#feed');
+    const proto = Object.getPrototypeOf(f.root), had = Object.prototype.hasOwnProperty.call(proto, 'click'), was = proto.click;
+    proto.click = function () { return feed.listeners.get('click')({target: this}); };
+    try {
+      await feed.querySelector('[data-act="comments"]').click(); await settle();
+      const form = feed.querySelector('.post[data-id="11"] .cmt-form');
+      form.querySelector('input').value = 'Thanks, @ana';
+      await form.onsubmit({preventDefault() {}, currentTarget: form}); await settle();
+      assert.deepEqual(sent(f).map(({path}) => path), ['/api/community/11/comments']);
+      const art = feed.querySelector('.post[data-id="11"]');
+      assert.match(art.querySelector('[data-act="comments"]').textContent, /2 replies/);
+      assert.equal(art.querySelector('.comments').hidden, false, 'the thread is open again');
+      assert.match(art.querySelector('.cmt-list').textContent, /Thanks, /);
+      assert.ok(art.querySelector('.cmt-form'), 'with its reply box');
+    } finally { if (had) proto.click = was; else delete proto.click; }
   });
 }

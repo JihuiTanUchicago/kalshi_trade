@@ -287,8 +287,14 @@ window.TauPage('community', (T) => {
           const inp = frm.querySelector('input'); const body = inp.value.trim(); if (!body) return;
           await busy(frm.querySelector('button'), async () => {
             try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
-              // refresh reply counts + thread affordance (also re-collapses the thread)
+              // Refresh reply counts and the thread link. The repaint closes every thread, so this one opens again
+              // with the new reply in it: walked 2026-10-30, a sent reply vanished with its thread, and only "3 replies"
+              // turning "4 replies" said it had gone through.
               if (!(await refreshed(load(true)))) flash(box.querySelector('.form-flash'), 'Reply sent.' + BEHIND, 'good');
+              else {
+                const again = feed.querySelector(`.post[data-id="${pid}"]`);
+                if (again && (again.querySelector('.comments') || {}).hidden) again.querySelector('[data-act="comments"]').click();
+              }
             } catch (err) { flash(box.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };
