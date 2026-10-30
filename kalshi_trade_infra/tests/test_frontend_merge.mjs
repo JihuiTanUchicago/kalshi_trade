@@ -29,6 +29,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
+import {moneyPagesWalkCases} from './money_pages_walk_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -5599,6 +5600,7 @@ unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unmarkedPositionCases({name: 'Tau', frontend});
 moneyAgreementCases({name: 'Tau', frontend});
 pastCloseCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
+moneyPagesWalkCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 

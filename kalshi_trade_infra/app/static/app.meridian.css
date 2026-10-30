@@ -2191,6 +2191,7 @@ body.landing-body .apf { display: none; }
 .position-entry { text-align: right; }
 .position-pnl { font-size: 18px; line-height: 24px; font-weight: 600; }
 .position-pnl .vh { left: 0; }
+.position-marked { display: block; font-size: 12px; line-height: 18px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 .position-group-mode { margin-left: 12px; color: var(--ink-3); font-size: 12px; font-weight: 400; }
 .position-details .sub-fig { margin: 4px 0 6px; font-size: 12px; line-height: 18px; font-weight: 400; color: var(--ink-3); white-space: normal; }
 .position-opened, .position-why, .position-absolute, .position-mark-note { display: block; margin-top: 3px; font-size: 12px; line-height: 18px; color: var(--ink-2); }

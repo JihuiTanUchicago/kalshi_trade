@@ -30,6 +30,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
+import {moneyPagesWalkCases} from './money_pages_walk_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -6418,6 +6419,7 @@ unrealizedCellCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unmarkedPositionCases({name: 'Meridian', frontend});
 moneyAgreementCases({name: 'Meridian', frontend});
 pastCloseCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
+moneyPagesWalkCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
