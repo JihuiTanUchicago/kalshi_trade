@@ -1257,7 +1257,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><p class="bell-stale" hidden></p><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${AP_ENTRY}${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><p class="bell-stale" hidden></p><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false"><span class="profile-name">${esc(u.name || u.email)}</span><svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <main class="wrap">
@@ -1286,6 +1286,8 @@
       prof.addEventListener('focusout', (e) => { if (!menu.hidden && !prof.contains(e.relatedTarget)) close(); });
     }
     wireBell();
+    const apEntry = root.querySelector('[data-ap-entry]');
+    if (apEntry) apEntry.onclick = (e) => { const box = document.getElementById('autopilot-float'); if (box) apAction(box, 'toggle', e); };
     // Phones scroll the section tabs in one row; bring the current one into view.
     const tabs = root.querySelector('.services-in'), curTab = tabs && tabs.querySelector('[aria-current="page"]');
     // Show the tab before the current one whole, not a clipped letter of it, so the row reads as scrollable.
@@ -3782,7 +3784,7 @@
     const host = document.getElementById('dash-ap');
     if (!S.me || !S.me.user) return;
     const d = S.ap, on = d ? d.autopilot : !!S.me.user.autopilot;
-    syncApCopy(on);
+    syncApCopy(on); apEntryPaint(d);
     if (!host) return;
     if (!on) {
       host.className = 'apcard';
@@ -4216,6 +4218,27 @@
     'live-armed': { label: `Autopilot${SEP}live armed`, cls: 'live' },
     live: { label: `Autopilot${SEP}LIVE`, cls: 'live' },
   };
+  // Before the first status read lands (or if it fails), the pill goes by the saved switch: an autopilot
+  // user's pill read "Autopilot off" on every page load until then.
+  const apPillMode = (d) => d ? (AP_MODE[d.mode] || AP_MODE.off) : (S.me && S.me.user && S.me.user.autopilot ? AP_PENDING_ON : AP_MODE.off);
+  // The pill steps aside while a control is under it (apYield), and on Research's column of fields and
+  // card links that was most of the page: it showed at about 1 in 6 scroll positions on a 390px phone. The
+  // masthead's Autopilot button opens the same panel from the top of every signed-in page. It says what
+  // the pill says, from the same reads (apPillMode, apPillLabel), and is repainted wherever the pill is and
+  // wherever copy follows the switch (paintDashAp), so the two never disagree; a phone shows the word and
+  // the dot, and keeps the rest for a screen reader. Focus comes back to it when the panel it opened closes.
+  const AP_ENTRY = `<button type="button" class="ap-entry" data-ap-entry aria-controls="autopilot-float" aria-expanded="false"><span class="apf-dot" aria-hidden="true"></span><span class="ap-entry-label">Autopilot</span><span class="ap-entry-state"></span></button>`;
+  function apEntryPaint(d = S.ap) {
+    const b = root.querySelector('[data-ap-entry]');
+    if (!b) return;
+    const m = apPillMode(d), label = apPillLabel(d, m);
+    const rest = label.startsWith('Autopilot') ? label.slice('Autopilot'.length) : SEP + label;
+    const cls = 'ap-entry' + (m.cls ? ' ' + m.cls : '');
+    if (b.className !== cls) b.className = cls;
+    const st = b.querySelector('.ap-entry-state');
+    if (st && st.textContent !== rest) st.textContent = rest;
+    b.setAttribute('aria-expanded', String(apExpanded()));
+  }
   // The open panel (its controls, the activity feed and the chat) is in app-autopilot.js, fetched the
   // first time it opens (page files, at the end of this file): every page draws the pill, few open it.
   // Until the file has run, the panel shows its head over a skeleton, and the pill's next render
@@ -4248,11 +4271,10 @@
   function apUpdate(box, d) { if (PAGES.autopilot) PAGES.autopilot.apUpdate(box, d); }
   function apStopChat() { if (PAGES.autopilot) PAGES.autopilot.apStopChat(); }
   function renderAutopilot(box, d) {
+    apEntryPaint(d);
     if (!apExpanded()) {
       apStopChat();
-      // Before the first status read lands (or if it fails), go by the saved switch: an autopilot
-      // user's pill read "Autopilot off" on every page load until then.
-      const m = d ? (AP_MODE[d.mode] || AP_MODE.off) : (S.me && S.me.user && S.me.user.autopilot ? AP_PENDING_ON : AP_MODE.off);
+      const m = apPillMode(d);
       box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
       box.dataset.shell = '';
       const tip = d && d.autopilot ? (apStory(d)[0] || '') : '';
@@ -4380,10 +4402,18 @@
   async function apAction(box, action, e) {
     if (action === 'toggle') {
       const opening = !apExpanded();
+      // Opened from the masthead's Autopilot button, the panel gives focus back to it when it closes (its
+      // X, Esc, or the button again), as it does to the pill it was opened from.
+      const t = e && e.currentTarget, fromEntry = !!(t && t.dataset && t.dataset.apEntry !== undefined);
+      const back = !opening && S.apFromEntry;
+      S.apFromEntry = opening && fromEntry;
       S.apAutoOpen = null;
       localStorage.setItem('tau_ap_open', opening ? '1' : '0'); renderAutopilot(box, S.ap);
-      // Opened, focus goes into the panel (its close button comes first); closed, back to the pill.
-      const to = opening && box.querySelector('.apf-x'); if (to && to.focus) to.focus({ preventScroll: true });
+      // Opened, focus goes into the panel (its close button comes first); closed, back to the pill, or to the
+      // masthead's button that opened it while that is still on screen (scrolled away, the pill keeps it).
+      const to = opening ? box.querySelector('.apf-x') : back && root.querySelector('[data-ap-entry]');
+      const r = to && !opening && to.getBoundingClientRect ? to.getBoundingClientRect() : null;
+      if (to && to.focus && !(r && (r.bottom <= 0 || (typeof innerHeight === 'number' && r.top >= innerHeight)))) to.focus({ preventScroll: true });
       return;
     }
     if (action === 'livearm') {

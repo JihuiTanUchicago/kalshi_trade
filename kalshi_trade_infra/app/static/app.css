@@ -225,6 +225,21 @@ th .info { vertical-align: 0; }
 .admin-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
 .asof .sep { color: var(--rule-2); margin: 0 .5em; }
 /* Profile dropdown in the masthead — Billing + Sign out under the user's name */
+/* The masthead's Autopilot button (app.js AP_ENTRY): the same panel the floating pill opens, reachable at the top of
+   every signed-in page while the pill steps aside. Its dot and words are the pill's; a phone shows the word and dot
+   and keeps the state ("off", "· paper") for a screen reader, so the row never wraps at 320px. */
+.ap-entry { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font: inherit; font-family: var(--f-nar); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); background: none; border: 0; padding: 0; cursor: pointer; }
+.ap-entry:hover, .ap-entry[aria-expanded="true"] { color: var(--ink); }
+.ap-entry:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+.ap-entry .apf-dot { width: 7px; height: 7px; }
+.ap-entry.paper .apf-dot { background: var(--ink); }
+.ap-entry.live .apf-dot { background: var(--signal); }
+.ap-entry.live { color: var(--signal); font-weight: 600; }
+/* With the Autopilot button, a long account name ("Jonathan.Alexander.Smith") pushed the masthead onto a second row on
+   a phone: the row stays one line and the name gives way, ending in an ellipsis (its full text stays its accessible name). */
+.profile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .masthead-in { flex-wrap: nowrap; } .wordmark, .ap-entry, .bell-wrap, .admin-toggle { flex: none; } .asof, .profile, .profile-trig { min-width: 0; }
+  .ap-entry { margin-right: 6px; } .ap-entry-state { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 .bell-wrap { position: relative; display: inline-flex; margin-right: 12px; }
 .bell-trig { position: relative; display: inline-flex; align-items: center; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; }
 .bell-trig:hover, .bell-trig[aria-expanded="true"] { color: var(--ink); }
@@ -1999,7 +2014,7 @@ body.landing-body .apf { display: none; }
   /* iOS zooms the whole page into any field under 16px; at 16px focusing a field leaves the layout alone. */
   .input, input[type=number], input[type=password], input[type=text], input[type=email], input[type=search], select, textarea { font-size: 16px; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
-  .admin-toggle, .bell-trig, .profile-trig { min-height: 44px; }
+  .admin-toggle, .bell-trig, .profile-trig, .ap-entry { min-height: 44px; }
   .bell-trig { min-width: 44px; justify-content: center; }
   /* The account menu's items (31-34px) and the bell's "Try again" (a 17px text button at the end of its
      "Couldn't refresh" line): 44px. The line keeps its height; its padding makes room for the grown button. */

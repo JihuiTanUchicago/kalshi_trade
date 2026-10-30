@@ -972,6 +972,67 @@ test('the autopilot pill goes by the saved switch until its first status read la
   }
 });
 
+// The pill steps aside while a control is under it, which on Research was most scroll positions. The masthead
+// carries a second way in on every signed-in page: a real button that opens the same panel, says what the pill
+// says as the switch moves, writes nothing, and takes focus back when the panel it opened closes.
+test('the masthead Autopilot button opens the pill’s panel and says what the pill says', async () => {
+  const store = new Map(), writes = [];
+  const f = frontend({storage: {getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v))}, fetchImpl: (path, options) => {
+    if (options && options.method && options.method !== 'GET') writes.push(path);
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/chat')) return response({messages: [], agent_busy: false});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  const entry = () => f.root.querySelector('.masthead [data-ap-entry]');
+  const pillText = () => f.root.parent.querySelector('#autopilot-float .apf-pill-label').textContent;
+  const said = () => entry().querySelector('.ap-entry-label').textContent + entry().querySelector('.ap-entry-state').textContent;
+  for (const view of ['viewResearch', 'viewDashboard']) {
+    f.location.pathname = view === 'viewResearch' ? '/research' : '/';
+    await f[view](); await flush(); await flush();
+    const b = entry();
+    assert.ok(b, `${view}: the masthead has the Autopilot button`);
+    assert.equal(b.tag, 'button'); assert.equal(b.getAttribute('type'), 'button');
+    assert.equal(b.getAttribute('aria-controls'), 'autopilot-float');
+    assert.equal(b.getAttribute('aria-expanded'), 'false');
+    assert.equal(said(), pillText(), 'the same words as the pill');
+    assert.equal(said(), 'Autopilot off');
+  }
+  // The switch flips (another tab, the panel's switch, the card): the button follows with the pill's copy.
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn}; f.paintDashAp();
+  assert.equal(said(), f.apPillLabel(f.S.ap, {label: 'Autopilot · paper', cls: 'paper'}));
+  assert.match(entry().className, /\bpaper\b/);
+  f.renderAutopilot(f.document.getElementById('autopilot-float'), f.S.ap);
+  assert.equal(said(), pillText());
+  f.S.me.user.autopilot = false; f.S.ap = {...apOn, autopilot: false, mode: 'off'}; f.paintDashAp();
+  assert.equal(said(), 'Autopilot off'); assert.doesNotMatch(entry().className, /\bpaper\b|\blive\b/);
+  // Pressed, it opens the same panel the pill opens, and turns nothing on.
+  const box = f.document.getElementById('autopilot-float');
+  writes.length = 0;
+  entry().onclick({currentTarget: entry()}); await flush(); await flush();
+  assert.match(box.className, /\bopen\b/);
+  assert.equal(store.get('tau_ap_open'), '1');
+  assert.equal(entry().getAttribute('aria-expanded'), 'true');
+  assert.ok(box.querySelector('.apf-x').focused, 'focus goes into the panel, as from the pill');
+  assert.deepEqual(writes, [], 'opening the panel changes no setting');
+  assert.equal(f.S.me.user.autopilot, false);
+  // Closed from the panel, focus comes back to the button that opened it.
+  const b = entry(); b.focused = false;
+  box.querySelector('.apf-x').onclick({}); await flush();
+  assert.ok(box.querySelector('.apf-pill'), 'the pill is back');
+  assert.equal(b.getAttribute('aria-expanded'), 'false');
+  assert.ok(b.focused, 'focus returns to the masthead button');
+  // Opened from the pill, it still goes back to the pill, not the masthead.
+  b.focused = false;
+  box.querySelector('.apf-pill').onclick({currentTarget: box.querySelector('.apf-pill')}); await flush();
+  box.querySelector('.apf-x').onclick({}); await flush();
+  assert.equal(b.focused, false);
+});
+
 test('the empty Deployed box follows the autopilot switch without a reload', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());
