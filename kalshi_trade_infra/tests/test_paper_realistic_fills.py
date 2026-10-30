@@ -378,6 +378,25 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it’s still picking"])})
     assert story[0] == "Right now it’s picking a market to research."
     assert story[1] == "This week your sessions and the autopilot’s tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
+    assert out["watch"] is None  # these rows carry no id: nothing to link
+
+
+def test_research_activity_names_the_newest_active_session_to_watch(monkeypatch):
+    """The card's "It's researching Bitcoin" links the session it means: the newest queued or running one
+    (research_live is newest first). A finished or stale one is never linked; with none active, nothing is."""
+    from app import server
+    from tests.autopilot_status_parts import stub_merged_reads
+    now = server.repo.now_utc()
+    runs = [{"id": 12, "market": "btc15m", "status": "running", "created_at": now, "started_at": now, "heartbeat_at": now},
+            {"id": 9, "market": "btc15m", "status": "succeeded", "created_at": now}]
+    stub_merged_reads(monkeypatch)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)
+    monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: 0.0)
+    assert server._research_activity(None, 7)["watch"] == 12
+    runs[0]["status"] = "succeeded"
+    assert server._research_activity(None, 7)["watch"] is None
 
 
 def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_passed():
