@@ -4,7 +4,7 @@ Both pages poll (/api/dashboard every 15s, /api/deployments every 10s) and send 
 last full answer. These pages show money: paper, demo and live P&L, balances, open positions. So after
 every kind of write that moves a figure on a page (a position opened, closed or sold in part, a deployment
 paused, paper cash deposited or reset, credits spent, a strategy passing, a live mismatch flagged, demo
-capital reloaded, a balance read from Kalshi, an early exit scored) the page's version must move, and the
+capital reloaded, a balance read from Kalshi) the page's version must move, and the
 full answer must be the one a fresh poll gets with nothing kept. A mark the engine stamps (every tick)
 does not move the version: the "same" answer carries the marks, and the kept answer with them put back
 (as the page does, pollAnswer) must again be what a fresh poll gets. So must the next UTC day, whose
@@ -239,7 +239,10 @@ def test_a_polled_money_page_is_same_only_while_every_figure_it_shows_is_unchang
                                                                0.05, NOW + timedelta(hours=2), order_ref="sim:new")),
         ("part sold", both, lambda: repo.book_partial_exit(cur, repo.get_position(cur, opens["demo"]), 1, 0.5, 0.01, 0.08, "take_profit")),
         ("position closed", both, lambda: repo.close_position(cur, opens["live"], 0.6, 0.02, 0.73, "take_profit")),
-        ("early exit scored", both, lambda: cur.execute(
+        # Since the page-speed pass of 2026-10-30 neither page sends a position's settle_result or hold_pnl (no
+        # bundle read them; views.UNSENT_POSITION_FIELDS) and no figure either page shows is made from them, so
+        # scoring an early exit leaves both answers as they were: "same", and what the page draws is a fresh poll's.
+        ("early exit scored", (), lambda: cur.execute(
             "UPDATE app_positions SET settle_result='no', hold_pnl=-0.94 WHERE id=%s", (opens["live"],))),
         ("deployment paused", both, lambda: repo.set_deployment_status(cur, uid, deps["live"], "paused", "By you")),
         ("paper cash deposited", ("dashboard",), lambda: repo.add_ledger(cur, uid, "deposit", 250.0, "Deposit")),

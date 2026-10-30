@@ -318,6 +318,22 @@ def _demo_copy_pause(d: Dict, paper_books: Optional[Dict[int, str]]) -> Optional
             "Deploy it on paper first: this demo copy resumes with its paper deployment.")
 
 
+# A position row's columns the dashboard and the Deploy board never show or read (neither bundle, nor a page file):
+# whose it is (the request's own user), the exchange order reference, the engine's close lease, the early-exit
+# scoring (settle_result, hold_pnl) and the exit fee (the row's `why` and `pnl` already say what the trade did).
+# `id` stays (each poll puts the marks back over the kept answer by position id, pollAnswer, and page_poll keys the
+# marks by it), so do `deployment_id` (the pages group positions by deployment) and every mark field page_poll
+# carries (mark_price with them). Only the answers drop them: the rows read are the engine's and the books', unchanged,
+# and `why` is worked out from the whole row before. Page-speed pass 2026-10-30: on a seeded account (20 open, 20
+# recent closed) /api/deployments 39.1 -> 34.8KB and /api/dashboard 32.7 -> 29.8KB raw (gzip ~1% less), each 10s / 15s poll.
+UNSENT_POSITION_FIELDS = ("user_id", "order_ref", "close_claim", "close_claim_ts", "settle_result", "hold_pnl", "exit_fee")
+
+
+def position_out(p: Dict) -> Dict:
+    """A position as the dashboard and the Deploy board send it: the row less UNSENT_POSITION_FIELDS."""
+    return {k: v for k, v in p.items() if k not in UNSENT_POSITION_FIELDS}
+
+
 def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None,
                     demo_key_back: bool = False, paper_books: Optional[Dict[int, str]] = None) -> Dict:
     res = d.get("result") or {}
