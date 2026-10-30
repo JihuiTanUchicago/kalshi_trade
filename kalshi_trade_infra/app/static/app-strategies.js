@@ -890,10 +890,10 @@ window.TauPage('strategies', (T) => {
                 ${s.status !== 'passed' && !(missed && s.verdict) ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missedShown[0].label.charAt(0).toLowerCase() + missedShown[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? (splitOnly ? 'Void: it failed its backtest checks after the split date.' : 'Void: it failed the unseen-data gate.') : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 ${apLine}<button class="btn" id="dep-paper"${apOff}>Deploy on paper</button>${paperAgain(activeDeps)}${paperHere}
                 ${fold('Demo &amp; live', `<div class="fold-body" style="display:grid;gap:10px">
-                <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
-                ${demoWhy ? `<p class="hint">${demoWhy}</p>` : '<p class="hint">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
-                <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true"' : ''}>Deploy with live money</button>
-                ${liveWhy ? `<p class="hint">${liveWhy}</p>` : ''}
+                <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true" ' : ''}aria-describedby="dep-demo-why">Deploy on demo (sandbox)</button>
+                ${demoWhy ? `<p class="hint" id="dep-demo-why">${demoWhy}</p>` : '<p class="hint" id="dep-demo-why">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
+                <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true" aria-describedby="dep-live-why"' : ''}>Deploy with live money</button>
+                ${liveWhy ? `<p class="hint" id="dep-live-why">${liveWhy}</p>` : ''}
                 <form id="live-confirm" hidden style="display:grid;gap:8px">
                   <p class="hint">This trades real money in your Kalshi account. Type <b>LIVE</b> to confirm.</p>
                   <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE to confirm">

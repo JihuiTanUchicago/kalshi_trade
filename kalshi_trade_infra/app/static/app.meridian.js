@@ -893,14 +893,22 @@
     clearTimers();
     const gen = ++S.gen;
     window.scrollTo(0, 0);
-    // On a phone the open autopilot panel fills the screen, so moving to a page closes it.
-    if (phone()) { try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
+    // On a phone the open autopilot panel fills the screen, so moving to a page closes it. Focus left in it (a
+    // link in the panel, its X) goes with it, so the new page's heading takes focus (pageArrived leaves focus that
+    // is somewhere), not the pill the closing panel would hand it to.
+    if (phone()) {
+      try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ }
+      const f = document.getElementById('autopilot-float'), a = document.activeElement;
+      if (f && a && f.contains(a) && shownPath !== location.pathname && a.blur) a.blur();
+    }
     // The panel that switching autopilot on opened by itself (desktop) folds to its pill on the next page: left
     // open, it covered half of that page, the nav links under it and the research form (walk 2026-10-28). A panel
     // the reader opened stays open.
     if (S.apAutoOpen && S.apAutoOpen !== location.pathname) { S.apAutoOpen = null; try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
+    // A sheet closed above hands the page back before it draws, so the new page's heading can take focus.
+    apInertPage();
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
     if (!S.me && path !== '/signin') {
       // Boot: a 401 means signed out (-> signin). Any other failure (slow, overloaded, offline) is
@@ -4434,7 +4442,26 @@
   }
   function apUpdate(box, d) { if (PAGES.autopilot) PAGES.autopilot.apUpdate(box, d); }
   function apStopChat() { if (PAGES.autopilot) PAGES.autopilot.apStopChat(); }
+  // On a phone the open panel is a full-screen sheet (app.meridian.css: `.apf.open { inset: 0 }` under 601px). Tab
+  // stays inside it (app.meridian-autopilot.js), but a screen reader's swipe walked on past its last control into the
+  // page hidden under it. While the sheet is up, everything beside it is inert: each sibling on the way up from the
+  // panel (in the masthead) to <body>, so the rest of the masthead, the page and the rail, except the live regions
+  // announce() speaks through. Closing it (its X, Esc, the pill, a page change) or widening the window past a sheet
+  // hands the page back. A panel beside the page (desktop) leaves the page alone.
+  function apInertPage() {
+    const box = document.getElementById('autopilot-float'), body = document.body;
+    const sheet = !!(box && box.isConnected && apExpanded() && window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+    const want = new Set();
+    if (sheet) for (let el = box; el.parentElement && el !== body; el = el.parentElement) {
+      for (const sib of [...el.parentElement.children]) if (sib !== el && !sib.hasAttribute('aria-live')) want.add(sib);
+    }
+    // Only what this put there comes off: an element inert for its own reasons stays inert.
+    for (const el of [...body.querySelectorAll('[data-ap-inert]')]) if (!want.has(el)) { el.removeAttribute('inert'); el.removeAttribute('data-ap-inert'); }
+    want.forEach((el) => { if (!el.hasAttribute('inert')) { el.setAttribute('inert', ''); el.setAttribute('data-ap-inert', ''); } });
+  }
+  addEventListener('resize', apInertPage);
   function renderAutopilot(box, d) {
+    apInertPage();
     if (!apExpanded()) {
       apStopChat();
       // Before the first status read lands (or if it fails), go by the saved switch: an autopilot

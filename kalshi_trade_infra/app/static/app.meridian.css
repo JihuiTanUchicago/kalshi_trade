@@ -1131,6 +1131,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .paper-sec { margin-top: 28px; }
   .paper-sec-t { gap: 10px; letter-spacing: .1em; }
   .stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  /* A stacked table's header row is clipped to nothing, for a screen reader's column names. Its (i) buttons
+     (Deploy's Realized, Unrealized, Backtest estimate) stayed in the tab order there: Tab landed on a control
+     no one could see, and its definition opened beside nothing. The cards label each figure (data-lab). */
+  .stack thead .info { display: none; }
   .stack tbody tr { display: flex; flex-direction: column; border-bottom: 1px solid var(--rule-2); padding: 10px 0 8px; }
   .stack tbody td { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; border: 0; padding: 2px 0; white-space: normal; text-align: left; }
   .stack tbody td.name { font-size: 15px; order: -2; }
@@ -3074,10 +3078,10 @@ body.landing-body .apf { display: none; }
 .t-ledger .credit-in { font-weight: 600; }
 
 /* Keyboard focus you can see. `input:focus { outline: none }` (fields show focus with their border)
-   also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,
-   which have no border to change; and on a chosen market row the ink ring sat on the ink fill
+   also took it from the switches (Options: "Let it run until I stop it"), the What-if sliders and Funds'
+   key file picker, which have no border to change; and on a chosen market row the ink ring sat on the ink fill
    (the agent's-choice row is light when chosen, so it keeps the ink ring). */
-.switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.switch input:focus-visible, input[type=range]:focus-visible, input[type=file]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 /* A text field, a select and a message box showed focus only by their border going from --rule-2 to --ink, 1px:
    too slight to find the caret's field at a glance (WCAG 2.4.7). They take the ring every button has, 2px of ink
    2px outside, 3:1 or more on every surface a field sits on (1.4.11), and keep the darker border inside it. Not

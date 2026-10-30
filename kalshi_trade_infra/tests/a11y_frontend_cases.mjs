@@ -28,6 +28,18 @@
 //   each dial says its value with its unit (aria-valuetext), and again as it moves.
 // - Meridian's "React" button was named "Add a reaction", so a speech user saying "click React" missed it
 //   (axe label-content-name-mismatch): the word it shows is its name, its title the description.
+//
+// From a walk of seeded states (a paying account, a demo deployment, live trading off; both themes, 390px and
+// 1280px, 2026-10-30):
+// - The phone's full-screen autopilot sheet kept Tab inside it, but a screen reader's swipe walked on into the page
+//   hidden under it. The page beside the sheet is inert while it is up, and handed back when it closes. A page
+//   change from inside the sheet left focus on the pill, so the new page's heading never took it.
+// - Billing's card table had an empty column header (the Remove column), and its Payment method and Add
+//   credits panels were h3 under the page's h1. Turning auto-reload off with Space locked the switch while it
+//   saved, which dropped focus to the top of the page.
+// - A strategy page's Deploy with live money, unavailable while live trading is closed, was a dimmed button
+//   with its reason in the line under it and nothing tying the two: a screen reader heard the button, not why.
+//   Meridian's undeployed strategy page skipped from the h1 to the research sections' h3s.
 import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
@@ -353,5 +365,109 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     else assert.equal(label, 'Add a reaction');
     if (shown) assert.equal(add.getAttribute('title'), 'Add a reaction', 'what it does is its description');
     f.clearTimers();
+  });
+
+  test(`${name}: the phone's autopilot sheet makes the page behind it inert, and closing or widening hands it back`, async () => {
+    const store = new Map([['tau_ap_open', '0']]), listeners = [];
+    let width = 390;
+    const f = frontend({storage: storageFor(store), matchMedia: (q) => ({matches: width <= +/max-width: (\d+)px/.exec(q)[1]}),
+      globals: {addEventListener: (type, fn) => listeners.push([type, fn])},
+      fetchImpl: (path) => {
+        if (path === '/api/deployments') return response({deployments: [], open_positions: []});
+        if (path.startsWith('/api/chat')) return response({messages: [], agent_busy: false});
+        if (path === '/api/models') return response({models: [], default: ''});
+        return response({});
+      }});
+    f.location.pathname = '/deploy';
+    await f.render(); await flush(); await flush();
+    // The shell mounts the panel where each bundle keeps it: Tau beside the app in <body>, Meridian in the masthead.
+    const box = f.document.getElementById('autopilot-float');
+    const add = (tag, attrs) => { const el = f.document.createElement(tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); f.document.body.appendChild(el); return el; };
+    const rail = add('aside', {id: 'rail-fixture'}), said = f.document.getElementById('sr-status') || add('div', {id: 'sr-status', 'aria-live': 'polite'});
+    const under = (el) => { for (let e = el; e; e = e.parentElement) if (e.hasAttribute && e.hasAttribute('inert')) return true; return false; };
+    const anyInert = () => f.document.body.querySelectorAll('[inert]').length;
+    const open = async () => { store.set('tau_ap_open', '1'); f.renderAutopilot(box, null); await flush(); };
+    await open();
+    assert.equal(under(f.root.querySelector('main h1')), true, 'the page under the sheet is out of reach');
+    assert.equal(under(rail), true);
+    assert.equal(under(box), false, 'never the panel or what holds it');
+    assert.equal(under(box.querySelector('.apf-x')), false);
+    assert.equal(under(said), false, 'the live region stays heard');
+    // Esc closes it: the page comes back before focus goes to what opened it.
+    box.onkeydown({key: 'Escape', stopPropagation() {}}); await flush();
+    assert.equal(store.get('tau_ap_open'), '0');
+    assert.equal(anyInert(), 0);
+    // Open again, then the window widens past a sheet: the panel sits beside the page, which is usable again.
+    await open();
+    assert.equal(under(rail), true);
+    width = 1280;
+    const resize = listeners.filter(([type, fn]) => type === 'resize' && fn.name === 'apInertPage');
+    assert.equal(resize.length, 1, 'the sheet listens for the window changing size');
+    resize[0][1]();
+    assert.equal(anyInert(), 0, 'a desktop panel leaves the page alone');
+    f.renderAutopilot(box, null); await flush();
+    assert.equal(anyInert(), 0);
+    // A page change on a phone (a link in the sheet) closes it, and the new page's heading takes focus, not the pill.
+    width = 390; await open();
+    assert.equal(under(rail), true);
+    const x = box.querySelector('.apf-x');
+    x.blur = () => { f.document.activeElement = f.document.body; };
+    f.document.activeElement = x;
+    f.location.pathname = '/settings'; await f.render(); await flush(); await flush();
+    assert.equal(store.get('tau_ap_open'), '0');
+    assert.equal(anyInert(), 0);
+    const heading = f.root.querySelector('main h1'), pill = f.document.getElementById('autopilot-float').querySelector('.apf-pill');
+    assert.equal(heading.textContent, 'Settings');
+    assert.equal(heading.focusOptions && heading.focusOptions.preventScroll, true, 'the new page names itself');
+    assert.equal(pill && pill.focusOptions, undefined);
+    // Only what the sheet set comes off: an element inert for its own reasons stays so.
+    rail.setAttribute('inert', '');
+    await open(); store.set('tau_ap_open', '0'); f.renderAutopilot(box, null);
+    assert.equal(rail.hasAttribute('inert'), true);
+    f.clearTimers();
+  });
+
+  test(`${name}: Billing's card table names every column, its panels skip no heading level, and auto-reload keeps focus`, async () => {
+    let f;
+    const posts = [];
+    f = billingPage(cardedBilling(), posts, {'/api/billing/auto-reload': (options) => {
+      posts.push(JSON.parse(options.body));
+      f.document.activeElement = f.document.body;  // the browser blurs the switch the save locks
+      return response({ok: true});
+    }});
+    await f.viewBilling(); await flush();
+    const heads = f.root.querySelectorAll('#cards th');
+    assert.deepEqual(heads.map((th) => th.textContent.trim()), ['Card', 'Expires', 'Status', 'Actions']);
+    assert.equal(heads[3].querySelector('.vh').textContent, 'Actions', 'named for a screen reader, not shown');
+    assert.deepEqual(headingSkips(f.root), []);
+    assert.deepEqual(f.root.querySelectorAll('.panel h2').map((h) => h.textContent), ['Payment method', 'Add credits']);
+    const box = f.root.querySelector('#autoreload');
+    box.focus(); f.document.activeElement = box; box.checked = false;
+    await box.onchange(); await flush();
+    assert.deepEqual(posts, [{on: false, amount: 25, threshold: 8}]);
+    assert.equal(box.disabled, false);
+    assert.equal(box.focusOptions.preventScroll, true, 'focus is back on the switch once it unlocks');
+  });
+
+  test(`${name}: an unavailable live or demo deploy says why to a screen reader, and the undeployed page skips no heading`, async () => {
+    const f = strategyFrontend(detailStrategy(), () => response({}));
+    f.S.me = {...f.S.me, live_trading_available: false, kalshi_dev_connected: false};
+    await f.viewStrategy(42); await flush();
+    const live = f.root.querySelector('#dep-live'), demo = f.root.querySelector('#dep-demo');
+    assert.equal(live.getAttribute('aria-disabled'), 'true');
+    assert.equal(f.root.querySelector('#' + live.getAttribute('aria-describedby')).textContent, 'Live trading isn’t open yet.');
+    assert.equal(demo.getAttribute('aria-disabled'), 'true');
+    assert.match(f.root.querySelector('#' + demo.getAttribute('aria-describedby')).textContent, /^Add your Kalshi demo \(sandbox\) key on the Funds page first\.$/);
+    assert.deepEqual(headingSkips(f.root), [], 'no deployment: the research sections sit under an h2');
+    f.clearTimers();
+    // With a demo key the demo button is described by what demo does; live open needs no reason.
+    const g = strategyFrontend(detailStrategy(), () => response({}));
+    g.S.me = {...g.S.me, live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
+    await g.viewStrategy(42); await flush();
+    assert.equal(g.root.querySelector('#dep-demo').getAttribute('aria-disabled'), null);
+    assert.match(g.root.querySelector('#dep-demo-why').textContent, /^Trades Kalshi’s demo exchange with your own demo key/);
+    assert.equal(g.root.querySelector('#dep-live').getAttribute('aria-describedby'), null);
+    assert.equal(g.root.querySelector('#dep-live-why'), null);
+    g.clearTimers();
   });
 }
