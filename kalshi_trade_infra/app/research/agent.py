@@ -757,20 +757,51 @@ def autopilot_scope_line() -> str:
 
 
 # Todd 2026-10-30 16:20Z (card "Keep spending ~$200/day on Bitcoin taker research, or move it?"): move
-# the spend. Long-term memory (rsi_sleep) then had every mechanism bucket tested 10+ times with 0 gated
-# on btc15m, btc15m_tick and btc_daily (215 runs, 1,734 ideas). Autopilot no longer starts taker research
-# on such a market; a re-test on data collected for an idea (rsi_repair) still runs, and the maker lab
-# has its own timer. Research a person starts by hand is not limited. 0 turns it off.
+# the spend. Long-term memory (rsi_sleep) then had 13-14 of the 18 mechanism buckets tested 10+ times with
+# 0 gated on btc15m, btc15m_tick and btc_daily (235 runs, 1,894 ideas); the rest had under 10 tests each.
+# Such a market is closed to autopilot taker research, apart from ONE probe run per under-tested bucket
+# (the floor starts them, one at a time), so the search is finished rather than abandoned. A re-test on
+# data collected for an idea (rsi_repair) still runs, and the maker lab has its own timer. Research a
+# person starts by hand is not limited. 0 turns it off.
 AUTOPILOT_SKIP_EXHAUSTED = os.getenv("TAU_AUTOPILOT_SKIP_EXHAUSTED", "1") != "0"
+PROBE_PREFIX = "Long-term memory probe: "
+_PROBE_RX = re.compile(r"mechanism is \u201c([^\u201d]+)\u201d")
 
 
-def exhausted_markets(cur, user_id: int, keys: List[str]) -> List[str]:
-    """The keys whose long-term memory has every mechanism exhausted, so autopilot skips them."""
+def probe_angle(bucket: str) -> str:
+    return (PROBE_PREFIX + "every other kind of idea on this market has been tested 10+ times with nothing "
+            "reaching the gate. Propose ideas only where the mechanism is \u201c%s\u201d, the one kind long-term "
+            "memory has not tested enough here, and say that mechanism in each idea's title. If none can work "
+            "on this market, say why." % bucket)
+
+
+def _is_probe(prompt: Optional[str]) -> bool:
+    return (prompt or "").startswith(PROBE_PREFIX)
+
+
+def _probed(cur, user_id: int) -> set:
+    """(market, bucket) pairs that already had their probe run."""
+    try:
+        runs = repo.list_runs(cur, user_id, limit=500)
+    except Exception:  # noqa: BLE001
+        return set()
+    out = set()
+    for r in runs:
+        m = _PROBE_RX.search(r.get("prompt") or "") if _is_probe(r.get("prompt")) else None
+        if m and r.get("market"):
+            out.add((r["market"], m.group(1)))
+    return out
+
+
+def closed_markets(cur, user_id: int, keys: List[str]) -> Dict[str, List[str]]:
+    """{market: buckets still owed a probe} for the keys long-term memory closes to autopilot taker
+    research ([] = fully exhausted). Keys that are still live are left out."""
     from app.research import rsi, rsi_sleep
     if not AUTOPILOT_SKIP_EXHAUSTED or not rsi_sleep.enabled():
-        return []
+        return {}
     ledgers: Dict[str, Dict] = {}
-    out = []
+    out: Dict[str, List[str]] = {}
+    probed = None
     for k in keys:
         fam = rsi.family(k)
         if fam not in ledgers:
@@ -778,9 +809,18 @@ def exhausted_markets(cur, user_id: int, keys: List[str]) -> List[str]:
                 ledgers[fam] = (rsi_sleep.latest(cur, user_id, fam) or {}).get("ledger") or {}
             except Exception:  # noqa: BLE001 - no memory (or no table yet) means nothing is exhausted
                 ledgers[fam] = {}
-        if rsi_sleep.market_exhausted(ledgers[fam], k):
-            out.append(k)
+        left = rsi_sleep.open_buckets(ledgers[fam], k)
+        if left is None:
+            continue
+        if left and probed is None:
+            probed = _probed(cur, user_id)
+        out[k] = [b for b in left if (k, b) not in (probed or set())]
     return out
+
+
+def exhausted_markets(cur, user_id: int, keys: List[str]) -> List[str]:
+    """The keys autopilot leaves out of taker research (closed by long-term memory)."""
+    return list(closed_markets(cur, user_id, keys))
 
 
 def _autopilot_research_keys(cur, user_id: int) -> List[str]:
@@ -788,10 +828,22 @@ def _autopilot_research_keys(cur, user_id: int) -> List[str]:
     return focus_keys(cur, user_id, [k for k in _researchable_keys(cur) if autopilot_scope_ok(k)])
 
 
-def autopilot_research_exhausted(cur, user_id: int) -> bool:
-    """True when every market autopilot may research is exhausted: no taker research to start."""
+def next_probe(cur, user_id: int) -> Optional[Tuple[str, str]]:
+    """(market, bucket) for the research floor's next probe run, once every market autopilot may
+    research is closed; None while one is still live (normal research) or when no probe is owed."""
     keys = _autopilot_research_keys(cur, user_id)
-    return bool(keys) and set(keys) <= set(exhausted_markets(cur, user_id, keys))
+    closed = closed_markets(cur, user_id, keys)
+    if not keys or not set(keys) <= set(closed):
+        return None
+    owed = [(k, closed[k][0]) for k in sorted(keys) if closed[k]]
+    return owed[0] if owed else None
+
+
+def autopilot_research_exhausted(cur, user_id: int) -> bool:
+    """True when every market autopilot may research is closed and no probe is owed: nothing to start."""
+    keys = _autopilot_research_keys(cur, user_id)
+    closed = closed_markets(cur, user_id, keys)
+    return bool(keys) and set(keys) <= set(closed) and not any(closed.values())
 
 
 EXHAUSTED_RUN_ERROR = ("Every kind of idea has been tried on the markets autopilot researches, with nothing passing, "
@@ -801,17 +853,19 @@ EXHAUSTED_RUN_ERROR = ("Every kind of idea has been tried on the markets autopil
 
 def _exhausted_line(cur, user_id: int) -> str:
     keys = _autopilot_research_keys(cur, user_id)
-    exh = exhausted_markets(cur, user_id, keys)
-    if not exh:
+    closed = closed_markets(cur, user_id, keys)
+    if not closed:
         return ""
-    if set(keys) <= set(exh):
-        return ("Exhausted markets (the user's decision): long-term memory shows every mechanism tested 10+ times "
+    if set(keys) <= set(closed):
+        probes = sum(len(v) for v in closed.values())
+        return ("Exhausted markets (the user's decision): long-term memory shows the mechanisms tested 10+ times "
                 "with nothing reaching the gate on every market you may research (%s). Autopilot does NOT start "
                 "research on them; that spend moved to market making (its own paper lab) and to re-tests when "
-                "data collected for an idea arrives. Do not propose research now; that is expected, not a stall."
-                % ", ".join(sorted(exh)))
+                "data collected for an idea arrives.%s Do not propose research now; that is expected, not a stall."
+                % (", ".join(sorted(closed)), (" It runs %d final probe(s) of the kinds tested too little "
+                                                "itself." % probes) if probes else ""))
     return ("Exhausted markets (the user's decision), do NOT propose research on these: %s. Long-term memory "
-            "shows every mechanism tested 10+ times there with nothing reaching the gate." % ", ".join(sorted(exh)))
+            "shows the mechanisms tested 10+ times there with nothing reaching the gate." % ", ".join(sorted(closed)))
 
 
 def _coin_aliases() -> Dict[str, List[str]]:
@@ -2844,7 +2898,8 @@ def run_research(
                 % "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))
             market = None
         # A data re-test (rsi_repair) is the new-data lane: it may run on an exhausted market.
-        skip_exhausted = run.get("brief") and not rsi_repair.is_retest(run.get("prompt"))
+        skip_exhausted = (run.get("brief") and not rsi_repair.is_retest(run.get("prompt"))
+                          and not _is_probe(run.get("prompt")))
         if market and skip_exhausted and not ckpt.get("market") and exhausted_markets(cur, user_id, [market]):
             # Queued on a market long-term memory has since marked exhausted: keep the angle, pick another.
             log("step", "Every kind of idea has been tried on %s with nothing passing, so autopilot no longer "

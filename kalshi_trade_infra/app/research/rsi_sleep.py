@@ -163,11 +163,27 @@ def exhausted(ledger: Dict, market: str, min_tested: int = EXHAUSTED_MIN) -> Lis
             if m != "unbucketed" and c["tested"] >= min_tested and not c["gated"]]
 
 
+def open_buckets(ledger: Dict, market: str, min_tested: int = EXHAUSTED_MIN) -> Optional[List[str]]:
+    """None while `market` is live: something reached the gate there, or fewer than half the named
+    mechanisms are exhausted. Otherwise the named mechanisms still tested under min_tested times,
+    least tested first ([] = every one exhausted). Prod 2026-10-30: btc15m had 14 of 18 exhausted;
+    the 4 left (contract age, moneyness band, settlement nowcast, tick rounding) had under 10 tests,
+    because they came late to MECHANISMS and an idea lands in the first bucket its title matches."""
+    from app.research.rsi import MECHANISMS
+    names = list(dict.fromkeys(name for name, _ in MECHANISMS))
+    cells = (ledger.get("markets") or {}).get(market) or {}
+    if any(c.get("gated") for c in cells.values()):
+        return None
+    dead = set(exhausted(ledger, market, min_tested))
+    if len(dead) * 2 < len(names):
+        return None
+    left = [n for n in names if n not in dead]
+    return sorted(left, key=lambda n: ((cells.get(n) or {}).get("tested", 0), names.index(n)))
+
+
 def market_exhausted(ledger: Dict, market: str, min_tested: int = EXHAUSTED_MIN) -> bool:
     """Every named mechanism tested at least min_tested times on `market`, none reaching the gate."""
-    from app.research.rsi import MECHANISMS
-    names = {name for name, _ in MECHANISMS}
-    return bool(names) and names <= set(exhausted(ledger, market, min_tested))
+    return open_buckets(ledger, market, min_tested) == []
 
 
 def untried(ledger: Dict, market: str) -> List[tuple]:

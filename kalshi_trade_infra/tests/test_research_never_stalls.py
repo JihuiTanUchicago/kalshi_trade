@@ -74,8 +74,10 @@ RETEST = agent.rsi_repair.requeue_prompt({"kind": "micro", "need": "ob_imbalance
                                           "idea_why": "ob_imbalance not populated"})
 
 
-def _exhausted(monkeypatch, keys):
-    monkeypatch.setattr(agent, "exhausted_markets", lambda cur, uid, ks: [k for k in ks if k in keys])
+def _exhausted(monkeypatch, keys, probes=None):
+    """Long-term memory closes `keys`; `probes` = {market: buckets still owed a probe run}."""
+    monkeypatch.setattr(agent, "closed_markets",
+                        lambda cur, uid, ks: {k: list((probes or {}).get(k, [])) for k in ks if k in keys})
 
 
 def test_autopilot_starts_no_taker_research_when_every_market_is_exhausted(monkeypatch):
@@ -121,3 +123,29 @@ def test_the_floor_stands_down_only_when_every_market_is_exhausted(monkeypatch):
     assert worker.research_floor_due(None, 1)
     _exhausted(monkeypatch, {"btc15m", "btc_daily", "btc15m_tick"})
     assert not worker.research_floor_due(None, 1)
+
+
+def test_the_floor_runs_one_probe_per_kind_tested_too_little_before_standing_down(monkeypatch):
+    r = worker.repo
+    started = []
+    old = [{"created_at": NOW - worker.timedelta(hours=2)}]
+    monkeypatch.setattr(r, "autopilot_user_ids", lambda cur: [1])
+    monkeypatch.setattr(r, "get_user", lambda cur, uid: {"id": uid})
+    monkeypatch.setattr(r, "list_runs", lambda cur, uid, limit=1: old)
+    monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(r, "count_active_research", lambda cur: 0)
+    monkeypatch.setattr(r, "create_run", lambda cur, uid, kind, market=None, direction=None, idea=None, **kw:
+                        started.append((market, idea)))
+    monkeypatch.setattr(worker.billing, "is_ready", lambda cur, uid: True)
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily"])
+    monkeypatch.setattr(agent, "focus_keys", lambda cur, uid, keys: list(keys))
+    _exhausted(monkeypatch, {"btc15m", "btc_daily"}, {"btc_daily": ["tick discreteness / rounding"]})
+    assert worker.start_research_floor(None) == [1]
+    (market, idea), = started
+    assert market == "btc_daily" and idea == agent.probe_angle("tick discreteness / rounding")
+    assert "Do not propose research now" in agent._cooldown_line(None, 1) and "1 final probe" in agent._cooldown_line(None, 1)
+    # the probe is recognised in the run history, so that bucket is not owed again
+    monkeypatch.undo()
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=500: [
+        {"market": "btc_daily", "prompt": idea}, {"market": "btc15m", "prompt": "Order flow."}])
+    assert agent._probed(None, 1) == {("btc_daily", "tick discreteness / rounding")}
