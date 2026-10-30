@@ -119,6 +119,17 @@ export function explorePageCases({name, frontend}) {
     assert.match(raw.textContent, /Page 1 of 6 · 130 points/);
   });
 
+  // Walk 2026-10-30, a settled Bitcoin contract with one price left in its window: "1 per-minute points" and "1 points".
+  test(`${name}: a market page with one price says "1 point", not "1 points"`, async () => {
+    const f = await open(page({points: [{t: 1793012400, yes: .97, vol: 3}]}));
+    const head = f.root.querySelectorAll('.sect-head').find((h) => /Raw data/.test(h.textContent));
+    assert.match(head.textContent, /1 per-minute point\u00a0· newest first/);
+    assert.match(f.root.querySelector('#rawsect').textContent, /Page 1 of 1\u00a0· 1 point$/);
+    assert.doesNotMatch(f.root.querySelector('#main').textContent, /\b1 (?:per-minute )?points\b/);
+    const two = await open(page({points: [{t: 1793012400, yes: .5, vol: 1}, {t: 1793012460, yes: .5, vol: 1}]}));
+    assert.match(two.root.querySelector('#rawsect').textContent, /Page 1 of 1\u00a0· 2 points$/);
+  });
+
   // A Bitcoin contract's page: where stored spot is against the strike (/api/explore/spot), in its own section.
   const SPOT = {ticker: 'KXBTCD-26OCT2617-T112999.99', spot: {price: 113420, at: '2026-10-26T11:00:00Z', age_s: 4, stale: false},
     strike: {kind: 'above', value: 112999.99, lo: null, hi: null, inclusive: false, from: 'ticker'},

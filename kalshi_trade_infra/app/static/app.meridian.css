@@ -2705,6 +2705,9 @@ body.landing-body .apf { display: none; }
      its focus ring is drawn inside it, where the 2px ring outside it was cut off at the right and top. */
   .apf.open .apf-x:focus-visible { outline-offset: -3px; }
   .apf.open .apf-session { flex: none; min-height: 55vh; }
+  /* The sheet is the one scroll, as Tau's: the research log's 52vh cap kept the feed a scroll of its own inside it,
+     so a long reply scrolled in a 440px box under a sheet that scrolled too, and a thumb on the feed moved only one. */
+  .apf.open .log.stream.apf-log { max-height: none; }
   .apf.open .apf-composer-row { position: sticky; bottom: 0; }
   .apf-stats, .apf-stats[data-cols] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .apf-stats > .apf-tail { grid-column: 1 / -1; }

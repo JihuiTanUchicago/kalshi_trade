@@ -2779,6 +2779,30 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
 });
 
+// Walk 2026-10-30 at 1280px and 390px: a closed 15-minute window's row read "Yes bid 0¢ · Yes ask 0¢", a Yes on offer
+// for nothing, beside a market page that says "no bid / ask 5¢" for the same book. A side Kalshi sends as 0 (nobody quotes
+// it) reads "—" and says which side is empty; and a search that matches nothing says what to do next, as Tau's does.
+test('Explore shows a side nobody quotes as empty, not 0¢, and a search that misses says how to widen it', async () => {
+  const markets = Object.freeze([
+    Object.freeze({t: 'KXBTC15M-26OCT300345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $109,101.00', bid: 0, ask: 0, last: .99, v24: 90321, oi: 0}),
+    Object.freeze({t: 'KXETH15M-26OCT300430-30', s: 'KXETH15M', ti: 'ETH price up in next 15 mins?', su: 'Target Price: $3,812.10', bid: '0.0000', ask: '0.0500', last: 0, v24: 0, oi: 0}),
+    Object.freeze({t: 'A-1', s: 'X', ti: 'Weather', su: 'At least 1 inch', bid: .4, ask: .42, last: .4, v24: 8, oi: 2}),
+  ]);
+  const f = frontend({fetchImpl: () => response({at: new Date().toISOString(), markets, total: 3, shown: 3, matched: 3, per: 40})});
+  await f.viewExplore();
+  const rows = f.root.querySelectorAll('#xbody tbody tr');
+  assert.deepEqual(rows.map(row => row.querySelectorAll('.quote-side').map(n => n.textContent)),
+    [['—No bid', '—No ask'], ['—No bid', '5¢'], ['40¢', '42¢']]);
+  assert.deepEqual(rows.map(row => row.querySelector('.yes-price').textContent), ['99¢', '—', '41¢'], 'the price is the midpoint only when both sides are quoted, else the last trade');
+  assert.equal(rows[0].querySelector('.quote-bid > span').getAttribute('title'), 'No bid');
+  assert.equal(rows[0].querySelector('.quote-ask > span').getAttribute('title'), 'No ask');
+  assert.doesNotMatch(f.root.querySelector('#xbody').textContent, /(^|[^\d.])0¢/, 'no side reads as a 0¢ quote');
+  const searched = frontend({search: '?q=zzz', fetchImpl: () => response({total: 3, shown: 3, matched: 0, per: 40, page: 0, markets: []})});
+  await searched.viewExplore();
+  assert.equal(searched.root.querySelector('#xbody .empty h2').textContent, 'No markets match “zzz”');
+  assert.equal(searched.root.querySelector('#xbody .empty p').textContent, 'Try a broader search, or clear it to see the hottest markets.');
+});
+
 test('Explore and Hot Markets compact conditions preserve strict versus inclusive source bounds, exact digits and accessible source wording', async () => {
   const conditions = ['$0.00 or above', '$1,234.500 or below', 'Above $2.75', 'Below $000.0', 'At least 1 inch', '60% or above', 'Above $20 if approved'];
   const displays = ['≥ $0.00', '≤ $1,234.500', '&gt; $2.75', '&lt; $000.0', 'At least 1 inch', '60% or above', 'Above $20 if approved'];
@@ -2844,7 +2868,8 @@ test('Explore bid and ask preserve decimal strings, zero and independently missi
   await f.viewExplore();
   const rows = f.root.querySelectorAll('#xbody tbody tr');
   assert.deepEqual(rows.map(row => row.querySelectorAll('.quote-side').map(side => side.textContent)),
-    [['51¢', '53¢'], ['0¢', '2¢'], ['—', '54¢'], ['—', '—'], ['—', '—'], ['—', '—'], ['0¢', '2¢']]);
+    [['51¢', '53¢'], ['—No bid', '2¢'], ['—', '54¢'], ['—', '—'], ['—', '—'], ['—', '—'], ['—No bid', '2¢']],
+    'a side at zero is a side nobody quotes (Kalshi has no 0¢ price), told apart from a missing one');
   assert.deepEqual(rows.map(row => row.querySelector('td.num').textContent), ['52¢', '1¢', '50¢', '—', '—', '—', '1¢']);
   const priceGroup = f.root.querySelector('.t-explore th[scope="colgroup"]');
   assert.equal(priceGroup.textContent, 'YES'); assert.equal(priceGroup.getAttribute('colspan'), '3');

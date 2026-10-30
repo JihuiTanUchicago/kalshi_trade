@@ -356,6 +356,19 @@ def _spot_view(row: Optional[Dict], now: datetime) -> Optional[Dict]:
     return {"price": row["price"], "at": at.strftime("%Y-%m-%dT%H:%M:%SZ"), "age_s": age, "stale": age > btc_spot.STALE_AFTER_S}
 
 
+def _ladder_centres(ladders, feed: List[Dict]) -> Dict[str, List[float]]:
+    """The bucket centres each KXBTC ladder (event code) in `ladders` has in the feed, from its tickers, for
+    btc_spot.bucket_width: B113250 and B113750 make a $500 ladder."""
+    centres: Dict[str, List[float]] = {}
+    if ladders:
+        for m in feed:
+            ev = (m.get("t") or "").rpartition("-")[0]
+            k = btc_spot.contract_strike(m["t"]) if ev in ladders else None
+            if k and k["kind"] == "range":
+                centres.setdefault(ev, []).append(k["value"])
+    return centres
+
+
 def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[List[Dict], Dict]:
     """Explore's rows with how far stored spot is from each Bitcoin contract's strike (`vs`: side, diff in
     $, pct), and the spot itself under "spot". Each strike comes from where its market page takes it: the
@@ -386,14 +399,7 @@ def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[Lis
         return rows, {"spot": {"failed": True}}
     if not spot or spot["stale"]:
         return rows, {"spot": spot}
-    ladders = {t.rpartition("-")[0] for t, k in strikes.items() if k["kind"] == "range"}
-    centres: Dict[str, List[float]] = {}
-    if ladders:
-        for m in feed:
-            ev = (m.get("t") or "").rpartition("-")[0]
-            k = btc_spot.contract_strike(m["t"]) if ev in ladders else None
-            if k and k["kind"] == "range":
-                centres.setdefault(ev, []).append(k["value"])
+    centres = _ladder_centres({t.rpartition("-")[0] for t, k in strikes.items() if k["kind"] == "range"}, feed)
     out = []
     for m in rows:
         k = strikes.get(m["t"])
@@ -419,6 +425,13 @@ def explore_spot(ctx: Ctx):
         raise ApiError(503, "Bitcoin’s latest price didn’t load. Try again in a moment.")
     rec = _strike_record(ctx, ticker)
     strike = btc_spot.contract_strike(ticker, rec)
+    if strike and strike["kind"] == "range" and strike["lo"] is None:
+        # A bucket the collector hasn't stored gets its edges from its ladder in the Explore feed, as its Explore row
+        # does: the row said "+$133" past the bucket's top while its page said "+$383 above its centre". Only the
+        # copy already held is read, so the page never waits on the feed.
+        ev = ticker.rpartition("-")[0]
+        held = (_EXPLORE_CACHE.get("data") or {}).get("markets") or []
+        strike = btc_spot.with_bucket_edges(strike, btc_spot.bucket_width(_ladder_centres({ev}, held).get(ev, ())))
     now = datetime.now(timezone.utc)
     close_at = rec["close_time"].replace(tzinfo=timezone.utc) if rec and rec.get("close_time") else _ticker_close_at(ticker)
     spot = _spot_view(row, now)
