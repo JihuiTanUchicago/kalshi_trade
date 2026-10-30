@@ -14,7 +14,8 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const plain = (html) => visible(html).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const EST = {pnl: 3.1, per_fill_cents: 0.5};
 export const SAID = '≈ +$3.10 after typical live slippage (estimate: 0.5¢ a contract each time an order fills)';
-const estSpans = (html) => html.match(/<span class="slip-est">[^<]*<\/span>/g) || [];
+// On the dashboard the estimate carries the slippage bubble inside its span, glued to its last word (slipEstGl).
+const estSpans = (html) => html.match(/<span class="slip-est">(?:[^<]|<span class="nobr">|<button[^>]*data-glo="slippage"[^>]*>[\s\S]*?<\/button><\/span>)*<\/span>/g) || [];
 const TH = {min_sharpe_days: 14, min_trades: 30};
 
 export function slippageEstimateCases({name, frontend, strategyFrontend, detailStrategy, dashboard}) {
@@ -157,9 +158,9 @@ export function slippageEstimateCases({name, frontend, strategyFrontend, detailS
     f.S.ap = status; f.paintDashAp();
     const card = f.root.querySelector('#dash-ap').innerHTML;
     f.clearTimers();
-    const cell = /<dt>Paper P&amp;L, realized all time<\/dt><dd>(.*?)<\/dd>/.exec(card)[1];
+    const cell = /<dt><span class="pnl-win">Since you started:<\/span> paper P&amp;L, <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd>(.*?)<\/dd>/.exec(card)[1];
     assert.deepEqual(said(cell), [SAID.replace('+$3.10', '+$3.05')], 'the dashboard’s own estimate, beside the dashboard’s figure');
-    const wk = /<dt>Autopilot’s paper P&amp;L<\/dt><dd>(.*?)<\/dd>/.exec(card)[1];
+    const wk = /<dt><span class="pnl-win">Last 7 days:<\/span> autopilot’s paper P&amp;L<\/dt><dd>(.*?)<\/dd>/.exec(card)[1];
     assert.deepEqual(said(wk), [SAID]);
     assert.match(wk, /4 closed trades<\/small><span class="slip-est">/);
 
@@ -171,14 +172,14 @@ export function slippageEstimateCases({name, frontend, strategyFrontend, detailS
       g.clearTimers();
       return box.querySelector('#apf-stats').innerHTML;
     };
-    const day = /<dt>Paper realized today \(UTC\)<\/dt><dd[^>]*>(.*?)<\/dd>/.exec(await panel(status))[1];
+    const day = /<dt><span class="pnl-win">Today \(UTC\):<\/span> paper <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd[^>]*>(.*?)<\/dd>/.exec(await panel(status))[1];
     assert.deepEqual(said(day), [SAID.replace('+$3.10', '+$1.15')]);
     assert.match(day, /^\+\$1\.20 <small class="apf-note">paper, after Kalshi fees and the spread<\/small><span class="slip-est">/);
     // Live in play: the day is live money, never estimated, whatever the answer carries.
     const live = /<dt>Live realized today \(UTC\)<\/dt><dd[^>]*>(.*?)<\/dd>/.exec(await panel({...status, autopilot_live: true, live_running: 1, today_live_pnl: 2}))[1];
     assert.equal(said(live).length, 0);
     // No paper trade closed today: the server sends none, and nothing is said.
-    assert.equal(said(/<dt>Paper realized today \(UTC\)<\/dt><dd[^>]*>(.*?)<\/dd>/.exec(await panel({...status, today_paper_pnl: 0, today_paper_slippage_estimate: null}))[1]).length, 0);
+    assert.equal(said(/<dt><span class="pnl-win">Today \(UTC\):<\/span> paper <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd[^>]*>(.*?)<\/dd>/.exec(await panel({...status, today_paper_pnl: 0, today_paper_slippage_estimate: null}))[1]).length, 0);
   });
 
   test(`${name}: the strategy page's ladder says it under its paper rung only`, async () => {

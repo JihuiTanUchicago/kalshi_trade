@@ -40,6 +40,7 @@ import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
+import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {spendTrustCases} from './spend_trust_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
@@ -1162,9 +1163,9 @@ test('paper P&L on the card and the autopilot card is realized all time, the fig
     f.S.me.user.autopilot = true;
     await f.viewDashboard(); await flush();
     f.S.ap = apOn; f.paintDashAp();
-    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="[^"]*">\+\$9\.75/);
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt><span class="pnl-win">Since you started:<\/span> paper P&amp;L, <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd><span class="[^"]*">\+\$9\.75/);
     const card = f.root.querySelector('#boardbody').innerHTML;
-    assert.match(card, /<span class="amt">\+\$9\.75<\/span> realized all time/);
+    assert.match(card, /<span class="pnl-win">Since you started:<\/span> <span class="amt">\+\$9\.75<\/span> <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span>, /);
     assert.doesNotMatch(card + f.root.querySelector('#dash-ap').innerHTML, /12\.50|since reset/);
   }
 });
@@ -2631,7 +2632,7 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26<\/dd>/);
   assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested\u00a0· 2 passed<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>1 strategy <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 4 closed trades<\/small><\/dd>/);
+  assert.match(card, /<dt><span class="pnl-win">Last 7 days:<\/span> autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 4 closed trades<\/small><\/dd>/);
   assert.match(card, /The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here/);
   assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
   assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
@@ -5939,8 +5940,8 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Stake only', stake: 5}), nullStakeDep({id: 4, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set<\/div>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open<\/div>/);
+  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not <span class="nobr">set<button[^>]*data-glo="stake"[\s\S]*?<\/button><\/span><\/div>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not <span class="nobr">set<button[^>]*data-glo="stake"[\s\S]*?<\/button><\/span>, up to 3 open<\/div>/);
   assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade<\/div>/);
   assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open<\/div>/);
   assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
@@ -6008,6 +6009,7 @@ flakyNetworkCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
+newcomerMoneyCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unmarkedPositionCases({name: 'Tau', frontend});
 moneyAgreementCases({name: 'Tau', frontend});

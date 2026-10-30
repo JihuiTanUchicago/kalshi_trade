@@ -93,3 +93,29 @@ test('the autopilot card and panel give the instant-fill note its bubble in both
     assert.match(read(f), /net on them\. <small>\$\{gl\(PAPER_COUNT_WHY_SAID, 'instantfill'\)\}<\/small>/, f);
   }
 });
+
+// A new account's walk (2026-10-30): "≈ after typical live slippage" and "Stake not set" had no bubble, a focused
+// bubble below the fold shut as Tab scrolled it into view, and three paper figures named their windows three ways.
+test('slippage and stake are defined plainly, and the estimate keeps its meaning', () => {
+  const g = glossary('app.js');
+  assert.equal(g.slippage[0], 'After typical live slippage');
+  // An estimate beside paper P&L, never in its place: paper P&L and the checks toward live stay the figure.
+  assert.match(g.slippage[1], /It is only an estimate: the paper P&amp;L beside it is the figure, and the checks toward live use that figure\.$/);
+  assert.equal(g.stake[0], 'Stake');
+  assert.match(g.stake[1], /“Stake not set” means/);
+});
+
+test('both themes name the dashboard’s paper P&L windows in the same words, and a focused bubble outlives a scroll', () => {
+  const windows = (f) => {
+    const m = /const PNL_WINDOW = (\{[^\n]*\});/.exec(read(f));
+    assert.ok(m, f);
+    return new Function(`return ${m[1]};`)();
+  };
+  const tau = windows('app.js');
+  assert.deepEqual(windows('app.meridian.js'), tau);
+  assert.deepEqual(tau, {day: 'Last 24 hours', visit: 'Since your last visit', week: 'Last 7 days', today: 'Today (UTC)', all: 'Since you started'});
+  for (const f of ['app.js', 'app.meridian.js']) {
+    assert.match(read(f), /addEventListener\('scroll', \(\) => \{ if \(current && document\.activeElement === current\) place\(current\); else hide\(\); \}, true\);/, f);
+  }
+  for (const f of ['app.css', 'app.meridian.css']) assert.match(read(f), /\n\.pnl-win \{ white-space: nowrap; \}/, f);
+});

@@ -41,6 +41,7 @@ import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
+import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {spendTrustCases} from './spend_trust_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
@@ -636,12 +637,12 @@ test('Overview paper P&L is realized all time, the Closed P&L chart and track re
     const paper = f.root.querySelector('.paper-summary').textContent;
     // total_pnl (equity less deposits) took off open entry fees and restarted at a reset, so it sat
     // beside a different Closed P&L for one book; realized is what every other page counts.
-    assert.match(paper, /Realized P&amp;L, all time \+\$98\.40/);
+    assert.match(paper, /Since you started: realized P&amp;L \+\$98\.40/);
     assert.doesNotMatch(paper, /All-time|since reset/);
     // Today is closed trades only (realized_pnl); the live group says so too.
-    assert.match(paper, /Paper realized today \(UTC\)−\$7\.50/);
+    assert.match(paper, /Today \(UTC\): paper realized−\$7\.50/);
     const card = f.root.querySelector('#dash-ap').innerHTML;
-    assert.match(card, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="[^"]*">\+\$98\.40/);
+    assert.match(card, /<dt><span class="pnl-win">Since you started:<\/span> paper P&amp;L, <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd><span class="[^"]*">\+\$98\.40/);
   }
 });
 
@@ -1266,7 +1267,7 @@ test('Overview charts cumulative closed paper results separately from all-time P
       await f.viewDashboard(); poll = f.intervals.get(f.S.timers.at(-1));
       assert.equal(typeof poll, 'function');
     } else { poll(); await flush(); }
-    assert.match(f.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$98\.40/);
+    assert.match(f.root.querySelector('.paper-summary').textContent, /Since you started: realized P&amp;L \+\$98\.40/);
     const performance = f.root.querySelector('.overview-performance');
     if (ending === null) assert.equal(performance, null);
     else {
@@ -3675,7 +3676,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 1 closed trade<\/small><\/dd>/);
+  assert.match(card, /<dt><span class="pnl-win">Last 7 days:<\/span> autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 1 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
@@ -5762,8 +5763,8 @@ test('Meridian Overview says the paper portfolio is practice money', async () =>
   // Walk 2026-10-27 at 390px: "· Realized P&L, all time", "· after Kalshi fees" and "· Download trades (CSV)" each began
   // a line. Each "·" has a no-break space before it and a plain one after, so it ends its line.
   const sub = f.root.querySelector('.paper-summary .portfolio-return').innerHTML;
-  assert.ok(!/ ·/.test(sub) && sub.includes('</span> · <span class="nobr">Realized'), sub);
-  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
+  assert.ok(!/ ·/.test(sub) && sub.includes('</span> · <span class="pnl-win">Since you started:</span> <span class="nobr">realized'), sub);
+  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Since you started: realized P&amp;L \+\$98\.40/);
 });
 
 // A new account's paper book read "Realized P&L, all time $0.00" and "Realized today (UTC) $0.00": results it never had.
@@ -5773,8 +5774,8 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   await f.viewDashboard(); await flush();
   const paper = f.root.querySelector('.paper-summary').textContent;
   assert.match(paper, /Practice money, not real\s·\s?no paper strategies yet/);
-  assert.match(paper, /Paper realized today \(UTC\)None yet/);
-  assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
+  assert.match(paper, /Today \(UTC\): paper realizedNone yet/);
+  assert.doesNotMatch(paper, /Since you started|realized P&amp;L/);
   // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
   assert.match(paper, /Open at cost \+ fees(?:<[^>]*>)*None yet/);
   assert.doesNotMatch(paper, /\$0\.00/);
@@ -5783,13 +5784,13 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   const used = apDashboard(dashboardData({paper: fresh, deployments: [dashboardDeployment('paper')]}), apStatus);
   await used.viewDashboard(); await flush();
   const usedText = used.root.querySelector('.paper-summary').textContent;
-  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Paper realized today \(UTC\)None yet[\s\S]*Open at cost \+ feesNone open/);
-  assert.doesNotMatch(usedText, /Realized P&amp;L, all time|\$0\.00/);
+  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Today \(UTC\): paper realizedNone yet[\s\S]*Open at cost \+ feesNone open/);
+  assert.doesNotMatch(usedText, /Since you started|realized P&amp;L|\$0\.00/);
   // Once a trade has closed its figures are figures, a $0.00 day included.
   const traded = apDashboard(dashboardData({paper: {...fresh, closed_trades: 1, realized_pnl: 5.73, cash: 1005.73, equity: 1005.73},
     deployments: [dashboardDeployment('paper')]}), apStatus);
   await traded.viewDashboard(); await flush();
-  assert.match(traded.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$5\.73[\s\S]*Paper realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ feesNone open/);
+  assert.match(traded.root.querySelector('.paper-summary').textContent, /Since you started: realized P&amp;L \+\$5\.73[\s\S]*Today \(UTC\): paper realized\$0\.00[\s\S]*Open at cost \+ feesNone open/);
 });
 
 // Meridian opens a market page from Explore's ?m= link.
@@ -6467,14 +6468,14 @@ test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / 
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Both', stake: 5, max_positions: 3})]);
   // Walk 2026-10-27 at 390px: "Max 2" ended a line and "open" began the next. Stake and cap each stay whole.
-  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*\u00a0· <span class="nobr">Stake not set<\/span><\/span>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">Stake not set<\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
+  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*\u00a0· <span class="nobr">Stake not <span class="nobr">set<button[^>]*data-glo="stake"[\s\S]*?<\/button><\/span><\/span><\/span>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">Stake not <span class="nobr">set<button[^>]*data-glo="stake"[\s\S]*?<\/button><\/span><\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
   assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">\$5 \/ trade<\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));
   // The card's setup and limits lines (inline) keep the stake and the cap whole, each "·" ending its line.
-  assert.match(none, /<p class="monitor-setup">[^<]*\u00a0· <span class="nobr">Stake not set<\/span><\/p><div class="monitor-limits"><span>\u00a0· You paused it<\/span>/);
+  assert.match(none, /<p class="monitor-setup">[^<]*\u00a0· <span class="nobr">Stake not <span class="nobr">set<button[^>]*data-glo="stake"[\s\S]*?<\/button><\/span><\/span><\/p><div class="monitor-limits"><span>\u00a0· You paused it<\/span>/);
   assert.doesNotMatch(none, /\$ \/ trade|Max\s+open|null|NaN/);
   assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/span><\/p><div class="monitor-limits"><span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
 });
@@ -6565,6 +6566,7 @@ flakyNetworkCases({name: 'Meridian', frontend});
 deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
+newcomerMoneyCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unrealizedCellCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unmarkedPositionCases({name: 'Meridian', frontend});
 moneyAgreementCases({name: 'Meridian', frontend});
@@ -6643,7 +6645,7 @@ test('Overview’s day figures name their book, and a trades CSV link never brea
     closed_trades: 4, open_positions: 0, total_pnl: -0.57}}))});
   await f.viewDashboard();
   const html = f.root.querySelector('#main').innerHTML;
-  assert.match(html, /<span class="lab">Paper realized today \(UTC\)<\/span>/);
+  assert.match(html, /<span class="lab"><span class="pnl-win">Today \(UTC\):<\/span> paper realized<\/span>/);
   assert.doesNotMatch(html, /<span class="lab">Realized today/);
 });
 
@@ -6678,9 +6680,9 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L · not held
   const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true}), row({id: 12, strategy_id: 112, backtest_only: false})], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /<span class="dep-fact" title="After its split date, which picked it \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  assert.match(html, /<span class="dep-fact" title="After its split date, which picked it \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· <span class="nobr">not\u00a0held\u00a0out<button[^>]*data-glo="laterperiod"[\s\S]*?<\/button><\/span>\u00a0· /);
   // The held-out one's hover says the family's other half, as Tau's Backtest estimate hover does: it had none.
-  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· unseen\u00a0data\u00a0· /);
+  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· <span class="nobr">unseen\u00a0data<button[^>]*data-glo="unseen"[\s\S]*?<\/button><\/span>\u00a0· /);
   assert.doesNotMatch(html, /picked it: not held out|on unseen data/);
   assert.equal((html.match(/unseen\u00a0data/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
   assert.equal((visible(html).match(/Later-period P&amp;L \+\$12\.00<\/span>/g) || []).length, 2, 'both name the figure as the Strategies list does');
@@ -6696,7 +6698,7 @@ test('a Void strategy with no gatekeeper record’s Deploy row says "not held ou
   const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true, void_no_record: true})], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· <span class="nobr">not\u00a0held\u00a0out<button[^>]*data-glo="latervoid"[\s\S]*?<\/button><\/span>\u00a0· /);
   assert.doesNotMatch(html, /unseen|picked it/i);
 });
 
@@ -6726,7 +6728,7 @@ test('a Deploy row’s details keep "Deployed" with its date and "Later-period P
     realized_pnl: 3, unrealized_pnl: null, closed_trades: 2, open_positions: 0, curve: []}], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span> · unseen data · <span class="dep-fact">Deployed [^<]+<\/span>/);
+  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span> · <span class="nobr">unseen data<button[^>]*data-glo="unseen"[\s\S]*?<\/button><\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
 firstSessionCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus, storageFor: m => m});
