@@ -142,7 +142,7 @@ def test_the_autopilots_chat_lines_say_it_beside_paper_net(monkeypatch):
     assert "independent events ($1.20 %s)" % customer_text.PAPER_NET_SHORT in held
 
 
-@pytest.mark.parametrize("page", ["app-strategies.js", "app.meridian-strategies.js"])
+@pytest.mark.parametrize("page", ["app-strategy.js", "app.meridian-strategy.js"])
 def test_the_strategy_page_says_it_beside_its_paper_record(page):
     src = (STATIC / page).read_text(encoding="utf-8")
     names = re.search(r"const \{(.*?)\} = T;", src, re.S).group(1)

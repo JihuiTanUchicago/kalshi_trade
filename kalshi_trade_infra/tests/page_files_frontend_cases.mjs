@@ -51,14 +51,14 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
     // The page's skeleton under its nav at once, and one fetch of its file by the shell's version.
     assert.equal(head.length, 1);
     assert.equal(head[0].tag, 'script');
-    assert.equal(head[0].src, `/static/${prefix}strategies.js?v=4d5e6f`);
+    assert.equal(head[0].src, '/static/page-strategies.js?v=4d5e6f');  // the list: both themes' one file
     assert.match(f.root.innerHTML, /class="skeleton"/);
     assert.equal(f.root.getAttribute('aria-busy'), 'true');
     head[0].onerror(); await first; await settle();
     assert.ok(f.root.querySelector('.load-fail'), 'the failure is on the page');
     assert.match(f.root.innerHTML, /This page didn\u2019t load\. Check your connection and try again\./);
     assert.equal(f.root.getAttribute('aria-busy'), 'false');
-    assert.deepEqual(reports, [['api', `GET /static/${prefix}strategies.js did not load`]]);
+    assert.deepEqual(reports, [['api', 'GET /static/page-strategies.js did not load']]);
     // Try again fetches the file afresh; one that never arrives fails the same way, in time.
     f.root.querySelector('[data-retry]').onclick(); await flush();
     assert.equal(head.length, 2);

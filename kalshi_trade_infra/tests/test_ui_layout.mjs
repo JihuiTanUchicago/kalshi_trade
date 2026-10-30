@@ -491,7 +491,8 @@ test('Strategies: a phone keeps "Void on unseen data" on one line, in both theme
   assert.equal(decl(mer, '.strategy-summary #sfigs', 'padding', PHONE), '4px 16px');
   assert.equal(decl(mer, '.strategy-summary #sfigs', 'column-gap', PHONE), '16px');
   assert.equal(decl(mer, '.strategy-summary #sfigs .lab', 'text-wrap', PHONE), 'balance');
-  for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) assert.match(read(f), /gl\('Void on unseen data', 'void'\)/, `${f}: the label's words`);
+  // The list is one file for both themes (page-strategies.js): one figure, its label's words once.
+  assert.equal((read('page-strategies.js').match(/gl\('Void on unseen data', 'void'\)/g) || []).length, 1, 'the label\'s words');
 });
 
 // Walk 2026-10-28 (Playwright, 390x844, touch, both themes, every main page, the bell, the account menu and the
@@ -644,7 +645,7 @@ for (const [bundle, file, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'ap
     assert.ok(px(decl(all, '.btn + .hint:has(a)', 'margin-top', COARSE)) >= 4, 'Deploy on demo over a demo-key hint’s "Funds page"');
     if (bundle === 'Tau') {
       // "See them on the Deploy page" over "Open this market on Kalshi ↗": two hint lines 12px apart (an inline margin), 11px overlap.
-      assert.match(read('app-strategies.js'), /<p class="hint" style="margin-top:12px">\$\{deployedOn\(s\.deployments\)\} <a href="\/deploy">/);
+      assert.match(read('app-strategy.js'), /<p class="hint" style="margin-top:12px">\$\{deployedOn\(s\.deployments\)\} <a href="\/deploy">/);
       assert.ok(12 + px(decl(all, 'p.hint:has(a) + p.hint:has(a)', 'padding-top', COARSE)) >= 26);
     } else {
       assert.ok(px(decl(all, '.hint.on-paper + .deployment-environments', 'margin-top', COARSE)) >= 4, '"See it on Deploy" over Demo & live');
