@@ -51,6 +51,9 @@ ASSETS: Dict[str, Tuple[str, ...]] = {
 }
 PREFIX = {"tau": "app-", "meridian": "app.meridian-"}
 BUNDLE = {"tau": "app.js", "meridian": "app.meridian.js"}
+# The shared core: the pure helpers (escaping, money, counts, dates) both themes' bundles take from it as they
+# start, written once instead of in each bundle. It runs right before the bundle, in every shell and theme.
+CORE = "core.js"
 
 
 def names(theme: str) -> Tuple[str, ...]:
@@ -77,9 +80,9 @@ def versions_attr(theme: str, versions: Dict[str, str]) -> str:
 
 
 def build_version(theme: str, versions: Dict[str, str]) -> str:
-    """The theme's build as the page knows it (window.__BUILD__, /api/version): its bundle's version and
-    its page files' in one hash, so a deploy that changes only a page file still offers a reload."""
-    parts = [versions[BUNDLE[theme]]] + [versions[file_name(theme, name)] for name in names(theme)]
+    """The theme's build as the page knows it (window.__BUILD__, /api/version): its bundle's version, its page
+    files' and the core's in one hash, so a deploy that changes only a page file or the core still offers a reload."""
+    parts = [versions[BUNDLE[theme]]] + [versions[file_name(theme, name)] for name in names(theme)] + [versions[CORE]]
     return hashlib.sha256(",".join(parts).encode()).hexdigest()[:10]
 
 
@@ -92,6 +95,15 @@ def preload(theme: Optional[str], path: str, versions: Dict[str, str], signed_in
         return ""
     f = file_name(theme, name)
     return '\n<link rel="preload" href="/static/%s?v=%s" as="script">' % (f, versions[f])
+
+
+def bundle_scripts(theme: Optional[str], versions: Dict[str, str]) -> str:
+    """The shell's tags for the theme's code, after boot.js: the core, then the bundle, which takes its helpers
+    from the core as it starts (deferred scripts run in the order the page lists them). '' for an unknown theme:
+    boot.js adds the same two once it has picked one (#tau-boot data-core-js)."""
+    if theme not in BUNDLE:
+        return ""
+    return "".join('\n<script src="/static/%s?v=%s" defer></script>' % (f, versions[f]) for f in (CORE, BUNDLE[theme]))
 
 
 # Each theme's text face, as its stylesheet's @font-face names it (self-hashed, so always this URL). Meridian

@@ -21,7 +21,7 @@ from typing import Dict, List, Tuple
 from app.web import page_modules
 
 # Only the files that are most of a cold load's bytes. The others are small and go out as they are.
-NAMES = frozenset(("app.css", "app.meridian.css") + tuple(page_modules.BUNDLE.values()) + page_modules.FILES)
+NAMES = frozenset(("app.css", "app.meridian.css", page_modules.CORE) + tuple(page_modules.BUNDLE.values()) + page_modules.FILES)
 
 # A / after one of these is division; after anything else (an operator, a keyword such as return, an
 # opening brace) it starts a regex. The tokens kept: "id" (a name, a number, a string), ")", "]", "}".

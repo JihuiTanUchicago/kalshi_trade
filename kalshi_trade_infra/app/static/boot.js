@@ -62,10 +62,17 @@
     var link = document.getElementById('tau-css');
     if (link) link.href = b.dataset.merCss;
   }
-  var s = document.createElement('script');
-  s.src = mer ? b.dataset.merJs : b.dataset.tauJs;
-  s.defer = true;
-  document.body.appendChild(s);
+  // The shared core (core.js), then the theme's bundle, which takes its helpers from the core as it starts.
+  // An added script runs as soon as it arrives unless async is off: off, the two run in the order added.
+  var srcs = [b.dataset.coreJs, mer ? b.dataset.merJs : b.dataset.tauJs];
+  for (var k = 0; k < srcs.length; k++) {
+    if (!srcs[k]) continue;
+    var s = document.createElement('script');
+    s.src = srcs[k];
+    s.async = false;
+    s.defer = true;
+    document.body.appendChild(s);
+  }
 })();
 
 /* Page error reports. An uncaught error or unhandled promise rejection, or (through

@@ -81,7 +81,10 @@ def test_the_track_record_method_says_how_paper_fills():
 @pytest.mark.parametrize("bundle", ["app.js", "app.meridian.js"])
 def test_both_themes_carry_the_same_words(bundle):
     src = (STATIC / bundle).read_text(encoding="utf-8")
-    assert "const PAPER_NET = '%s';" % customer_text.PAPER_NET in src
+    # The words are the shared core's (core.js), written once; each bundle takes PAPER_NET from it by name.
+    assert "const PAPER_NET = '%s';" % customer_text.PAPER_NET in (STATIC / "core.js").read_text(encoding="utf-8")
+    take = re.search(r"\n  const \{\n(.*?)\n  \} = window\.TauCore;\n", src, re.S).group(1)
+    assert re.search(r"\bPAPER_NET\b", take) and "const PAPER_NET" not in src
     assert "paperfills: ['Paper fills', '%s']," % customer_text.PAPER_FILLS in src
     share = re.search(r"const shared = \(\) => shareMap \|\| \(shareMap = new Proxy\(\{(.*?)\}", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", share)
