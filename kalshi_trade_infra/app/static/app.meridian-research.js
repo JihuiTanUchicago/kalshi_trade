@@ -347,9 +347,16 @@ window.TauPage('research', (T) => {
         // No ledger figure for this model (or the read failed): with payments on, still say how it
         // is billed and that it can be stopped, rather than leaving the cost blank.
         // A read that failed says so: "No cost estimate for this model yet" claimed there was none (walk 2026-10-28).
-        const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        // Running until stopped, that line and the switch's hint under it both said it uses credits as it goes
+        // (walk 2026-10-30): the two merge into this one line, which also says it keeps running off the page, and
+        // the hint steps aside. Billing is unchanged; only the words are.
+        const how = forever ? 'It runs until you stop it from its session page, using your credits as it goes, and keeps running if you leave this page.'
+          : 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.';
+        const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + how : '';
         rc.hidden = v == null && !pace && !none;
         rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), shortOfCredits(v, forever, me), pace, none].filter(Boolean).join(' ');
+        const rh = form.querySelector('#rf-hint');
+        if (rh) rh.hidden = !!(none && forever);
       };
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; estFailed = true; }).then(sync);
@@ -1282,12 +1289,14 @@ window.TauPage('research', (T) => {
       // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
       // A deployed one adds its paper record since deploying when the session's data carries one (a card's `real` in
       // paper mode, as the Strategies list has it). Paper money only, never added to a demo or live book. Display only.
+      // Its Status cell then leaves that paper figure out (paperNext), keeping the demo line beside it.
+      const paperNext = (s) => s.status === 'passed' && !!s.deployed && !!s.real && s.real.mode === 'paper' && !laterMissed(s) && !heldBack(s);
       const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`
         : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}` : 'Open it to deploy on paper';  // its title above is the link
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id), next: laterMissed(s) || heldBack(s) ? '' : passedNext(s) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id), next: laterMissed(s) || heldBack(s) ? '' : passedNext(s), paperNext: paperNext(s) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
       // Compared with what was last written, not with innerHTML: the browser's serialization never matched
       // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
       paint(artifacts, artifactHtml);

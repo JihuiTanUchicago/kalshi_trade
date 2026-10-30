@@ -7,7 +7,11 @@ stubs of them apply), they are:
   - the stand-ins the unit tests patch in, so a test that stubs one single read (a review in flight,
     the week's research, the balance) still drives the panel through it.
 """
+from datetime import datetime
+
 from app import repository as repo
+
+EPOCH = datetime(1970, 1, 1)  # research_week from here: every research session the user ever started
 
 
 class _Parts(dict):
@@ -42,6 +46,7 @@ def pulse_from_parts(cur, uid, since, review=False, engine=False, full=False):
         "positions": lambda: repo.positions_version(cur, uid),
         "dep_strategies": lambda: repo.deployment_strategies(cur, uid) if full else None,
         "kalshi_key": lambda: repo.get_kalshi_key(cur, uid) is not None,
+        "researched": lambda: sum(int(r.get("runs") or 0) for r in repo.research_week(cur, uid, EPOCH)) > 0,
         "chat": lambda: chat() if full else None,
         "last_review_at": lambda: repo.last_review_at(cur, uid),
         "runs_7d": lambda: sum(int(r.get("runs") or 0) for r in research_week()),

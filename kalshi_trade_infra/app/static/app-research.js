@@ -352,9 +352,16 @@ window.TauPage('research', (T) => {
         // No ledger figure for this model (or the read failed): with payments on, still say how it
         // is billed and that it can be stopped, rather than leaving the cost blank.
         // A read that failed says so: "No cost estimate for this model yet" claimed there was none (walk 2026-10-28).
-        const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        // Running until stopped, that line and the switch's hint under it both said it uses credits as it goes
+        // (walk 2026-10-30): the two merge into this one line, which also says it keeps running off the page, and
+        // the hint steps aside. Billing is unchanged; only the words are.
+        const how = forever ? 'It runs until you stop it from its session page, using your credits as it goes, and keeps running if you leave this page.'
+          : 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.';
+        const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + how : '';
         rc.hidden = v == null && !pace && !none;
         rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), shortOfCredits(v, forever, me), pace, none].filter(Boolean).join(' ');
+        const rh = form.querySelector('#rf-hint');
+        if (rh) rh.hidden = !!(none && forever);
       };
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; estFailed = true; }).then(sync);

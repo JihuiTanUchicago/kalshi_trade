@@ -205,7 +205,13 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
         return
     memo = book_memo.BookMemo(cur, uid)
     deps = book_memo.deployments_for_display(memo)
-    real = _book_totals(deps)
+    _stamp_real_records(cards, _book_totals(deps))
+    _flag_instant_only(memo, cards, deps)
+
+
+def _stamp_real_records(cards: List[Dict], real: Dict[int, Dict[str, Dict]]) -> None:
+    """Stamp `books` and `real` on each deployed card from `real` (_book_totals), as _attach_real_records
+    describes: live alone when it has a live book, else paper with demo beside it (never added in), else demo."""
     for c in cards:
         books = real.get(c["id"]) if c.get("deployed") else None
         if books:
@@ -219,7 +225,24 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
             if mode == "paper" and "demo" in books:
                 dm = books["demo"]
                 c["real"]["demo"] = {"pnl": dm["pnl"], "trades": dm["trades"], "open": dm["open"]}
-    _flag_instant_only(memo, cards, deps)
+
+
+def _attach_session_real_records(cur, uid: int, cards: List[Dict]) -> None:
+    """_attach_real_records for a research session's cards: the same `books` and `real` (instant fills
+    stamped as the list stamps them), in one read, and none when no card is deployed. The deployments are
+    summed by repo.list_deployments_for_display, kept to the one deployed strategy's when there is one (as
+    the strategy page reads it), with the simulated-venue count from the same rows (sim), so the session's
+    "Already deployed" line can say its paper record since deploying. Not through the book memo: a session
+    page is read on its own, and the memo's version is a read of its own. Display only."""
+    sids = sorted({c["id"] for c in cards if c.get("deployed")})
+    if not sids:
+        return
+    deps = repo.list_deployments_for_display(cur, uid, strategy_id=sids[0] if len(sids) == 1 else None, sim=True)
+    deps = [d for d in deps if d["strategy_id"] in sids]
+    _stamp_real_records(cards, _book_totals(deps))
+    sim = {int(d["id"]): int(d.get("sim_closed") or 0) for d in deps}
+    _stamp_instant_fills(lambda ids: sim, {c["id"]: c["real"] for c in cards
+                                          if (c.get("real") or {}).get("mode") == "paper" and c["real"].get("trades")}, deps)
 
 
 def _flag_instant_only(memo, cards: List[Dict], deps: List[Dict]) -> None:

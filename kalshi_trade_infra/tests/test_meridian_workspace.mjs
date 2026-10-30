@@ -3624,7 +3624,17 @@ test('Research says what a session usually costs beside Start session, and nothi
   f = researchFrontend([]); f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 12, min_run_balance: 1};
   await f.viewResearch(); await flush();
   assert.equal(cost().hidden, false);
+  assert.equal(cost().textContent, 'No cost estimate for this model yet. It runs until you stop it from its session page, using your credits as it goes, and keeps running if you leave this page.');
+  // Said once (walk 2026-10-30): the switch's hint under it, "Runs until you stop it, using credits as it goes",
+  // steps aside while this line says both; a session with a limit keeps the old line and the hint.
+  const hint = () => f.root.querySelector('#rf-hint');
+  assert.equal(hint().hidden, true);
+  assert.equal((cost().textContent.match(/credits as it/g) || []).length, 1);
+  const forever = f.root.querySelector('#runforever'); forever.checked = false; forever.dispatchEvent({type: 'change'});
   assert.equal(cost().textContent, 'No cost estimate for this model yet. It’s charged to your credits as it runs, and you can stop it any time from its session page.');
+  assert.equal(hint().hidden, false); assert.match(hint().textContent, /^A session takes a few minutes/);
+  forever.checked = true; forever.dispatchEvent({type: 'change'});
+  assert.equal(hint().hidden, true);
   assert.doesNotMatch(cost().textContent, /list price/i);
 });
 
@@ -3700,6 +3710,18 @@ test('autopilot says why it is not trading: the card and the panel lead with one
   f.S.ap = {...base, paper_running: 2, idle: null};
   f.paintDashAp();
   assert.equal(card().innerHTML, 'Right now it’s between research runs.');
+  // A brand-new user who has never run research (research.researched false) isn't told it's "between research
+  // runs": the server's first story line and idle line say no research has run yet, and the card shows them as sent.
+  const first = 'Right now no research has run yet. Its first research session starts at its next check-in; it checks in about every 10 minutes.';
+  const fresh = {...base, research: {...base.research, researched: false}, story: [first, 'Nothing trades real money until...']};
+  f.S.ap = {...fresh, idle: null};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, first);
+  f.S.ap = {...fresh, idle: {code: 'no_strategies', line: 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.', action: null}};
+  f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.equal(card().innerHTML, 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.');
+  assert.equal(box.querySelectorAll('#apf-story p').map(p => p.innerHTML)[1], first);
+  assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /between research runs/);
 });
 
 // Each deployment row draws its cumulative realized P&L: two points or more, a line coloured by its

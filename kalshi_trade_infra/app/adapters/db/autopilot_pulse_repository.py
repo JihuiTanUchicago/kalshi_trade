@@ -33,6 +33,7 @@ def autopilot_pulse(cur, user_id: int, since, review: bool = False, engine: bool
       chat            (rows, highest id) of the user's chat: the version last_autopilot_action is kept on
       last_review_at  repo.last_review_at
       runs_7d, tested_7d   research_week(since) summed over its models (the seeded example left out)
+      researched      any research session ever, the seeded example left out (research_week from 1970 has a run)
       passed_7d       repo.strategies_passed_since(since)
       research_live   the queued and running sessions among the newest RESEARCH_WINDOW (repo.list_runs),
                       newest first, with the fields views._run_wait reads
@@ -59,6 +60,8 @@ def autopilot_pulse(cur, user_id: int, since, review: bool = False, engine: bool
                     (SELECT COUNT(*) FROM app_chat_messages WHERE user_id=%s) AS chat_n,
                     (SELECT MAX(id) FROM app_chat_messages WHERE user_id=%s) AS chat_top,
                     EXISTS(SELECT 1 FROM app_kalshi_keys WHERE user_id=%s) AS kalshi_key,
+                    EXISTS(SELECT 1 FROM app_agent_runs WHERE user_id=%s AND kind='research'
+                           AND (direction IS NULL OR direction <> 'random_walk')) AS researched,
                     (SELECT JSON_ARRAYAGG(JSON_ARRAY(id, strategy_id)) FROM app_deployments WHERE user_id=%s) AS dep_strategies,
                     """ + engine_sql + """ AS engine_age
              FROM (SELECT COUNT(*) AS n, COUNT(CASE WHEN status='closed' THEN 1 END) AS closed, COALESCE(MAX(id),0) AS top
@@ -67,7 +70,7 @@ def autopilot_pulse(cur, user_id: int, since, review: bool = False, engine: bool
                    WHERE user_id=%s AND kind='research' AND created_at>=%s
                    AND (direction IS NULL OR direction <> 'random_walk')) wk"""
     params = ((user_id, since, user_id, RESEARCH_WINDOW) + ((user_id,) if review else ())
-              + (user_id,) * 6 + (user_id, since))
+              + (user_id,) * 7 + (user_id, since))
     cur.execute(sql, params)
     r = cur.fetchone() or {}
     live = sorted(_pulse_list(r.get("research_live")), key=lambda x: -int(x[0]))
@@ -76,6 +79,7 @@ def autopilot_pulse(cur, user_id: int, since, review: bool = False, engine: bool
         "positions": (int(r.get("pos_n") or 0), int(r.get("pos_closed") or 0), int(r.get("pos_top") or 0)) if r else None,
         "dep_strategies": {int(d): int(s) for d, s in _pulse_list(r.get("dep_strategies"))} if r else None,
         "kalshi_key": bool(r.get("kalshi_key")),
+        "researched": bool(r.get("researched")),
         "chat": (int(r.get("chat_n") or 0), int(r.get("chat_top") or 0)) if r else None,
         "last_review_at": r.get("last_review_at"),
         "runs_7d": int(r.get("runs_7d") or 0), "tested_7d": int(r.get("tested_7d") or 0),

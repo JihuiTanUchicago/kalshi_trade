@@ -72,7 +72,7 @@ NO_RECORD_SQL = "(s.status='passed' AND " + NO_EXPERIMENT_SQL + ") AS no_gatekee
 VOID_RECORD_COL = VOID_NO_RECORD_SQL + " AS void_no_record"
 
 
-def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] = None) -> List[Dict]:
+def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] = None, sim: bool = False) -> List[Dict]:
     """list_deployments(cur, user_id) as the dashboard and the strategy list show it: the same rows,
     totals and order. Each deployment's positions are summed first, in a derived table read through
     idx_pos_dep, and joined to their deployment row after that. list_deployments groups the joined
@@ -86,28 +86,33 @@ def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] =
     backtest-only strategy say its backtest figure is later-period, not unseen; display only. So does
     `no_gatekeeper_record` (NO_RECORD_SQL, in the same statement): a "passed" strategy with no linked
     experiment either way, the kind relabel_backtest_only makes backtest-only, whose page says the same. And
-    `void_no_record` (VOID_RECORD_COL, the same statement): a void strategy with no gatekeeper record either way."""
+    `void_no_record` (VOID_RECORD_COL, the same statement): a void strategy with no gatekeeper record either way.
+    With `sim`, each row also carries `sim_closed`: its closed paper positions filled through the simulated venue
+    (order_ref 'sim:', as realistic_paper_closed counts them), from the same rows, so a page that reads this once
+    can say how many of a paper book's trades were instant fills without another read. Display only."""
     one = (int(strategy_id),) if strategy_id is not None else ()
     only_pd, only_d = (" AND pd.strategy_id=%s", " AND d.strategy_id=%s") if one else ("", "")
+    sim_col, sim_out = ((",\n                             COUNT(CASE WHEN p.status='closed' AND p.mode='paper' AND p.order_ref LIKE %s "
+                         "THEN 1 END) AS sim_closed", ", COALESCE(t.sim_closed,0) AS sim_closed") if sim else ("", ""))
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
                   d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
                   """ + NO_RECORD_SQL + """, """ + VOID_RECORD_COL + """, s.status AS strategy_status,
                   COALESCE(t.realized_pnl,0) AS realized_pnl, COALESCE(t.closed_trades,0) AS closed_trades,
                   COALESCE(t.wins,0) AS wins, COALESCE(t.open_positions,0) AS open_positions,
-                  COALESCE(t.contract_fills,0) AS contract_fills
+                  COALESCE(t.contract_fills,0) AS contract_fills""" + sim_out + """
            FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
            LEFT JOIN (SELECT p.deployment_id,
                              SUM(CASE WHEN p.status='closed' THEN p.pnl END) AS realized_pnl,
                              COUNT(CASE WHEN p.status='closed' THEN 1 END) AS closed_trades,
                              COUNT(CASE WHEN p.status='closed' AND p.pnl > 0 THEN 1 END) AS wins,
                              COUNT(CASE WHEN p.status='open' THEN 1 END) AS open_positions,
-                             SUM(CASE WHEN p.status='closed' THEN """ + contract_fills_sql("p.") + """ END) AS contract_fills
+                             SUM(CASE WHEN p.status='closed' THEN """ + contract_fills_sql("p.") + """ END) AS contract_fills""" + sim_col + """
                       FROM app_deployments pd STRAIGHT_JOIN app_positions p FORCE INDEX (idx_pos_dep) ON p.deployment_id=pd.id
                       WHERE pd.user_id=%s AND pd.status <> 'stopped'""" + only_pd + """
                       GROUP BY p.deployment_id) t ON t.deployment_id=d.id
            WHERE d.user_id=%s AND d.status <> 'stopped'""" + only_d + """ ORDER BY d.id DESC""",
-        (user_id, *one, user_id, *one),
+        (*(("sim:%",) if sim else ()), user_id, *one, user_id, *one),
     )
     return [_strategy_row(r) for r in cur.fetchall()]
 

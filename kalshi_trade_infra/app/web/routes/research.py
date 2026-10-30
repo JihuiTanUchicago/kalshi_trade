@@ -17,8 +17,8 @@ from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
-from app.web.routes.strategies import (HELD_BACK, _attach_no_record, _autopilot_puts_on_paper, _held_back_lines, _later_verdicts,
-                                       _owned_strategy, _research_pass_verdicts, _strategy_card, warm_dev_curves)
+from app.web.routes.strategies import (HELD_BACK, _attach_no_record, _attach_session_real_records, _autopilot_puts_on_paper,
+                                       _held_back_lines, _later_verdicts, _owned_strategy, _research_pass_verdicts, _strategy_card, warm_dev_curves)
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
 from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd,
                            session_title)
@@ -222,6 +222,9 @@ def get_run(ctx: Ctx):
     # A pass with no gatekeeper record (the old loose backtest gate) says its figure is later-period, not unseen,
     # as on the Strategies list and its own page (#590). The seeded example is never judged, so it claims nothing.
     _attach_no_record(cards, _judged(mine), recorded)
+    # A deployed pass's paper record since deploying (`real`, as /api/strategies sends it), so its "Already
+    # deployed" line says what it has made on paper. One read, only when the session has a deployed strategy.
+    _attach_session_real_records(ctx.cur, ctx.uid, cards)
     return {
         "run": run,
         "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after), len(fell_at), fell_at)),
