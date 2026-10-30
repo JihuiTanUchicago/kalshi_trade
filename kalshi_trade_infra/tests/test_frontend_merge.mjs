@@ -2376,7 +2376,7 @@ test('Tau: a Pause that keeps failing replaces its error notice instead of stack
   f.clearTimers();
 });
 
-test('a queued run counts its wait from the server, and past the reaper limit says plainly it is waiting', async () => {
+test('a queued run counts its wait from the server, and past the reaper limit says how long it has been queued', async () => {
   const at = (wait, status = 'queued') => {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
     return frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
@@ -2386,6 +2386,10 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   await f.viewRun(9);
   [...f.intervals.values()].forEach(tick => tick());
   assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued\u00a0· 20\ds$/);
+  // Status, the loop badge and the log's foot all say "Queued": Status said "Waiting" beside the other two.
+  assert.match(f.root.querySelector('#runfigs').textContent, /Status\s*Queued/);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').textContent, /Waiting/);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued');
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
   assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);  // not overdue: the phase line stays
   f.clearTimers();
@@ -2393,17 +2397,19 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   f = at({state: 'queued', seconds: 360, overdue: true, ahead: 2});
   await f.viewRun(9);
   const line = 'Still waiting for a free research worker (6 min). 2 sessions are ahead of it; it starts when one frees up.';
-  assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 6 min/);
+  // "Queued", the word the loop badge and the log's foot use for the state: Status said "Waiting" beside them.
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Queued 6 min/);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, /Waiting/);
   assert.ok(f.root.querySelector('#runpulse').classes.has('late'));
   // The sentence is said once, in the loop panel; the log's foot says the state in the badge's words.
-  assert.match(f.root.querySelector('#runpulse').innerHTML, /<span>Waiting 6 min<\/span>/);
+  assert.match(f.root.querySelector('#runpulse').innerHTML, /<span>Queued 6 min<\/span>/);
   assert.ok(!f.root.querySelector('#runpulse').innerHTML.includes(line));
   assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /class="working"/);
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false); assert.equal(wait.textContent, line);
   // The wait line replaces "Waiting for the agent to start." rather than sitting under it.
   assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);
-  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 6 min');
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued 6 min');
   f.clearTimers();
   f = at({state: 'queued', seconds: 300, overdue: true, ahead: 0});
   await f.viewRun(9);
@@ -2420,6 +2426,45 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   assert.match(f.root.querySelector('#runpulse').innerHTML, /<span>Silent 7 min<\/span>/);
   assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /No word from the agent/);
   f.clearTimers();
+});
+
+// Walk 2026-10-30: a queued card said "Waiting" where its page's loop badge and log foot said "Queued"; an
+// untitled session's card named its market in the title ("Session · BTC 15-min up/down") and again under it.
+test('a research card says Queued for a queued session, and names its market under the title only when the title does not', () => {
+  const f = frontend();
+  const base = {id: 4, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 0, strategies_passed: 0, spent_usd: 0};
+  const queued = f.runRow({...base, status: 'queued', prompt: 'Fade the favourite'});
+  assert.match(queued, /<span class="run-state">Queued<span class="working"/);
+  assert.doesNotMatch(queued, /Waiting/);
+  const meta = (row) => row.match(/<span class="run-meta">([\s\S]*?)<\/span>\s*<span class="run-foot">/)[1].replace(/ /g, ' ');
+  // Named by its idea: the line under it names the market.
+  assert.equal(meta(queued), 'BTC 15-min up/down · Spent so far: none yet');
+  // Untitled: the title already says the market, so the line under it doesn't.
+  const untitled = f.runRow({...base, status: 'running', prompt: '', direction: 'momentum'});
+  assert.match(untitled.replace(/ /g, ' '), /<b title="Momentum · BTC 15-min up\/down">/);
+  assert.equal(meta(untitled), 'Spent so far: none yet');
+  assert.equal((untitled.match(/BTC 15-min up\/down/g) || []).length, 2);  // the title and its hover, not the line
+  // A failed untitled one still says what went wrong, with no separator left in front of it.
+  const failed = f.runRow({...base, status: 'failed', prompt: '', spent_usd: 0.5, error: 'The worker stopped.'});
+  assert.equal(meta(failed), 'Cost: $0.50 in credits · The worker stopped.');
+});
+
+// Walk 2026-10-30 (1280px): a finished session's short log sat over a screen-tall empty box, the height a running
+// one keeps so streamed rows don't move the page. Finished, it sizes to its rows up to the same cap.
+test('a finished session’s agent log sizes to what it holds; a running one keeps its fixed height', async () => {
+  const at = (status) => {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', started_at: '2026-10-17T10:00:00Z'};
+    return frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events: [{id: 1, kind: 'step', message: 'Looked at the market.', data: {}, created_at: run.created_at}]}) : response({})});
+  };
+  for (const [status, done] of [['queued', false], ['running', false], ['paused', false], ['succeeded', true], ['failed', true], ['cancelled', true]]) {
+    const f = at(status);
+    await f.viewRun(9);
+    assert.equal(f.root.querySelector('#runfeed').classes.has('done'), done, status);
+    f.clearTimers();
+  }
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const cap = css.match(/\n\.log\.stream \{ height: (clamp\([^)]*\));/)[1];
+  assert.match(css, new RegExp(`\\n\\.runfeed\\.done \\.log\\.stream \\{ height: auto; max-height: ${cap.replace(/[()]/g, '\\$&')}; \\}`));
 });
 
 test('phone labels on strategy rows say the P&L is a backtest', () => {
@@ -2664,9 +2709,10 @@ test('a research session row names the credits its cost came from, and the idea 
   const base = {id: 4, prompt: 'Fade the favourite', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 3, strategies_passed: 0};
   assert.match(f.runRow({...base, status: 'succeeded', spent_usd: 3.12}), /Cost: \$3\.12 in credits/);
   assert.match(f.runRow({...base, status: 'running', spent_usd: 0.004}), /Spent so far: under \$0\.01 in credits/);
-  // Nothing spent yet says so, with no unit after it.
+  // Nothing spent yet says so, with no unit after it, in the session page's words ("Spent so far / None yet"): the
+  // card said "nothing yet" (walk 2026-10-30).
   const none = f.runRow({...base, status: 'running', spent_usd: 0});
-  assert.match(none, /Spent so far: nothing yet/); assert.doesNotMatch(none, /nothing yet in credits/);
+  assert.match(none, /Spent so far: none yet/); assert.doesNotMatch(none, /none yet in credits|nothing yet/);
   const src = readFileSync(new URL('../app/static/app-research.js', import.meta.url), 'utf8')
     + readFileSync(new URL('../app/static/app.meridian-research.js', import.meta.url), 'utf8');
   assert.equal((src.match(/placeholder="Write your own — e\.g\. “Sell overpriced tails in the last hour before the 5pm close\.”"/g) || []).length, 2);

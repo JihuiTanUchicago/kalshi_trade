@@ -202,7 +202,8 @@ export function countFormatCases({name, frontend, detailStrategy, strategyFronte
     for (const n of ['1,201', '1,202', '1,203']) assert.match(status, new RegExp(n));
     assert.doesNotMatch(status, /\b120[123]\b/);
     const said = f.root.querySelector('#rstatus .said');
-    if (said) { assert.match(plain(said.innerHTML).replace(/\s+/g, ' '), /1,201 agents researching now · 1,203 paused · 1,202 waiting/); assert.doesNotMatch(plain(said.innerHTML), /\b120[123]\b/); }
+    // Queued sessions are "queued", the word their cards, Status and loop badge use (it said "waiting").
+    if (said) { assert.match(plain(said.innerHTML).replace(/\s+/g, ' '), /1,201 agents researching now · 1,203 paused · 1,202 queued/); assert.doesNotMatch(plain(said.innerHTML), /\b120[123]\b/); }
     f.clearTimers();
   });
 

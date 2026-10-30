@@ -762,6 +762,10 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 /* -- live research feed: a Claude-Code-style streaming agent log (both themes, identical) --- */
 .runfeed { position: relative; border: 1px solid var(--rule); background: var(--stock-raised); }
 .log.stream { height: clamp(340px, 52vh, 560px); overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 2px 16px 10px; scroll-behavior: smooth; }
+/* A finished session's log no longer grows: it takes its own height up to the same cap, so a short one doesn't sit
+   over a screen of empty box (walk 2026-10-30, 1280px). While it is queued, running or paused it keeps the fixed
+   height, so streamed rows never move the page under the reader. */
+.runfeed.done .log.stream { height: auto; max-height: clamp(340px, 52vh, 560px); }
 /* Paint containment keeps the spinner under the log (and any beat beside it) from re-walking a long
    session's hundreds of rows every frame: without it the run page held a phone's main thread at ~65%.
    The log already clips what overflows it, so nothing it draws changes. */

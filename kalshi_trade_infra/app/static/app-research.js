@@ -424,14 +424,14 @@ window.TauPage('research', (T) => {
       // The live count and the all-time totals are two sentences: "1 agent researching now — all time, 13 ideas
       // tested" set "now" against "all time" in one breath.
       const said = running || paused
-        ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
+        ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> queued` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
         : tried
           ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           // Nothing tested yet: it repeated the page's subtitle word for word ("describe an idea, it writes strategies
           // and tests each on data it never saw"), under a form that already asks for the idea.
           : `Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.`;
       paint(root.querySelector('#rstatus .said'), said);
-      paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Waiting', num(queued)) +
+      paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Queued', num(queued)) +
         // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
         // each says its window.
         fig('Ideas tested', num(tried), { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), num(passed), { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
@@ -467,10 +467,12 @@ window.TauPage('research', (T) => {
       : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(SEP);
   // What a session still going has spent. Before its first model call is billed that is nothing, not a $0.00 figure
   // (a first autopilot session read "Spent so far: $0.00" on its row and its page); a sliver says "under $0.01".
+  // One phrase for nothing spent, on the card ("Spent so far: none yet"), the session page and Billing ("Spent so
+  // far / None yet"): the card said "nothing yet" where the page said "None yet".
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
   // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
   // in a list a reader could take for a loss.
-  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'nothing yet')}${+r.spent_usd > 0 ? ' in credits' : ''}` : `Cost: ${usd(r.spent_usd)} in credits`;
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? ' in credits' : ''}` : `Cost: ${usd(r.spent_usd)} in credits`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -480,7 +482,9 @@ window.TauPage('research', (T) => {
     if (w.got == null) w.got = Date.now();
     return { ...w, seconds: (+w.seconds || 0) + Math.round((Date.now() - w.got) / 1000) };
   };
-  const lateLabel = (w) => (w.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(w.seconds);
+  // A queued session is "Queued" in every place it shows (card, Status, loop badge, log foot), overdue or not:
+  // its Status said "Waiting" beside a badge and a foot that said "Queued".
+  const lateLabel = (w) => (w.state === 'queued' ? 'Queued ' : 'Silent ') + waitSpan(w.seconds);
   // Why a finished session stopped, from the server (services.run_stop). A run-until-stopped session
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
   // one said "Cancelled" or "Failed" without who or what stopped it.
@@ -509,7 +513,7 @@ window.TauPage('research', (T) => {
     const unclear = (ahead) => fell ? `<span class="nobr">${ahead}\u00a0\u00b7</span><span class="run-fell">+${num(fell)} passed, not cleared</span>` : ahead;
     const explored = `Explored ${num(r.hypotheses_tried)} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
-      : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+      : r.status === 'queued' ? 'Queued<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
       : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${num(ok)} passed</span>`)}` : unclear(explored))
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
@@ -520,9 +524,15 @@ window.TauPage('research', (T) => {
     // A long idea is cut at a word's end (clipWords), short enough for the card's three lines at its narrowest
     // (about 240px a line): the line clamp alone cut it mid-word ("when the spot pri…"). Hover shows it whole.
     const title = sessionTitle(r);
+    // The line under the title names the market only when the title doesn't: a session with no idea is titled
+    // by its angle and market ("Session · BTC 15-min up/down", sessionTitle), and the line repeated the market
+    // under it, as the session page's line did.
+    const named = r.title || (r.prompt && r.prompt.trim());
+    const meta = [named ? esc(marketShort(r.market)) : '', r.example ? EXAMPLE_NOTE : r.spent_usd != null ? runSpent(r) : '',
+      r.error ? esc(r.error) : ''].filter(Boolean).join(SEP);
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b title="${esc(title)}">${esc(clipWords(title, RUN_TITLE_MAX))}</b>${runTag(r)}</span>
-      <span class="run-meta">${esc(marketShort(r.market))}${r.example ? SEP + EXAMPLE_NOTE : r.spent_usd != null ? SEP + runSpent(r) : ''}${r.error ? SEP + esc(r.error) : ''}</span>
+      <span class="run-meta">${meta}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
@@ -869,6 +879,8 @@ window.TauPage('research', (T) => {
         first = false;
       },
       state(st, wait) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
+        // A finished log sizes to what it holds (.runfeed.done); one still going keeps its fixed height.
+        section.classList.toggle('done', st === 'done');
         if (st === 'done') { pulseSt = st; sealThink(); settlePending(log); pulse.hidden = true; return; }
         const stick = atBottom();
         pulse.hidden = false;
@@ -876,7 +888,7 @@ window.TauPage('research', (T) => {
         queuedAt = st === 'queued' && wait && wait.state === 'queued' ? Date.now() - wait.seconds * 1000 : null;
         // An overdue run's sentence ("No word from the agent for 25 min. …") is said once, in the loop panel
         // above, as on Meridian: it sat there and again here. The log's foot says the state in the badge's words.
-        const late = st !== 'paused' && wait && wait.overdue ? (wait.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(wait.seconds) : '';
+        const late = st !== 'paused' && wait && wait.overdue ? lateLabel(wait) : '';
         if (st + late !== pulseKey) {
           pulseKey = st + late;
           pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : late ? ' late' : '');
@@ -888,7 +900,7 @@ window.TauPage('research', (T) => {
               : '<span class="working" aria-hidden="true"></span><span data-plabel>Researching<span class="ell" aria-hidden="true"></span></span>';
           // The foot is not a live region: its seconds count ticks every second, and a screen reader read
           // each tick ("Researching · 12s", "· 13s", ...). A change of state (queued, researching, paused,
-          // overdue) is said once instead; the first paint and a minute added to "Waiting 6 min" are not.
+          // overdue) is said once instead; the first paint and a minute added to "Queued 6 min" are not.
           const kind = st + (late ? ':late' : '');
           if (pulseKind && kind !== pulseKind) announce(pulse.textContent.replace(/\s+/g, ' ').trim());
           pulseKind = kind;
@@ -1026,7 +1038,7 @@ window.TauPage('research', (T) => {
       // agent to start." said, and more; a silent one's last phase ("Working") sat over "No word from the agent".
       if (late) { phaseEl.hidden = true; waitHidPhase = true; }
       else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState); }
-      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
+      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = lateLabel(w); return; }
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
@@ -1359,8 +1371,8 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), deck));
       const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
-      const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
-        : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+      const statusText = late ? lateLabel(late)
+        : r.status === 'queued' ? 'Queued<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : runDoneText(r);

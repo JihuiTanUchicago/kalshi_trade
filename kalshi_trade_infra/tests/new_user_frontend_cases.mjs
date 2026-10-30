@@ -59,7 +59,10 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
   test(`${name}: a running session that has spent nothing says so, not "Spent so far: $0.00"`, async () => {
     const f = await researchPage([session(), example], true);
     const main = ['#runs', '#active-research'].map((s) => f.root.querySelector(s)).filter(Boolean).map((el) => el.innerHTML + el.children.map((c) => c.innerHTML).join('')).join('');
-    assert.match(main, /Spent so far(?::|<\/dt><dd>) ?(?:nothing yet|None yet)/);
+    // The card and the session page say it in the same words (walk 2026-10-30: the card's "nothing yet" beside the
+    // page's "None yet"), as Billing's Spent so far does.
+    assert.match(main, /Spent so far(?::|<\/dt><dd>) ?[Nn]one yet/);
+    assert.doesNotMatch(main, /nothing yet/i, 'one phrase for nothing spent: "none yet", as on the session page');
     assert.doesNotMatch(main, /Spent so far(?::|<\/dt><dd>) ?\$0\.00/);
     // Meridian's example row keeps its note under its title, not crammed into the narrow Market column.
     if (meridian) {

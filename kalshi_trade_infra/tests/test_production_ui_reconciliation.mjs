@@ -355,6 +355,35 @@ test('with live trading off on the server, the panel says so in one line instead
   assert.equal(posts(f).length, 0);
 });
 
+// Walk 2026-10-30: with live trading off on the server the panel said "Live trading isn’t open yet." twice, in its
+// summary (the server's words, chat.py) and again in the gate line under it. It is said once, in the summary; the
+// server's words and whether live trading is allowed are unchanged.
+test('with live trading off, the panel says “Live trading isn’t open yet.” once when its summary already says it', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  const gates = () => f.box.querySelector('#apf-gates').textContent, story = () => f.box.querySelector('#apf-story').textContent;
+  const said = (s) => (s.match(/live trading isn’t open yet/gi) || []).length;
+  const closed = 'Nothing trades real money until a strategy makes money on paper over at least 30 trades from 5 separate events and 24 hours, and you turn on live autopilot. Live trading isn’t open yet.';
+  f.apUpdate(f.box, status({live_enabled: false, story: ['Right now it’s picking a market to research.', closed]}));
+  assert.equal(said(story()), 1);
+  assert.equal(gates(), '');
+  assert.equal(said(story() + gates()), 1);
+  // A live strategy waiting on the closed switch: the summary says it ("…live but waiting: live trading isn’t open yet…").
+  f.apUpdate(f.box, status({live_enabled: false, live_running: 1, story: ['1 strategy is live but waiting: live trading isn’t open yet, so it places no orders.']}));
+  assert.equal(gates(), '');
+  // No summary to say it (none sent, or its read failed): the gate line still does.
+  f.apUpdate(f.box, status({live_enabled: false, story: ['Right now it’s picking a market to research.']}));
+  assert.equal(gates(), 'Live trading isn’t open yet. ');
+  // Live open: the next gate is said as before, whatever the summary holds.
+  f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: false, story: [closed]}));
+  assert.match(gates(), /Connect your Kalshi key on the Funds page first/);
+  // Paper autopilot off: its own gate line, not hidden.
+  f.apUpdate(f.box, status({autopilot: false, live_enabled: false, story: [closed]}));
+  assert.match(gates(), /Live autopilot can only be turned on after autopilot \(paper\) is on/);
+  // The gate's words and the server's live refusal are the same as before (test_theme_wording.mjs).
+  assert.equal(f.apLiveBlock(status({live_enabled: false})), 'Live trading isn’t open yet. ');
+  assert.equal(posts(f).length, 0);
+});
+
 test('a refused live press, and the server refusing it, link "the Funds page" to Connect Kalshi in the words they flash', async () => {
   const refusal = 'Connect your Kalshi key on the Funds page first.';
   const f = frontend(path => path === '/api/models' ? response(catalog) : path === '/api/autopilot/live' ? response({error: refusal}, 400) : response({}));

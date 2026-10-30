@@ -79,13 +79,15 @@ export function trustGlitchCases({name, frontend}) {
     assert.match(html, /Silent 25 min/);
     assert.doesNotMatch(html, /Researching/);
     f.clearTimers();
-    // One that is beating is counted and says Researching; a queued one past the limit says how long it has waited.
+    // One that is beating is counted and says Researching; a queued one past the limit says how long it has been queued.
     f = research([run({id: 11, status: 'running', stop_reason: null, wait: null}), run({id: 12, status: 'queued', stop_reason: null,
       wait: {state: 'queued', seconds: 4000, overdue: true}})], {research_running: 1, research_queued: 1});
     await f.viewResearch(); await settle();
     html = listed(f);
     assert.match(html, /Researching/);
-    assert.match(html, /Waiting 66 min/);
+    // In the word its Status and loop badge use for a queued session ("Waiting 66 min" before).
+    assert.match(html, /Queued 66 min/);
+    assert.doesNotMatch(html, /Waiting/);
     assert.doesNotMatch(html, /Silent/);
     f.clearTimers();
     // The row's own words, from the server's wait, whichever row it is.
