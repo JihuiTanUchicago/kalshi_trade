@@ -231,9 +231,12 @@ test('Meridian: the Community composer is never pinned over the feed', () => {
   for (const r of all.filter((x) => /\.composer-post|\.community-compose/.test(x.sel))) {
     assert.doesNotMatch(r.body, /position\s*:\s*(sticky|fixed)/, `${r.media} ${r.sel}`);
   }
-  // Its New post form sits above the feed in the page's markup (app.meridian-community.js).
-  const page = readFileSync(new URL('../app/static/app.meridian-community.js', import.meta.url), 'utf8');
-  assert.ok(page.indexOf('id="composer-post"') < page.indexOf('<div id="feed">'), 'the form comes before the feed');
+  // Its New post form sits above the feed in the page's markup (page-community.js, Meridian's layout of it).
+  const page = readFileSync(new URL('../app/static/page-community.js', import.meta.url), 'utf8');
+  assert.match(page, /\n {4}const composer = `<form class="panel composer-post" id="composer-post"/);
+  assert.match(page, /\n {4}const feedHtml = `<div id="feed-note"><\/div>\n {8}<div id="feed">/);
+  const meridian = page.slice(page.indexOf('<div class="feedwrap"><div class="community-heading">'));
+  assert.ok(meridian.indexOf('${composer}') > 0 && meridian.indexOf('${composer}') < meridian.indexOf('${feedHtml}'), 'the form comes before the feed');
 });
 
 // Walk 2026-10-27 (Meridian, 390x844, Tau the same): the open autopilot sheet's close button reaches 2px from the

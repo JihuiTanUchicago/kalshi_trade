@@ -158,7 +158,7 @@ for (const bundle of BUNDLES) {
 
 test('a page file both themes load takes its theme from the bundle that runs it, never from the page', () => {
   const both = pageFiles('app.js').filter((f) => pageFiles('app.meridian.js').includes(f));
-  assert.deepEqual(both, ['page-admin.js', 'page-autopilot.js']);
+  assert.deepEqual(both, ['page-admin.js', 'page-autopilot.js', 'page-community.js']);
   for (const f of both) {
     const src = read(f);
     assert.match(src, /\n {4}[^\n]*\btheme\b[^}]*\n {2}\} = T;\n/, f);

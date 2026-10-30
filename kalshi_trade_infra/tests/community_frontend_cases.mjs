@@ -270,4 +270,28 @@ export function communityCases({name, frontend}) {
     assert.ok(shown(13).endsWith(' ' + zone(posts[1].created_at)), shown(13));
     assert.equal(time(13).getAttribute('datetime'), posts[1].created_at);
   });
+  // A reaction pill toggles the reader's own reaction. Tau's said whether it was on only by its colour, so a screen
+  // reader heard "🔥, 2" alike either way: each pill says it (aria-pressed), and again once a press has toggled it.
+  test(`${name}: a reaction pill says whether the reaction is the reader's own, before and after a press`, async () => {
+    let reactions = [{emoji: '🔥', count: 2, mine: false, names: ['Ann', 'Bob']}, {emoji: 'tau', count: 1, mine: true, names: ['Offline fixture']}];
+    const f = frontend({fetchImpl: (path, options) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/5/react') {
+        assert.deepEqual(JSON.parse(options.body), {emoji: '🔥'});
+        reactions = [{...reactions[0], count: 3, mine: true}, reactions[1]];
+        return response({reactions});
+      }
+      if (path.startsWith('/api/community')) return response({posts: [post(5, {reactions})]});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const feed = f.root.querySelector('#feed');
+    const pressed = () => feed.querySelectorAll('.rx[data-emoji]').map((b) => [b.dataset.emoji, b.getAttribute('aria-pressed'), b.classList.contains('on')]);
+    assert.deepEqual(pressed(), [['🔥', 'false', false], ['tau', 'true', true]]);
+    feed.listeners.get('click')({target: feed.querySelector('.rx[data-emoji]')}); await settle();
+    assert.deepEqual(pressed(), [['🔥', 'true', true], ['tau', 'true', true]]);
+    assert.equal(feed.querySelector('[data-react-add]').hasAttribute('aria-pressed'), false, 'Add a reaction is an action, not a toggle');
+    f.clearTimers();
+  });
 }
