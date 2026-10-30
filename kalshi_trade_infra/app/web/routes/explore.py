@@ -369,6 +369,14 @@ def _ladder_centres(ladders, feed: List[Dict]) -> Dict[str, List[float]]:
     return centres
 
 
+def _close_at(ticker: str, rec: Optional[Dict]) -> Optional[datetime]:
+    """When a contract closes: the collector's stored close first, else its ticker's (_ticker_close_at); None
+    when neither says."""
+    if rec and rec.get("close_time"):
+        return rec["close_time"].replace(tzinfo=timezone.utc)
+    return _ticker_close_at(ticker)
+
+
 def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[List[Dict], Dict]:
     """Explore's rows with how far stored spot is from each Bitcoin contract's strike (`vs`: side, diff in
     $, pct), and the spot itself under "spot". Each strike comes from where its market page takes it: the
@@ -378,14 +386,21 @@ def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[Lis
     showed two distances for one contract. A bucket read from its ticker gets its edges from its ladder's
     other tickers in the feed, and spot comes from the one shared read (_spot_row), so a page of rows costs
     at most two DB reads. A stale, missing or failed spot gives no `vs` and says why in "spot"; a page with
-    no Bitcoin contract on it reads nothing and gets no "spot" at all."""
+    no Bitcoin contract on it reads nothing and gets no "spot" at all.
+    A row past its close (the collector's stored close, else its ticker's, as its market page takes it) gets
+    no `vs`: Bitcoin's price after the close doesn't decide the contract, and "$X above the strike" read as
+    its result. A page whose Bitcoin rows have all closed reads no spot and gets no "spot"."""
     btc = [m["t"] for m in rows if btc_spot.is_btc_contract(m.get("t"))]
     if not btc:
         return rows, {}
     recs = _strike_records(ctx, btc)
+    now = datetime.now(timezone.utc)
     strikes = {}
     for m in rows:
         if not btc_spot.is_btc_contract(m.get("t")):
+            continue
+        close_at = _close_at(m["t"], recs.get(m["t"]))
+        if close_at is not None and close_at <= now:
             continue
         k = btc_spot.contract_strike(m["t"], recs.get(m["t"])) or btc_spot.title_strike(m.get("su"), m.get("ti"))
         if k:
@@ -393,7 +408,7 @@ def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[Lis
     if not strikes:
         return rows, {}
     try:
-        spot = _spot_view(_spot_row(ctx), datetime.now(timezone.utc))
+        spot = _spot_view(_spot_row(ctx), now)
     except Exception as e:
         print("[explore] list spot read failed: %r" % (e,), flush=True)
         return rows, {"spot": {"failed": True}}
@@ -433,10 +448,13 @@ def explore_spot(ctx: Ctx):
         held = (_EXPLORE_CACHE.get("data") or {}).get("markets") or []
         strike = btc_spot.with_bucket_edges(strike, btc_spot.bucket_width(_ladder_centres({ev}, held).get(ev, ())))
     now = datetime.now(timezone.utc)
-    close_at = rec["close_time"].replace(tzinfo=timezone.utc) if rec and rec.get("close_time") else _ticker_close_at(ticker)
+    close_at = _close_at(ticker, rec)
     spot = _spot_view(row, now)
+    secs_left = max(0, int((close_at - now).total_seconds())) if close_at else None
+    # Past the close (secs_left 0, the page's own "closed" test) there is no distance to send: the page shows
+    # "Closed: Bitcoin's price since the close doesn't change the result" in its place. Spot and the strike stay.
     return {"ticker": ticker, "spot": spot, "strike": strike,
-            "vs": btc_spot.against_strike(spot["price"], strike) if spot and strike else None,
+            "vs": btc_spot.against_strike(spot["price"], strike) if spot and strike and secs_left != 0 else None,
             "close_time": close_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if close_at else None,
-            "secs_left": max(0, int((close_at - now).total_seconds())) if close_at else None,
+            "secs_left": secs_left,
             "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
