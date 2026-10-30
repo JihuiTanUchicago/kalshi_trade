@@ -65,7 +65,7 @@ window.TauPage('billing', (T) => {
           ? `<b>Off.</b> Below ${usd(d.min_run_balance)} no new research starts and autopilot pauses; a session already running stops at $0. Add credits and it all picks up again.`
           : '<b>Off.</b> When your credits run low, new research sessions won’t start until you add more.';
       const cardLines = d.cards.length
-        ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th><span class="vh">Actions</span></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
+        ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th class="act"><span class="vh">Actions</span></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
             <td class="name" data-lab="Card">${esc((c.brand || 'card').toUpperCase())} •••• ${esc(c.last4 || '')}</td>
             <td data-lab="Expires">${String(c.exp_month).padStart(2, '0')}/${c.exp_year}</td>
             <td data-lab="Status">${c.id === d.default_pm ? '<span class="mk on">Default</span>' : '<span class="mk quiet">Backup</span>'}</td>

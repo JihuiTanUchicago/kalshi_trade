@@ -110,6 +110,15 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.deepEqual(low.map(([bg, r]) => `${fg} on ${bg} ${r.toFixed(2)}`), []);
     assert.ok(ratio('#757575', color(focused)) < 4.5, 'the browser default it replaces did fail here');
   });
+
+  test(`${bundle}: an old mark's figure is dimmed to a colour still readable at 4.5:1, its gain or loss tint too`, () => {
+    // Dimmed by colour, not opacity: an opacity over Meridian's green or red gain tint has no fixed contrast.
+    const m = css.match(/^span\.mark-old, span\.mark-old \.gain, span\.mark-old \.loss \{ color: var\((--[\w-]+)\); \}$/m);
+    assert.ok(m, 'the old-mark rule sets one colour token');
+    const low = ['--stock', '--stock-raised'].map((bg) => [bg, ratio(color(m[1]), color(bg))]).filter(([, r]) => r < 4.5);
+    assert.deepEqual(low.map(([bg, r]) => `${m[1]} on ${bg} ${r.toFixed(2)}`), []);
+    assert.notEqual(m[1], '--ink', 'it differs from a current figure\'s ink');
+  });
 }
 
 test('Tau: the hot rail\'s "See all markets" link, in the line "Updated … · See all markets", is underlined', () => {

@@ -32,6 +32,7 @@ import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
 import {moneyPagesWalkCases} from './money_pages_walk_frontend_cases.mjs';
+import {staleMarkCases} from './stale_mark_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -1361,6 +1362,8 @@ test('Overview paper performance preserves disclosure and focus on polls and red
 
 // Money-pages walk 2026-10-30: with two days of closed P&L the Overview chart's date axis read "Oct 29, Oct 30, Oct 30"
 // (its middle tick fell on the second day's midnight). Each day is named once; three or more days keep the middle tick.
+// Its dates are the chart's own days: one between two points ("Oct 18", the midpoint of the 16th and the 19th) named
+// a day with no closed P&L.
 test('Overview Closed P&L chart names each day once on its date axis', async () => {
   const label = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', timeZone: 'UTC'});
   let data;
@@ -1370,8 +1373,8 @@ test('Overview Closed P&L chart names each day once on its date axis', async () 
   for (const [daily, expected] of [
     [[{d: '2026-10-29', pnl: 1}, {d: '2026-10-30', pnl: 2}], ['2026-10-29', '2026-10-30']],
     [[{d: '2026-10-28', pnl: 1}, {d: '2026-10-29', pnl: -1}, {d: '2026-10-30', pnl: 2}], ['2026-10-28', '2026-10-29', '2026-10-30']],
-    // Days apart: the middle tick (the 18th at 00:00 UTC) names a day neither end does, so it stays.
-    [[{d: '2026-10-16', pnl: -4}, {d: '2026-10-19', pnl: 2}], ['2026-10-16', '2026-10-18', '2026-10-19']],
+    // Days apart: no date between them, where the chart has no point.
+    [[{d: '2026-10-16', pnl: -4}, {d: '2026-10-19', pnl: 2}], ['2026-10-16', '2026-10-19']],
   ]) {
     data = dashboardData({paper: {daily}});
     await f.viewDashboard(); f.clearTimers();
@@ -6565,6 +6568,7 @@ unmarkedPositionCases({name: 'Meridian', frontend});
 moneyAgreementCases({name: 'Meridian', frontend});
 pastCloseCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 moneyPagesWalkCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
+staleMarkCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;

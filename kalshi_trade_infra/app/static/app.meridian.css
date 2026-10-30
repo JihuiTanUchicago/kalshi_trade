@@ -2209,6 +2209,11 @@ body.landing-body .apf { display: none; }
 .position-pnl { font-size: 18px; line-height: 24px; font-weight: 600; }
 .position-pnl .vh { left: 0; }
 .position-marked { display: block; font-size: 12px; line-height: 18px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
+/* An open position's figure from an old mark (app.meridian.js markFig, MARK_OLD_S): muted, its gain or loss colour too,
+   so an hours-old figure doesn't read as this minute's. Its "as of 14 min ago" (markedAt) is underlined dotted: its
+   title gives the mark's time. */
+span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
+.mark-age { text-decoration: underline dotted; text-underline-offset: 2px; }
 .position-group-mode { margin-left: 12px; color: var(--ink-3); font-size: 12px; font-weight: 400; }
 .position-details .sub-fig { margin: 4px 0 6px; font-size: 12px; line-height: 18px; font-weight: 400; color: var(--ink-3); white-space: normal; }
 .position-opened, .position-why, .position-absolute, .position-mark-note { display: block; margin-top: 3px; font-size: 12px; line-height: 18px; color: var(--ink-2); }
@@ -2271,6 +2276,8 @@ body.landing-body .apf { display: none; }
    everywhere else, not a 20px figure under the P&L. So is a demo or live card's "after Kalshi fees, in Tau's demo book:
    not real money" (.book-net): at 390px it ran four lines at the figure's 20px under a −$2.10 (walk 2026-10-28). */
 .monitor-metrics dd.paper-net, .monitor-metrics dd.book-net {margin-top: 2px; font: 400 12px/16px var(--f-ui); color: var(--ink-3); }
+/* An old mark's "as of 14 min ago" under a card's Unrealized (markedAt) is that small line too, not a 20px figure. */
+.monitor-metrics dd.mark-when { margin-top: 2px; font: 400 12px/16px var(--f-ui); color: var(--ink-3); }
 .monitor-metrics .unavailable { font: 400 14px/20px var(--f-ui); }
 .monitor-footer { display: grid; grid-column: 3; grid-row: 1 / span 2; justify-items: end; gap: 4px; min-width: 0; }
 .monitor-footer:has(.dep-evidence[open]) { grid-column: 1 / -1; grid-row: 3; justify-items: stretch; }

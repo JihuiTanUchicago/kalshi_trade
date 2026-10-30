@@ -305,6 +305,33 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     explore.clearTimers();
   });
 
+  // Meridian's admin waitlist and both themes' saved-cards table had an empty last header over their buttons (axe
+  // empty-table-header), as Explore's link column did: each holds visually hidden "Actions", as Deploy's does.
+  test(`${name}: every column of the admin and billing tables has a header a screen reader says, the buttons' column too`, async () => {
+    const admin = frontend({fetchImpl: (path) => {
+      if (path === '/api/admin') return response({users: [{email: 'synthetic@example.invalid', name: '', created_at: '2026-10-25T10:00:00Z', balance: 5}],
+        waitlist: [{email: 'waiting@example.invalid', note: '', created_at: '2026-10-25T10:00:00Z', status: 'requested'}], cards: [], client_errors: [], orphaned_open: null});
+      if (path === '/api/admin/kill-switch') return response({on: false, reason: '', by: '', env_on: false});
+      return response({});
+    }});
+    admin.S.me.is_admin = true;
+    await admin.viewAdmin(); for (let i = 0; i < 6; i++) await flush();
+    const adminHeads = admin.root.querySelectorAll('thead th');
+    assert.ok(adminHeads.length >= 4, 'the admin tables are drawn');
+    assert.deepEqual(adminHeads.filter((th) => !th.textContent.trim()).map((th) => th.innerHTML), [], 'no admin header without words');
+    if (admin.root.querySelector('#waitlist [data-wl]')) {
+      const last = admin.root.querySelectorAll('#waitlist thead th').at(-1);
+      assert.equal(last.querySelector('.vh').textContent, 'Actions');
+    }
+    if (admin.clearTimers) admin.clearTimers();
+
+    const billing = billingPage(cardedBilling());
+    await billing.viewBilling(); await flush();
+    const cardHeads = billing.root.querySelectorAll('thead th');
+    assert.ok(billing.root.querySelectorAll('[data-remove]').length, 'the saved cards are drawn');
+    assert.deepEqual(cardHeads.filter((th) => !th.textContent.trim()).map((th) => th.innerHTML), [], 'no billing header without words');
+  });
+
   test(`${name}: the open autopilot panel's region is named apart from the Dashboard's autopilot card`, async () => {
     const store = new Map([['tau_ap_open', '1']]);
     const f = frontend({storage: storageFor(store), fetchImpl: (path) => {
