@@ -800,6 +800,9 @@
   // narrow column at 1280px ended a line on "Target Price:" with its amount on the next (or cut it off).
   // Takes escaped HTML and returns it with the phrase in a .nobr span, its space a no-break one.
   const glueTarget = (html) => String(html).replace(/\b(target price:?)\s+(\$\s*[\d,]+(?:\.\d+)?)/gi, '<span class="nobr">$1\u00a0$2</span>');
+  // A strike condition in a contract's name, short: "$113,000 or above" reads "≥ $113,000" and "Below $90" "< $90" (a
+  // row's condition beside its event, and the hot rail's).
+  const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   function titleStrike(d) {
     const t = [d && d.sub, d && d.title].map((x) => TARGET_IN.exec(String(x || ''))).find(Boolean);
     const value = t ? +(t[1].replace(/,/g, '') + (t[2] || '')) : NaN;
@@ -1128,7 +1131,7 @@
     paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
     depInstant, demoRowLine, TR_MODES, trBook, trFix, trDay, trMonth, trCi, TR_STATUS, TR_EDGE, trCurve, trCurveCap,
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
-    spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, marketSpot, MKT_GONE, vsText, vsLab,
+    spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,

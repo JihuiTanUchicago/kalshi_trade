@@ -79,6 +79,7 @@ def test_a_page_file_is_served_like_a_bundle_immutable_at_its_version_and_compre
     ("tau", "/strategies", "page-strategies.js"), ("tau", "/strategies/3", "app-strategy.js"),  # the list is one file for both themes
     ("tau", "/billing", "app-billing.js"), ("meridian", "/strategies", "page-strategies.js"),
     ("meridian", "/research", "page-research.js"), ("meridian", "/strategies/3", "app.meridian-strategy.js"),
+    ("tau", "/explore", "page-explore.js"), ("meridian", "/explore", "page-explore.js"),  # the list and a market's page: one file
     ("meridian", "/settings/billing", "app.meridian-billing.js"), ("meridian", "/settings/account", "app.meridian-funds.js"),
     ("tau", "/terms", "app-legal.js"), ("meridian", "/privacy", "app-legal.js"),  # the legal pages are always Tau's
     ("tau", "/admin", "page-admin.js"), ("meridian", "/settings/system", "page-admin.js"),  # one file for both themes
@@ -176,7 +177,7 @@ def test_a_deploy_that_changes_only_a_page_file_changes_the_build_the_page_check
     assert page_modules.build_version("tau", dict(versions, **{"app.meridian-billing.js": "e" * 10})) == before
     # The shared core and a shared page file are both themes' build.
     for theme in ("tau", "meridian"):
-        for shared in ("core.js", "page-autopilot.js", "page-admin.js", "page-community.js", "page-research.js", "page-strategies.js"):
+        for shared in ("core.js", "page-autopilot.js", "page-admin.js", "page-community.js", "page-research.js", "page-strategies.js", "page-explore.js"):
             assert page_modules.build_version(theme, dict(versions, **{shared: "d" * 10})) != page_modules.build_version(theme, versions)
 
 
@@ -247,7 +248,7 @@ def test_the_autopilot_panel_is_in_its_own_file_and_the_bundle_only_forwards_to_
 # serves, preloads and counts in its build as it does its own page files. Each bundle fetches it by that name
 # (pageSrc's PAGE_SHARED), and what a theme draws its own way in it comes from the bundle's shared() list (theme).
 def test_both_themes_load_the_one_shared_page_file_and_their_bundles_name_it():
-    assert page_modules.SHARED == ("autopilot", "admin", "community", "research", "strategies")
+    assert page_modules.SHARED == ("autopilot", "admin", "community", "research", "strategies", "explore")
     versions = server._static_versions()
     for name in page_modules.SHARED:
         f = "page-%s.js" % name
@@ -309,10 +310,11 @@ def test_a_shared_page_files_page_is_preloaded_by_its_one_name_in_each_theme(the
     ("community", ("/community",), "// ---------- community ----------"),
     ("research", ("/research", "/research/12", "/example"), "// ---------- research ----------"),
     ("strategies", ("/strategies",), "// ---------- strategies ----------"),
+    ("explore", ("/explore",), "// ---------- explore ----------"),
 ])
 def test_a_shared_page_file_is_served_once_for_both_themes(web, theme, name, paths, comment):
-    # The operator pages (Admin, the System map) are one file, and so are Community, Research and the Strategies list:
-    # either theme's shell preloads it by its one version.
+    # The operator pages (Admin, the System map) are one file, and so are Community, Research, the Strategies list and
+    # Explore: either theme's shell preloads it by its one version.
     port, account = web
     account["ui_theme"] = theme
     f = "page-%s.js" % name

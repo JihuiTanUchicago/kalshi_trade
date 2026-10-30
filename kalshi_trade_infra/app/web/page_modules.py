@@ -30,6 +30,7 @@ PAGES: Dict[str, str] = {
     "research": r"research(?:/\d+)?|example",  # /example goes on to its session's page
     "strategies": r"strategies",  # the list: both themes' one file (SHARED)
     "strategy": r"strategies/\d+",  # one strategy's page, its research paper and its Deploy panel: each theme's own
+    "explore": r"explore",  # the list and one market's page (/explore?m=TICKER): both themes' one file (SHARED)
     "funds": r"funds|settings/account",
     "community": r"community",
     "billing": r"billing|settings/billing",
@@ -56,7 +57,7 @@ ASSETS: Dict[str, Tuple[str, ...]] = {
 }
 PREFIX = {"tau": "app-", "meridian": "app.meridian-"}
 # Page files both themes load, page-<name>.js: each bundle's pageSrc names them too.
-SHARED = ("autopilot", "admin", "community", "research", "strategies")
+SHARED = ("autopilot", "admin", "community", "research", "strategies", "explore")
 SHARED_PREFIX = "page-"
 BUNDLE = {"tau": "app.js", "meridian": "app.meridian.js"}
 # The shared core: the pure helpers (escaping, money, counts, dates) both themes' bundles take from it as they
