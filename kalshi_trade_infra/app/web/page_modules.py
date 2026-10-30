@@ -94,6 +94,23 @@ def preload(theme: Optional[str], path: str, versions: Dict[str, str], signed_in
     return '\n<link rel="preload" href="/static/%s?v=%s" as="script">' % (f, versions[f])
 
 
+# Each theme's text face, as its stylesheet's @font-face names it (self-hashed, so always this URL). Meridian
+# draws every page in DM Sans, but the browser asked for the file only once the bundle had drawn text that
+# needs it: the page painted in the fallback face, then laid the whole page out again when DM Sans arrived
+# (a second full layout, and every line moving). Tau's app pages use the system face (Rubik is its landing's
+# only), so its shell preloads none.
+FONTS: Dict[str, str] = {"meridian": "dm-sans-latin-9fea608a94.woff2"}
+
+
+def font_preload(theme: Optional[str], signed_in: bool = True) -> str:
+    """The <link rel="preload"> for the theme's text face, so it downloads beside the stylesheet and the bundle
+    and is in hand when the first page is laid out; '' for a theme without one, an unknown theme, or signed out
+    (the sign-in and landing pages set their own type). Fonts are always fetched in CORS mode, so the preload
+    says crossorigin, or the browser would fetch the file twice."""
+    f = FONTS.get(theme or "") if signed_in else None
+    return '\n<link rel="preload" href="/static/%s" as="font" type="font/woff2" crossorigin>' % f if f else ""
+
+
 def assets_attr(versions: Dict[str, str]) -> str:
     """#tau-boot's data-page-assets: "funds:/static/alpaca-paper.css?v=<v> funds:..." (names, paths and hex
     only), in ASSETS' order: the URLs the bundle loads them by."""

@@ -114,6 +114,48 @@ def test_the_legal_pages_preload_their_file_signed_out_too(web):
             assert _preloads(body.decode()) == [("app-legal.js", v)], (cookie, path)
 
 
+def _font_preloads(html):
+    return re.findall(r'<link rel="preload" href="/static/([a-z0-9.-]+\.woff2)" as="font" type="font/woff2" crossorigin>', html)
+
+
+# Page-speed pass 2026-10-30: Meridian's DM Sans was asked for only once the bundle had drawn text (~100ms into a
+# local load, a round trip later on a phone), so every Meridian page painted in the fallback face and then laid
+# the whole page out again when it arrived. Seeded local account, 1280px, cold: Meridian Dashboard layout 82 -> 40ms,
+# first figure 304 -> 244ms (median of 3); Deploy 204 -> 167ms, Settings 166 -> 129ms.
+@pytest.mark.parametrize("path", ["/", "/deploy", "/research/12", "/funds", "/settings"])
+def test_a_signed_in_meridian_shell_preloads_its_text_face_and_tau_preloads_none(web, path):
+    port, account = web
+    # The preloaded file is the one Meridian's stylesheet names for DM Sans, its body face, and it is in the repo.
+    css = (STATIC / "app.meridian.css").read_text()
+    face = re.search(r'font-family: "DM Sans";\s*src: url\("/static/([a-z0-9.-]+\.woff2)"\)', css)
+    assert face and page_modules.FONTS == {"meridian": face.group(1)} and (STATIC / face.group(1)).is_file()
+    assert re.search(r'^\s*font: [^;]*var\(--f-ui\);', css, re.M) and '--f-ui: "DM Sans"' in css
+    account["ui_theme"] = "meridian"
+    _, body = _get(port, path, cookie="rsid=abc")
+    html = body.decode()
+    head = html.split("</head>")[0]
+    assert _font_preloads(head) == [face.group(1)]
+    # Served like the other fonts: immutable, and a font CSP font-src 'self' allows.
+    r, _ = _get(port, "/static/" + face.group(1))
+    assert r.status == 200 and r.getheader("Content-Type") == "font/woff2" and "font-src 'self'" in server.CSP
+    account["ui_theme"] = "tau"  # Tau's app pages use the system face: nothing to preload
+    _, body = _get(port, path, cookie="rsid=abc")
+    assert _font_preloads(body.decode()) == []
+
+
+def test_a_signed_out_shell_preloads_no_font():
+    """Signed out (sign-in, landing, the legal pages) sets its own type, so no shell preloads Meridian's face."""
+    assert page_modules.font_preload("meridian", signed_in=False) == ""
+    assert page_modules.font_preload(None) == "" and page_modules.font_preload("tau") == ""
+
+
+def test_a_signed_out_meridian_device_shell_preloads_no_font(web):
+    port, _ = web
+    for path in ("/", "/signin", "/terms"):
+        _, body = _get(port, path, cookie="tau_ui=meridian")
+        assert _font_preloads(body.decode()) == [], path
+
+
 def test_only_tau_has_the_legal_file():
     assert page_modules.TAU_ONLY == ("legal",) and page_modules.PUBLIC == ("legal",)
     assert "app-legal.js" in page_modules.FILES and "app.meridian-legal.js" not in page_modules.FILES

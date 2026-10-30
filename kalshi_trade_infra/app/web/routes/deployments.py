@@ -18,7 +18,7 @@ from app.web.caches import _ROADS, _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.strategies import _backtest_checks, _stamp_row_instant_fills, _with_marks, _with_why
 from app.web.settings import MAX_ACTIVE_DEPLOYMENTS
-from app.web.views import _demo_key_back, _deployment_out, _paper_books, _realized_by_book, demo_health_memo
+from app.web.views import _demo_key_back, _deployment_out, _paper_books, _realized_by_book, demo_health_memo, position_out
 from trading_core.domain.slippage import PAPER, paper_estimate
 
 
@@ -80,8 +80,9 @@ def list_deployments(ctx: Ctx):
         # which is the dashboard's all-time figure. One book at a time, never summed together.
         # The paper book's listed figure also carries its after-slippage estimate (display only).
         "realized_by_book": _realized_with_estimate(deps, removed),
-        "open_positions": _with_why(_with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")), deps),
-        "recent_closed": _with_why(repo.user_positions(ctx.cur, ctx.uid, "closed", 20), deps),
+        # Each position less the columns the board never reads (views.UNSENT_POSITION_FIELDS).
+        "open_positions": [position_out(p) for p in _with_why(_with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")), deps)],
+        "recent_closed": [position_out(p) for p in _with_why(repo.user_positions(ctx.cur, ctx.uid, "closed", 20), deps)],
         # The server's live switch, as /api/me says it: in the answer (and so its version), the 10s poll
         # carries a flip to an open board, which says a live deployment waits while it is closed.
         "live_trading_available": engine.LIVE_TRADING_ENABLED,

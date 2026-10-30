@@ -26,6 +26,7 @@ from app.web.views import (
     _silent_before,
     _start_of_day_utc,
     credit_usd,
+    position_out,
 )
 from trading_core.domain.money import cents, exact
 from trading_core.domain.slippage import paper_estimate
@@ -48,19 +49,6 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
         "realized_pnl": cents(total),
         "today_pnl": cents(today),
     }
-
-
-# An open position's fields the dashboard never shows or reads (neither bundle, nor a page file): whose it is (the
-# request's own user) and the exchange order reference. `id` stays (the 15s poll puts each mark back over the kept
-# answer by position id, pollAnswer, and page_poll keys the marks by it) and so does `deployment_id` (the page
-# groups positions by deployment and names each one's market from it). Only the answer drops them: the positions
-# read here are the engine's and the books' rows, unchanged.
-_HIDDEN_POSITION_FIELDS = ("user_id", "order_ref")
-
-
-def _position_out(p: Dict) -> Dict:
-    """An open position as the dashboard answer sends it: the row less _HIDDEN_POSITION_FIELDS."""
-    return {k: v for k, v in p.items() if k not in _HIDDEN_POSITION_FIELDS}
 
 
 def dashboard(ctx: Ctx):
@@ -137,8 +125,9 @@ def dashboard(ctx: Ctx):
         "paper": paper,
         "demo": demo,
         "live": live,
-        "open_positions": [_position_out(p) for p in _with_why(open_pos, deps)],
-        "recent_closed": _with_why(repo.user_positions(cur, ctx.uid, "closed", 12), deps),
+        # Each position less the columns the page never reads (views.UNSENT_POSITION_FIELDS).
+        "open_positions": [position_out(p) for p in _with_why(open_pos, deps)],
+        "recent_closed": [position_out(p) for p in _with_why(repo.user_positions(cur, ctx.uid, "closed", 12), deps)],
         # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),

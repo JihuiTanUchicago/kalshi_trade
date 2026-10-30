@@ -848,3 +848,61 @@ def test_the_dashboard_sends_open_positions_without_their_owner_or_order_ref_ins
     bare = []
     server.dashboard(_ctx(bare, 10.0, extra=_board_rows()))
     assert len(log) == len(bare), (len(log), len(bare))
+
+
+@pytest.mark.parametrize("name", ["dashboard", "list_deployments"])
+def test_the_money_pages_send_positions_without_the_columns_no_page_reads(production, page_caches, name):
+    """Page-speed pass 2026-10-30: the dashboard's recent settlements and both of the Deploy board's position lists
+    sent every app_positions column, seven of which no bundle or page file reads: the owner, the order reference, the
+    engine's close lease, the early-exit scoring and the exit fee (seeded account: /api/deployments 39.1 -> 34.8KB,
+    /api/dashboard 32.7 -> 29.8KB raw, every 10s / 15s poll). Each answer leaves them out of open and closed rows alike,
+    keeps id, deployment_id and the marks the poll carries, still says why each trade was made (worked out from the
+    whole row first), and reads nothing more for it."""
+    import re
+    from pathlib import Path
+
+    from app.services import page_poll
+    from app.web import views
+
+    unsent = ("user_id", "order_ref", "close_claim", "close_claim_ts", "settle_result", "hold_pnl", "exit_fee")
+    assert views.UNSENT_POSITION_FIELDS == unsent
+    # The claim the list rests on: not one static script names any of these fields.
+    static = Path(server.__file__).resolve().parent / "static"
+    for f in sorted(static.glob("*.js")):
+        src = f.read_text()
+        for field in unsent:
+            assert not re.search(r"\b%s\b" % field, src), (f.name, field)
+    now = datetime(2026, 10, 25)
+    base = {"deployment_id": 5, "user_id": 7, "mode": "paper", "side": "yes", "qty": 4, "entry_price": Decimal("0.4100"),
+            "entry_fee": Decimal("0.0700"), "opened_at": now - timedelta(minutes=40), "close_claim": "engine-a",
+            "close_claim_ts": now - timedelta(minutes=1), "title": "Fade tails"}
+    open_pos = dict(base, id=301, order_ref="sim:301", ticker="KXBTC15M-26OCT251215-15", market_close_time=now + timedelta(minutes=9),
+                    status="open", exit_price=None, exit_fee=None, pnl=None, close_reason=None, closed_at=None, settle_result=None,
+                    hold_pnl=None, mark_price=Decimal("0.4700"), mark_ts=now - timedelta(seconds=20))
+    closed = dict(base, id=290, order_ref="sim:290", ticker="KXBTC15M-26OCT251145-45", market_close_time=now - timedelta(minutes=15),
+                  status="closed", exit_price=Decimal("0.6000"), exit_fee=Decimal("0.0500"), pnl=Decimal("0.6400"),
+                  close_reason="take_profit", closed_at=now - timedelta(minutes=20), settle_result="yes",
+                  hold_pnl=Decimal("2.2900"), mark_price=None, mark_ts=None, _listed=1)
+    rows = dict(_board_rows(), **{"SELECT p.*, s.title FROM app_positions p": [open_pos],
+                                  "SELECT p.*, s.title, s.id IS NOT NULL AS _listed": [closed]})
+    log = []
+    out = getattr(server, name)(_ctx(log, 10.0, extra=rows))
+    sent = out["open_positions"] + out["recent_closed"]
+    assert [p["id"] for p in sent] == [301, 290]
+    for p in sent:
+        assert not set(unsent) & set(p), (p["id"], set(unsent) & set(p))
+        assert p["deployment_id"] == 5 and p["ticker"] and p["why"]
+    assert out["open_positions"][0]["mark_price"] == Decimal("0.4700") and out["open_positions"][0]["unrealized"] == 0.17
+    assert out["recent_closed"][0]["pnl"] == Decimal("0.6400") and out["recent_closed"][0]["close_reason"] == "take_profit"
+    assert set(page_poll.moving(out)["marks"]) == {"301"}  # the poll's marks still key on the position id
+    text = json.dumps(out, default=server._json_default)
+    assert "sim:30" not in text and "sim:29" not in text and "engine-a" not in text
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats, repeats
+    # The same statements as before the columns were left out: dropping them costs no read.
+    book_memo.clear()
+    server._TRACK_RECORD.clear(); server._BACKTEST_CHECKS.clear(); server._ROADS.clear(); server._FAILING.clear()
+    bare = []
+    getattr(server, name)(_ctx(bare, 10.0, extra=rows))
+    assert len(log) == len(bare) and len(log) <= KEPT_BUDGET[name][0], (len(log), len(bare))
+
