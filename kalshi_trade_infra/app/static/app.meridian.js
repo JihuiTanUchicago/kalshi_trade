@@ -75,10 +75,20 @@
     unrealized: ['Unrealized', 'What the positions still open would gain or lose if sold now, at the price Kalshi’s order book offers, after what they cost including fees. An estimate: it moves with the market until they close.'],
     instantfill: ['Instant fill', 'An early kind of paper trade that filled the whole order at the quoted price, without checking how many contracts Kalshi’s order book offered there. Too easy to count as evidence, so the track record and the count toward live leave it out.'],
     paperfills: ['Paper fills', 'Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second or two before a real order lands. Where a page shows an estimate after typical live slippage, it takes 0.5¢ a contract off each time an order fills to allow for that.'],
+    // The estimate beside a paper figure on the dashboard (slipEstGl): "≈ after typical live slippage" said nothing of
+    // what slippage is to a new account. Its meaning is the owner's: an estimate beside paper P&L, never in its place.
+    slippage: ['After typical live slippage', 'A real order can fill at a worse price than the one quoted, because the price moves in the second or two before it lands. Paper trades don’t pay for that, so this estimate takes a little off each fill (the amount it names) to show roughly what live trading might have made. It is only an estimate: the paper P&amp;L beside it is the figure, and the checks toward live use that figure.'],
+    stake: ['Stake', 'How much a strategy spends on each trade it opens. “Stake not set” means the deployment’s saved rules carry no trade size, so there is no amount to show.'],
   };
   // What every paper P&L figure includes, said beside it (services/customer_text.PAPER_NET; the bubble
   // above is its PAPER_FILLS). Paper already fills at the ask and bid and pays Kalshi's fee.
   const PAPER_NET = 'after Kalshi fees and the spread';
+  // The stretch of time each paper P&L figure on the dashboard counts, said first and in these words in both themes: the
+  // strip's Money row, the money band, the autopilot card, its week and its panel's day. A new account met three paper
+  // figures on one screen (the last 24 hours, all time, and today in UTC) with nothing saying why they differed.
+  // Display only: every figure is the server's, as before.
+  const PNL_WINDOW = { day: 'Last 24 hours', visit: 'Since your last visit', week: 'Last 7 days', today: 'Today (UTC)', all: 'Since you started' };
+  const pnlWin = (k) => `<span class="pnl-win">${PNL_WINDOW[k]}:</span>`;
   // An open position the engine hasn't priced yet (it marks it on its next tick), in one phrase on every page: Deploy's
   // rows and open positions, the dashboard's, a market page's and the strategy page's. It read "Unavailable", "—",
   // "not marked yet" and "awaiting first mark" for the same thing. Display only: how a mark is read is unchanged.
@@ -93,6 +103,9 @@
     ? `≈ ${usd(e.pnl, true)} after typical live slippage (estimate: ${+e.per_fill_cents}¢ a contract each time an order fills)` : '');
   const slipEst = (e) => (slipText(e) ? `<span class="slip-est">${slipText(e)}</span>` : '');
   const slipTip = (e) => (slipText(e) ? ` title="${esc(slipText(e))}"` : '');
+  // On the dashboard (its money band, the autopilot card, its week and its panel's day) the estimate carries the
+  // slippage bubble, glued to its last word. The other pages keep slipEst as it was.
+  const slipEstGl = (e) => (slipText(e) ? `<span class="slip-est">${gl(slipText(e), 'slippage')}</span>` : '');
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
   // Text, its glossary button, then a separator (SEP's "·" and space). Chrome breaks a line after an inline button
@@ -128,7 +141,10 @@
     document.addEventListener('focusin', (e) => { const m = e.target.closest && e.target.closest('.info'); if (m) show(m); else if (current && !e.target.closest('.glossary-pop')) hide(); });
     document.addEventListener('click', (e) => { const m = e.target.closest('.info'); if (m) { e.preventDefault(); (current === m) ? hide() : show(m); } else hide(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
-    addEventListener('scroll', hide, true); addEventListener('resize', hide);
+    // A scroll shuts the bubble, except one whose marker has focus, which follows its marker: Tab onto a marker below
+    // the fold scrolls it into view, and that scroll shut the bubble the focus had just opened.
+    addEventListener('scroll', () => { if (current && document.activeElement === current) place(current); else hide(); }, true);
+    addEventListener('resize', hide);
   }
 
   // ---------- formatting ----------
@@ -2131,7 +2147,7 @@
   // A Void strategy with no gatekeeper record (the server's void_no_record, with backtest_only): not held out either,
   // but nothing picked it, so its hover leaves that out, as its Strategies row and page do. It read "unseen data".
   const DEP_FACT_TIP_VOID = 'After its split date (later period\u00a0· not held out)';
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact" title="${d.void_no_record ? DEP_FACT_TIP_VOID : d.backtest_only ? DEP_FACT_TIP_LATER : DEP_FACT_TIP}">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}${d.backtest_only ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data'}${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact" title="${d.void_no_record ? DEP_FACT_TIP_VOID : d.backtest_only ? DEP_FACT_TIP_LATER : DEP_FACT_TIP}">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}<span class="nobr">${d.backtest_only ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data'}${glo(d.void_no_record ? 'latervoid' : d.backtest_only ? 'laterperiod' : 'unseen')}</span>${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.
@@ -2167,7 +2183,7 @@
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
   // A deployment's sizing on its Deploy row and monitor card. A spec stored without sizing sends stake and
   // max_positions as null: it says the stake is not set and leaves out the cap, instead of "$ / trade".
-  const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : 'Stake not set';
+  const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : gl('Stake not set', 'stake');
   const depCap = (d) => d.max_positions != null ? `Max ${esc(d.max_positions)} open` : '';
   // A paper row's closed trades that were instant fills (the server's `instant_fills`: its closed trades less those
   // filled through the simulated order book, the track record's split). "2 closed" sat beside "0/30 trades" toward
@@ -2734,7 +2750,7 @@
       const paperNew = !(p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper'));
       // The day's realized figure names its book ("Paper realized today", "Live realized today"): beside a Kalshi cash
       // band, a bare "Realized today (UTC) −$0.57" didn't say it was paper's (walked 2026-10-27 with a live key).
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">Paper realized today (UTC)</span><strong>${!hasClosed(p) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `${pnlWin('all')} <span class="nobr">realized P&amp;L${glo('realized')} ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEstGl(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">${pnlWin('today')} paper realized</span><strong>${!hasClosed(p) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -2816,7 +2832,7 @@
         </section><div class="dash-analysis">${performance}<section class="sect deployed-monitor${sharedPaperRunning ? ' shared-paper-running' : ''}"><div class="sect-head"><div class="monitor-heading"><h2>Deployed strategies <span class="section-count">${num(d.deployments.length)}</span></h2>${sharedPaperRunning ? '<span class="monitor-context">Paper</span>' : ''}${d.deployments.length ? '<a href="/research?new=1" class="btn">New research</a>' : ''}</div></div><div id="dash-deps">${deps}</div></section></div></div></div>`;
       paint(root.querySelector('#boardbody'), board);  // the 15s poll repaints only what changed
       if (accountsFocused) root.querySelector('#other-accounts > summary').focus({ preventScroll: true });
-      replaceDeploymentContent(root.querySelector('#main'), main);
+      keepApCard(() => replaceDeploymentContent(root.querySelector('#main'), main));
       S.dashPaper = p;
       paintDashAp();
       resizePaperChart = days.length > 1 ? () => {
@@ -3951,9 +3967,12 @@
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
     const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${paid ? SEP + paid : ''}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
-    return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
-      <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
-      <dl class="since-list">${row('Money', money)}${cost ? row('Cost', cost) : ''}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
+    // The Money row leads with its window, as every paper figure on the dashboard does (PNL_WINDOW): beside the
+    // autopilot card's "Since you started", its figures read as the same paper P&L.
+    const win = s.first ? 'day' : 'visit';
+    return `<section class="since" id="dash-since" aria-label="${PNL_WINDOW[win]}">
+      <h2 class="since-h">${s.first ? PNL_WINDOW.day : `${PNL_WINDOW.visit} <span class="since-at">${esc(when(s.at))}</span>`}</h2>
+      <dl class="since-list">${row('Money', `${pnlWin(win)} ${money}`)}${cost ? row('Cost', cost) : ''}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
   }
   function demoHealthLine(h) { return h ? `<span class="demo-health">${esc(h.line)}${actionLink(h)}</span>` : ''; }
   // The reconciler found live positions Tau's book and Kalshi disagree on. Tau has no portfolio page:
@@ -4013,6 +4032,37 @@
   // the button came back pressable with its note gone, so a hung switch looked like a press that did
   // nothing. The repainted button stays busy, with the note, until the write answers (apTurning).
   let apTurning = null;
+  // A poll repaints the autopilot card (every 15 seconds) and its panel's figures and week (each status read) whole. The
+  // week's "How these are counted" stays as the reader left it, open or shut, and focus stays on the control it was on
+  // (that summary, a term's info button, the card's button): the disclosure shut, and focus fell back to the page,
+  // under a keyboard or screen-reader user. Unchanged markup isn't written again. `html(open)` draws the block with the
+  // disclosure open or shut.
+  const repainted = new WeakMap();
+  function repaintKeep(host, html) {
+    const how = host.querySelector('.ap-week-how'), out = html(!!(how && how.open));
+    if (repainted.get(host) === out) return;
+    const a = document.activeElement, mine = a && a !== host && host.contains && host.contains(a) ? a : null;
+    const ds = (mine && mine.dataset) || {};
+    const sel = !mine ? '' : how && mine === how.querySelector('summary') ? '.ap-week-how summary'
+      : ds.glo ? `[data-glo="${ds.glo}"]` : ds.apcard ? `[data-apcard="${ds.apcard}"]` : '';
+    const nth = sel ? [...host.querySelectorAll(sel)].indexOf(mine) : -1;
+    repainted.set(host, out);
+    host.innerHTML = out;
+    const back = nth >= 0 && [...host.querySelectorAll(sel)][nth];
+    if (back && back.focus) back.focus({ preventScroll: true });
+  }
+  // The card itself sits in a block a poll rewrites whole when anything in it moved (Tau's board, Meridian's #main).
+  // `write` rewrites that block; the same card is then put back in its new place, with what the reader had open in it
+  // and the focus they had there, before paintDashAp repaints it. It came back drawn afresh, shut and unfocused.
+  function keepApCard(write) {
+    const card = document.getElementById('dash-ap'), a = document.activeElement;
+    const had = card && a && a !== card && card.contains && card.contains(a) ? a : null;
+    write();
+    const fresh = document.getElementById('dash-ap');
+    if (!card || !fresh || fresh === card || !fresh.replaceWith) return;
+    fresh.replaceWith(card);
+    if (had && had.focus) had.focus({ preventScroll: true });
+  }
   function apCardOn(b) {
     const waited = apTurning = waitNote(b);
     return busy(b, apTurnOn, waited).finally(() => {
@@ -4028,7 +4078,7 @@
     syncApCopy(on);
     if (!host) return;
     if (!on) {
-      host.className = 'apcard';
+      host.className = 'apcard'; repainted.delete(host);
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
         <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p>${apCostLine()}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
@@ -4040,7 +4090,7 @@
       apBindFocus(host);
       return;
     }
-    if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
+    if (!d) { host.className = 'apcard on'; repaintKeep(host, () => ''); return; }  // on, status still loading
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     // A live one while live trading is closed places no orders: counted apart, as Deploy counts it.
     const liveIdle = liveOpen() ? 0 : +d.live_running || 0;
@@ -4056,7 +4106,7 @@
     // A paper book that has never closed a trade has no P&L yet: "$0.00" read as a result to a new account.
     const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEst(S.dashPaper.slippage_estimate)}`],
+      d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : [`${pnlWin('all')} ${gl('paper P&amp;L, realized', 'realized')}`, pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEstGl(S.dashPaper.slippage_estimate)}`],
       ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${gl(PAPER_COUNT_WHY, 'instantfill')}</small>`]
@@ -4068,11 +4118,11 @@
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
       : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"', d) + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
-    host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
+    repaintKeep(host, (open) => `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
         <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
-        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week, d)}</div>
-      <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
+        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week, d, open)}</div>
+      <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`);
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
     const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
     if (idleFocus) idleFocus.onclick = () => { apOpen(); apShowFocus(document.getElementById('autopilot-float')); };
@@ -4245,7 +4295,7 @@
     const note = (researched ? [paid, ci && `plus ${ci}`] : [ci && `but ${ci}`, paid]).filter(Boolean).join(SEP);
     return `${researched ? spend(w.research_credits, w.research_under_cent) : 'None yet'}${note ? ` <small>${note}</small>` : ''}`;
   }
-  function apWeek(w, d) {
+  function apWeek(w, d, open = false) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     // A first day's week is all zeros: a block of $0.00 and 0 under two paragraphs explaining them. Until
@@ -4259,15 +4309,17 @@
     // Its first session already running is not "once it starts": the card said so beside "It started 1 research
     // session" in Last 24 hours. While one runs (the status's research.active) it says that instead.
     const researching = !!(d && d.research && d.research.active && d.research.active.length);
-    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> ${researching
+    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>${PNL_WINDOW.week}:</b> ${researching
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
       : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
-    return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
+    // Its note on what each row counts is folded under "How these are counted": shown whole, it read as a dense
+    // paragraph under the figures to a new account. Its words are unchanged inside.
+    return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>${PNL_WINDOW.week}</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${apWeekSpent(w, spend, checkins)}</dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${num(trades)} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>
-    </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
+      <div><dt>${pnlWin('week')} autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${num(trades)} closed trade${trades === 1 ? '' : 's'}</small>${slipEstGl(w.paper_slippage_estimate)}`}</dd></div>
+    </dl>${apCreditsLeft(w, d)}<details class="ap-week-how"${open ? ' open' : ''}><summary>How these are counted</summary><p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></details></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
   // Paused for credits while auto-reload is on and its last charge failed (the status's reload_failed,
@@ -4796,7 +4848,7 @@
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
     marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money, notice, num, overDays,
-    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipTip, PAPER_COUNT_WHY,
+    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
     sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
