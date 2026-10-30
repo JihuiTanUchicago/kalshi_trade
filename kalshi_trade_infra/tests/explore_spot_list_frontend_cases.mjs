@@ -442,4 +442,39 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     assert.equal(back(odd), '/explore', 'never back to a market page');
     odd.clearTimers();
   });
+
+  // Walked 2026-10-30: a page headed "$113,000 or above" measured spot from its stored strike, $112,999.99. A row named
+  // the same way measures as its page now does, from $113,000 (the name's threshold, a cent past the strike), so the two
+  // agree on which side of the line spot is: at $113,000.00 spot is at it, at $112,999.99 a cent under it.
+  test(`${name}: a row named "$113,000 or above" measures from $113,000, as its market page does`, async () => {
+    const T = 'KXBTCD-26OCT2717-T112999.99';
+    const named = (vs, su = '$113,000 or above') => row(T, {su, vs});
+    const {f, rows} = await list({markets: [named({side: 'above', diff: 0.01, pct: 0}), named({side: 'at', diff: 0, pct: 0}),
+      named({side: 'above', diff: 500.5, pct: 0.443}), named({side: 'above', diff: 500.5, pct: 0.443}, '$113,500 or above')], spot: SPOT});
+    const spot = rows.map((r) => r.querySelector('.xspot').textContent.replace(/⁠/g, '').replace(/ /g, ' '));
+    assert.equal(spot[0], 'Spot vs strike at the strike', 'spot at $113,000.00 is at the line, not above it');
+    assert.equal(spot[1], 'Spot vs strike −$0 · under 0.01%', 'spot at $112,999.99 is under the line, not at it');
+    assert.equal(spot[2], 'Spot vs strike +$500 · 0.4%', '$500.49 over $113,000, as its page says, not $500.50 over $112,999.99');
+    assert.equal(spot[3], 'Spot vs strike +$501 · 0.4%', 'a name whose figure isn’t the strike’s keeps the stored strike');
+    f.clearTimers();
+    const {f: g, el} = await rail({markets: [{...named({side: 'above', diff: 500.5, pct: 0.443}), h: [.4, .5]}], spot: SPOT});
+    assert.match(el.querySelector('.hot-when').textContent, /Spot vs strike \+⁠?\$500 · 0\.4%$/);
+    const label = el.querySelector('.hot-row').getAttribute('aria-label');
+    if (label) assert.match(label, /Spot vs strike \+⁠?\$500\b/);
+    g.clearTimers();
+  });
+
+  // Meridian's hot rail at 1280px wrapped "Closes 05:00 UTC · in 58 min" between "58" and "min": the countdown's number
+  // keeps its unit, on the rail and on Explore's rows.
+  test(`${name}: a close inside the hour counts down with its number and unit together, on the rail and the list`, async () => {
+    const soon = row('KXBTCD-26OCT2717-T112999.99', {su: '$113,000 or above', ct: new Date(Date.now() + 58.5 * 60e3).toISOString()});
+    const {f, el} = await rail({markets: [{...soon, h: [.4, .5]}]});
+    const when = el.querySelector('.hot-when').textContent;
+    assert.match(when, /in 58 min/);
+    assert.doesNotMatch(when, /58 min/);
+    f.clearTimers();
+    const {f: g, rows} = await list({markets: [soon]});
+    assert.match(rows[0].querySelector('td.name').textContent, /in 58 min/);
+    g.clearTimers();
+  });
 }
