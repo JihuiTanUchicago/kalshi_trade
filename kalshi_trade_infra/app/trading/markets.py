@@ -12,6 +12,7 @@ from __future__ import annotations
 import bisect
 import math
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -27,6 +28,15 @@ except ImportError:  # pragma: no cover - py<3.9
     ZoneInfo = None  # type: ignore
 
 NEW_YORK = ZoneInfo("America/New_York") if ZoneInfo else None
+
+
+# A family's label keeps "$X" where each of its contracts has its own strike ("Bitcoin above $X at 5pm ET"): the
+# research model reads the label that way (its market list, the brief, matching its pick) and so does the focus
+# refusal, so those keep it. A customer never reads the placeholder: `customer_label` says it in words
+# ("Bitcoin above a set price at 5pm ET"), and a market page fills the contract's own strike in for those words.
+# Walked 2026-10-30: the market page's main button read "Research BTC above $X at 5pm ET".
+PLACEHOLDER = re.compile(r"\$[A-Z]\b")
+LADDER_WORDS = "a set price"
 
 
 # Per-second research twins open once this much tick archive exists (3 days = ~288 15-min contracts).
@@ -85,8 +95,13 @@ class Market:
         if days >= TICK_MIN_DAYS:
             return None
         return ("%s has %.1f of the %g days of per-second history research needs (archive started %s)"
-                % (self.label, max(days, 0.0), TICK_MIN_DAYS,
+                % (self.customer_label, max(days, 0.0), TICK_MIN_DAYS,
                    datetime.fromtimestamp(self.data_from_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")))
+
+    @property
+    def customer_label(self) -> str:
+        """The label as a customer reads it: a strike placeholder ("$X", or a catalog title's "$Y") in words."""
+        return PLACEHOLDER.sub(LADDER_WORDS, self.label)
 
     def is_target_event(self, close_time: datetime) -> bool:
         if self.close_hour_et is None:
@@ -106,9 +121,9 @@ CRYPTO_15M_HISTORY_DAYS = 90
 # endpoints serve these series back to 2021, and market_history pages them past the live cutoff.
 WEATHER_HISTORY_DAYS = int(os.getenv("WEATHER_HISTORY_DAYS", "365"))
 
-# A label is what customers read, so a crypto one says what the contract pays on and when it closes
-# ("Bitcoin above $X at 5pm ET", "Solana up or down in 15 minutes"); the app fills a contract's own strike
-# in for "$X" from its ticker.
+# A label says what the contract pays on and when it closes ("Bitcoin above $X at 5pm ET", "Solana up or down
+# in 15 minutes"). Customers read it as `customer_label` ("Bitcoin above a set price at 5pm ET"), and the app
+# fills a contract's own strike in for those words from its ticker.
 CURATED: Dict[str, Market] = {
     # Logical research series; the native Bitcoin ticker is verified/discovered by the
     # dedicated public-data adapter. Never send BTC_PERP to the event-contract API.

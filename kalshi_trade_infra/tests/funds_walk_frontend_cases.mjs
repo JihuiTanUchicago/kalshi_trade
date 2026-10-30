@@ -10,7 +10,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 const MARKETS = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'},
-  {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', close_hour_et: 17}];
 
 export function fundsWalkCases({name, frontend, fundsData}) {
   test(`${name}: Funds' paper history names each contract in plain words and says when cash moved, with its zone`, async () => {

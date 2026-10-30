@@ -527,4 +527,4 @@ def session_title(prompt: Optional[str], market: Optional[str]) -> Optional[str]
     if (prompt or "").strip() != worker.RESEARCH_FLOOR_IDEA:
         return None
     m = MARKETS.get(market or "")
-    return "New idea picked by the autopilot for %s" % (m.label if m else "the market it picks")
+    return "New idea picked by the autopilot for %s" % (m.customer_label if m else "the market it picks")

@@ -2842,12 +2842,12 @@ test('Explore says when a timed contract closes, and nothing for an event with n
 
 test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by the same words at its own hour', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', close_hour_et: 17}];
   const row = (t, ti) => ({t, s: 'KXBTCD', ti, su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0});
   f.root.innerHTML = '<aside id="hotrail"></aside>';
   f.S.hot = {at: new Date().toISOString(), markets: [row('KXBTCD-26OCT2717-T112999.99', 'Bitcoin price at 5pm EDT?'), row('KXBTCD-26OCT2700-T112999.99', 'Bitcoin price at 12am EDT?')]};
   f.renderHotRail();
-  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC above $X at 5pm ET', 'BTC above $X at midnight ET']);
+  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC above set price at 5pm ET', 'BTC above set price at midnight ET']);
 });
 
 test('Explore bid and ask preserve decimal strings, zero and independently missing or malformed quote sides', async () => {
@@ -5137,7 +5137,7 @@ test('Meridian first-run funnel: deploying from a strategy page lands on Deploy 
 test('Meridian money pages: open positions name their market, settle with date and zone, and a live row says LIVE', async () => {
   const pos = (extra) => ({title: 'Drift', ticker: 'KXBTCD-26OCT2617-T68499.99', side: 'no', qty: 25, entry_price: .36, entry_fee: .41, cost: 9.41,
     unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
-  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}];
+  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET'}];
   const f = frontend({fetchImpl: path => path === '/api/deployments'
     ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date(Math.min(Date.now() + 60e3, new Date().setHours(23, 59, 59, 0))).toISOString()})]}) : response({})});
   f.S.me.markets = markets;
@@ -5169,21 +5169,21 @@ test('Meridian money pages: open positions name their market, settle with date a
   assert.match(left, /<h3>No paper trades in the record yet<\/h3>/); assert.match(left, /8 instant-fill paper trades left out/);
 });
 test('Meridian: an open ETH, SOL or XRP position names its contract as Bitcoin\'s does, with its own strike to the last decimal', async () => {
-  // "ETH 5pm" named the coin and an hour. A daily ladder contract fills its own strike in for "$X", as its rules
+  // "ETH 5pm" named the coin and an hour. A daily ladder contract fills its own strike in for "a set price", as its rules
   // read it (an XRP strike runs to four decimals); a 15-minute one says up or down.
   const pos = (ticker) => ({title: 'Drift', ticker, side: 'yes', qty: 2, entry_price: .4, entry_fee: .02, cost: .82, unrealized: null,
     mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z'});
   const f = frontend({fetchImpl: path => path === '/api/deployments'
     ? response({deployments: [], open_positions: ['KXETHD-26OCT2717-T3999.99', 'KXSOLD-26OCT2717-T189.99', 'KXXRPD-26OCT2717-T2.4599',
       'KXETH15M-26OCT271715-15', 'KXSOL15M-26OCT271715-15', 'KXXRPD-26OCT2717'].map(pos)}) : response({})});
-  f.S.me.markets = [{key: 'eth_daily', series: 'KXETHD', label: 'Ethereum above $X at 5pm ET', close_hour_et: 17},
-    {key: 'sol_daily', series: 'KXSOLD', label: 'Solana above $X at 5pm ET', close_hour_et: 17},
-    {key: 'xrp_daily', series: 'KXXRPD', label: 'XRP above $X at 5pm ET', close_hour_et: 17},
+  f.S.me.markets = [{key: 'eth_daily', series: 'KXETHD', label: 'Ethereum above a set price at 5pm ET', close_hour_et: 17},
+    {key: 'sol_daily', series: 'KXSOLD', label: 'Solana above a set price at 5pm ET', close_hour_et: 17},
+    {key: 'xrp_daily', series: 'KXXRPD', label: 'XRP above set price at 5pm ET', close_hour_et: 17},
     {key: 'eth15m', series: 'KXETH15M', label: 'Ethereum up or down in 15 minutes'}, {key: 'sol15m', series: 'KXSOL15M', label: 'Solana up or down in 15 minutes'}];
   await f.viewDeploy(); await flush(); await flush();
   const names = [...f.root.querySelector('#openpos').innerHTML.matchAll(/<td class="pos-name" data-lab="Market"><a [^>]*>([^<]*)<\/a>/g)].map(m => m[1]);
   assert.deepEqual(names, ['Ethereum above $3,999.99 at 5pm ET', 'Solana above $189.99 at 5pm ET', 'XRP above $2.4599 at 5pm ET',
-    'Ethereum up or down in 15 minutes', 'Solana up or down in 15 minutes', 'XRP above $X at 5pm ET']);
+    'Ethereum up or down in 15 minutes', 'Solana up or down in 15 minutes', 'XRP above set price at 5pm ET']);
 });
 
 
@@ -5207,25 +5207,25 @@ test('autopilot walk (Meridian): the last move says what and when, the pill says
 
 test('autopilot (Meridian): the market it researches reads by its label, never a raw key or series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'},
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET'},
     {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
   // A listed market reads by its full label, as Billing's research lines and every position name it, by key,
   // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
-  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above a set price at 5pm ET · Chicago high temp · ETH 15-min up/down');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it’s still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
   // The server sends a listed market's catalog label; it reads as it is.
-  f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
-  assert.equal(f.apIdleLine(), 'Researching Bitcoin above $X at 5pm ET');
+  f.S.ap = {...ap, research: {active: ['Bitcoin above a set price at 5pm ET']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin above a set price at 5pm ET');
   // The story quotes the same list; the panel says it the same way, and so does the research figure.
   const d = {...ap, research: {active: ['btc15m', 'KXBTCD'], tested_7d: 3, passed_7d: 0}, story: ["Right now it's researching btc15m and KXBTCD."]};
   const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
   f.apUpdate(box, d);
-  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching Bitcoin up or down in 15 minutes and Bitcoin above \$X at 5pm ET\.<\/p>/);
+  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching Bitcoin up or down in 15 minutes and Bitcoin above a set price at 5pm ET\.<\/p>/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above a set price at 5pm ET/);
   assert.doesNotMatch(box.querySelector('#apf-stats').innerHTML + box.querySelector('#apf-story').innerHTML, /BTC 15-min|BTC above/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
@@ -5799,7 +5799,7 @@ const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).f
   .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test('a market page says what its price is, how it settles and when, and the reader’s positions by money book', async () => {
-  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}]);
+  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET'}]);
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
@@ -6566,11 +6566,11 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   assert.equal(last('white-space'), 'normal');
   assert.equal(last('-webkit-line-clamp'), '3');
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', close_hour_et: 17}];
   f.root.innerHTML = '<aside id="hotrail"></aside>';
   f.S.hot = {at: new Date().toISOString(), markets: [{t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0}]};
   f.renderHotRail();
-  assert.equal(f.root.querySelector('.hot-title strong').textContent, 'BTC above $X at 5pm ET', 'the whole name, its hour included');
+  assert.equal(f.root.querySelector('.hot-title strong').textContent, 'BTC above set price at 5pm ET', 'the whole name, its hour included');
   // A pause reason's "the Funds page" in a Deploy row is underlined; the row's strategy name still isn't.
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
 });

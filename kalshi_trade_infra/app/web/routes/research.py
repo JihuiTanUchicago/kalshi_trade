@@ -411,7 +411,7 @@ def _research_context(feed_markets: List[Dict]) -> List[Dict]:
             continue
         top = max(rows, key=lambda r: _efloat(r.get("v24")))
         out.append({
-            "key": mk.key, "series": mk.series, "label": mk.label,
+            "key": mk.key, "series": mk.series, "label": mk.customer_label,
             "contracts": len(rows),
             "vol24": round(sum(_efloat(r.get("v24")) for r in rows)),
             "oi": round(sum(_efloat(r.get("oi")) for r in rows)),

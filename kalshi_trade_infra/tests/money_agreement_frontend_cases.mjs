@@ -52,7 +52,7 @@ export function moneyAgreementCases({name, frontend, marketPage = true}) {
         yes_bid: '0.55', yes_ask: '0.57', last: '0.55', points: [], period_min: 1, as_of: '2026-10-26T11:00:00Z',
         mine: {open: [], closed: [closed(-0.0036, 1), closed(-0.1314, 2)]}};
       const f = frontend({fetchImpl: (path) => path.startsWith('/api/explore/market?') ? response(page) : response({})});
-      f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}];
+      f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET'}];
       await f.viewMarketDetail(page.ticker); await settle();
       const shown = text(f.root.innerHTML);
       assert.match(shown, /2 closed\s·\s+realized −\$0\.14/);

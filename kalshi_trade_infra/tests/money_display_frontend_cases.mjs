@@ -14,7 +14,7 @@ import {test} from 'node:test';
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const BTC = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'},
-  {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', close_hour_et: 17}];
 const pos = (extra) => ({title: 'Drift', ticker: 'KXBTCD-26OCT2617-T68499.99', side: 'yes', qty: 3, entry_price: .22, entry_fee: .02, cost: .68,
   unrealized: null, mode: 'live', opened_at: '2026-10-27T08:00:00Z', market_close_time: '2030-01-15T21:00:00Z', ...extra});
 
@@ -65,8 +65,8 @@ export function moneyDisplayCases({name, frontend, strategyFrontend, detailStrat
     const f = frontend(); f.S.me.markets = BTC;
     const rail = hotRail(f, [row('KXBTCD-26OCT2812-T112999.99', 'Bitcoin price at 12pm EDT?'), row('KXBTCD-26OCT2809-T112999.99', 'Bitcoin price at 9am EDT?'),
       row('KXBTCD-26OCT2900-T112999.99', 'Bitcoin price at 12am EDT?'), row('KXBTCD-26OCT2817-T112999.99', 'Bitcoin price at 5pm EDT?')]);
-    for (const at of ['noon', '9am', 'midnight', '5pm']) assert.match(rail, new RegExp(`>BTC above \\$X at ${at} ET<`));
-    assert.equal((rail.match(/>BTC above \$X at 5pm ET</g) || []).length, 1, 'only the 5pm contract takes the 5pm market');
+    for (const at of ['noon', '9am', 'midnight', '5pm']) assert.match(rail, new RegExp(`>BTC above set price at ${at} ET<`));
+    assert.equal((rail.match(/>BTC above set price at 5pm ET</g) || []).length, 1, 'only the 5pm contract takes the 5pm market');
     assert.doesNotMatch(rail, />KXBTCD</);
     // Held under a btc_daily strategy, the noon contract is named by its own close and strike.
     const s = strategyFrontend(detailStrategy({market: 'btc_daily', holdings: [pos({ticker: 'KXBTCD-26OCT2712-T68499.99', mode: 'paper'})]}), () => response({}));

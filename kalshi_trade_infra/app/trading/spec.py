@@ -1387,9 +1387,9 @@ def describe(spec: Dict) -> List[str]:
             return ["Relative-value pair across %s: buys YES on the underpriced leg and NO on the "
                     "overpriced leg, holding both to settlement." % kind] if kind else []
         say(pair)
-        say(lambda: "Legs: %s." % ", ".join(MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)))
+        say(lambda: "Legs: %s." % ", ".join(MARKETS[m].customer_label if m in MARKETS else m for m in involved_markets(spec)))
     if spec.get("pool"):
         say(lambda: "Judged on the pooled trades of %s; trades %s." % (
-            ", ".join(MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)),
-            MARKETS[spec["market"]].label if spec["market"] in MARKETS else spec["market"]))
+            ", ".join(MARKETS[m].customer_label if m in MARKETS else m for m in involved_markets(spec)),
+            MARKETS[spec["market"]].customer_label if spec["market"] in MARKETS else spec["market"]))
     return lines

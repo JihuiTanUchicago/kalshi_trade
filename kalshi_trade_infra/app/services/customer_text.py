@@ -127,7 +127,7 @@ def run_rows(runs: List[Dict]) -> List[Dict]:
     """A research session's stored error (an older failed run kept the provider's raw text)."""
     for r in runs:
         if r.get("error"):
-            r["error"] = clean(r["error"], RUN_ERROR_FALLBACK)
+            r["error"] = ladder_words(clean(r["error"], RUN_ERROR_FALLBACK))
     return runs
 
 
@@ -140,6 +140,18 @@ def named(text: Optional[str]) -> Optional[str]:
     return MODEL_ID.sub(A_MODEL, EMAIL.sub(SOMEONE, str(text)))
 
 
+# A research log line written before 2026-10-30 named a strike-ladder market by its family label's placeholder
+# ("Chose to research Bitcoin above $X at 5pm ET"); it reads in words, as new lines are written (the market's
+# customer_label, app.trading.markets). The stored line is unchanged.
+_LADDER_PLACEHOLDER = re.compile(r"\babove \$X\b")
+LADDER_WORDS = "a set price"
+
+
+def ladder_words(text: Optional[str]) -> Optional[str]:
+    """``text`` with an older family label's "above $X" in words ("above a set price"); None and "" as given."""
+    return _LADDER_PLACEHOLDER.sub("above " + LADDER_WORDS, text) if text else text
+
+
 def event_rows(events: List[Dict]) -> List[Dict]:
     """A run's log lines, and the text values of their data. An error line (the provider's or the
     app's own failure text) goes through ``clean``; every other line is the agent's thinking, steps,
@@ -147,14 +159,14 @@ def event_rows(events: List[Dict]) -> List[Dict]:
     thought that mentions an exception never reads as an error."""
     for ev in events:
         if ev.get("kind") == "error":
-            ev["message"] = clean(ev.get("message"), EVENT_FALLBACK)
+            ev["message"] = ladder_words(clean(ev.get("message"), EVENT_FALLBACK))
         else:
-            ev["message"] = named(ev.get("message"))
+            ev["message"] = ladder_words(named(ev.get("message")))
         data = ev.get("data")
         if isinstance(data, dict):
             for k, v in list(data.items()):
                 if isinstance(v, str):
-                    data[k] = named(v)
+                    data[k] = ladder_words(named(v))
     return events
 
 

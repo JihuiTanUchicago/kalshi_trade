@@ -17,7 +17,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 const WAITING = 'Waiting', NO_ORDERS = 'Live trading isn’t open yet, so this places no orders';
 const TICKER = 'KXBTCD-26OCT2617-T68499.99', NAME = 'Bitcoin $68,500 or above at 5pm ET';
 const TICKER15 = 'KXBTC15M-26OCT262100-00', NAME15 = 'Bitcoin up or down in 15 minutes';
-const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17},
+const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', close_hour_et: 17},
   {key: 'btc15m', series: 'KXBTC15M', label: NAME15}];
 const dep = (overrides = {}) => ({id: 1, strategy_id: 1, title: 'Paper one', market: 'btc15m', mode: 'paper', status: 'running',
   status_reason: null, realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z',

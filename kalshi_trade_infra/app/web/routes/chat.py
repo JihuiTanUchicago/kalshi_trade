@@ -248,7 +248,7 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
     not_cleared = _week_not_cleared(cur, uid, since, pulse["passed_7d"])
     if spent is None:
         spent = repo.credit_week(cur, uid, since)["research"]
-    return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it’s still picking")
+    return {"active": [MARKETS[r["market"]].customer_label if r.get("market") in MARKETS else (r.get("market") or "a market it’s still picking")
                        for r in active],
             "tested_7d": pulse["tested_7d"],
             "passed_7d": pulse["passed_7d"] - not_cleared,

@@ -10,8 +10,9 @@ from app.web.routes import research as research_routes
 
 def test_a_floor_session_is_titled_by_what_it_set_out_to_do():
     assert views.session_title(worker.RESEARCH_FLOOR_IDEA, "btc15m") == "New idea picked by the autopilot for Bitcoin up or down in 15 minutes"
+    # The customer's words for the 5pm ladder, never its family label's "$X" placeholder (walked 2026-10-30).
     assert views.session_title("  " + worker.RESEARCH_FLOOR_IDEA + "\n", "btc_daily") == \
-        "New idea picked by the autopilot for Bitcoin above $X at 5pm ET"
+        "New idea picked by the autopilot for Bitcoin above a set price at 5pm ET", "a title never says $X"
     # Before the agent picked a market, and on a market no longer listed.
     assert views.session_title(worker.RESEARCH_FLOOR_IDEA, None).endswith("for the market it picks")
     assert views.session_title(worker.RESEARCH_FLOOR_IDEA, "gone_market").endswith("for the market it picks")
