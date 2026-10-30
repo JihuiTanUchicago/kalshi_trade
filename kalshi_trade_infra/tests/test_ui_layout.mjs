@@ -568,6 +568,23 @@ test('Meridian: Explore\'s search box shows focus with the field\'s border, as e
 // Explore's All markets / Bitcoin choice: its own full-width row over the list in Meridian's heading grid (row 4 on a
 // desktop, row 5 under the search and freshness rows of a phone's two-column grid), wrapping, never wider than the
 // page; a touch pointer gets 44px tabs. Tau's sits in the filter row, which wraps at 390px.
+test('both themes: a research session row shows its whole cost, at 390px and in the 120px Market column at 1280px', () => {
+  // Walked 2026-10-30 at 1280px: Meridian's queued session read "Spent so far: none y", the cost kept to one line
+  // (white-space: nowrap) in the 120px column. It wraps there, its last line never one word ("Spent so far:" over
+  // "none yet"); on a phone it wraps beside the market. Tau's card says it in its meta line, which wraps.
+  const m = rules(read('app.meridian.css')), t = rules(read('app.css'));
+  assert.equal(decl(m, '.research-history .run-card', 'grid-template-columns'), 'minmax(0, 1fr) 120px 88px 140px');
+  assert.equal(decl(m, '.research-history .run-cost', 'display'), 'block');
+  assert.equal(decl(m, '.research-history .run-cost', 'white-space'), 'normal');
+  assert.equal(decl(m, '.research-history .run-cost', 'text-wrap'), 'pretty');
+  assert.equal(decl(m, '.research-history .run-meta', 'white-space'), 'normal');
+  assert.equal(decl(m, '.research-history .run-cost', 'display', '@container research-work (max-width: 759px)'), 'inline');
+  for (const r of m.concat(t).filter((r) => sels(r).some((s) => /\.run-(cost|meta|cred)\b/.test(s)))) {
+    assert.doesNotMatch(r.body, /white-space\s*:\s*nowrap|text-overflow\s*:\s*ellipsis/, `${r.media} ${r.sel}`);
+  }
+  assert.equal(decl(t, '.run-meta', 'overflow-wrap'), 'anywhere');
+});
+
 test('both themes: Explore\'s Bitcoin choice takes its own row and wraps, so 390px and desktop never scroll sideways', () => {
   const m = rules(read('app.meridian.css')), t = rules(read('app.css'));
   assert.equal(decl(m, '.explore-filters .xshow', 'grid-column'), '1 / -1');

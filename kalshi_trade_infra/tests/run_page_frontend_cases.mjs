@@ -513,6 +513,66 @@ export function runPageCases({name, frontend}) {
     f.clearTimers();
   });
 
+  // The 2s poll and a press of Pause (its reload), or Meridian's "Show all", each read the lines after the last one
+  // here: with the poll's read still out, both answers held the same lines, and the log showed them twice and
+  // counted their ideas twice. A fake server holds the poll's answer open while the other read goes out.
+  const raceSession = (strategies = []) => {
+    const flush = () => new Promise((r) => setImmediate(r));
+    const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+    let status = 'running', held = null;
+    const all = [ev(1, 'hypothesis', 'Idea A', {thesis: 'T'}), ev(2, 'step', 'Step 2'), ev(3, 'hypothesis', 'Idea B', {thesis: 'T'})];
+    const f = frontend({fetchImpl: (path, options) => {
+      if (!path.startsWith('/api/runs/9')) return response({});
+      if (path === '/api/runs/9/pause') { status = 'paused'; return response({ok: true}); }
+      const after = +(path.match(/after=(\d+)/) || [0, 0])[1];
+      const answer = () => response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, status, run_forever: 1},
+        events: all.filter((e) => e.id > after && (after || e.id < 3)), strategies});
+      if (after === 2 && !held) { held = {}; return new Promise((resolve) => { held.release = () => resolve(answer()); }); }
+      return answer();
+    }});
+    const rows = () => f.root.querySelector('#log').children.filter((li) => !li.removed);
+    const poll = () => f.intervals.get(f.S.timers.at(-1))();
+    return {f, settle, poll, rows, release: () => held.release(), reads: () => f.requests.filter(({path}) => /after=/.test(path)).map(({path}) => path),
+      posts: () => f.requests.filter(({options}) => options && options.method === 'POST')};
+  };
+  const once = (rows, re) => rows.filter((li) => re.test(li.innerHTML)).length;
+
+  test(`${name}: Pause pressed while the poll's read is out shows each new line once and counts its idea once`, async () => {
+    const s = raceSession();
+    await s.f.viewRun(9);
+    s.poll(); await s.settle();  // the poll asks for the lines after 2; its answer is held
+    const pause = s.f.root.querySelector('#runact #pause'), pressing = pause.onclick({currentTarget: pause});
+    await s.settle();
+    assert.equal(s.posts().length, 1, 'the Pause is sent at once, and once');
+    s.release(); await pressing; await s.settle();
+    assert.equal(once(s.rows(), /Idea B/), 1);
+    assert.match(figs(s.f), /Tested\s*2/);
+    assert.match(figs(s.f), /Paused/);
+    assert.ok(s.f.root.querySelector('#runact #resume'));
+    assert.equal(s.posts().length, 1);
+    assert.deepEqual(s.reads(), ['/api/runs/9?after=0', '/api/runs/9?after=2', '/api/runs/9?after=3']);
+    s.poll(); await s.settle();
+    assert.equal(once(s.rows(), /Idea B/), 1); assert.match(figs(s.f), /Tested\s*2/);
+    s.f.clearTimers();
+  });
+
+  test(`${name}: "Show all" pressed while the poll's read is out shows each new line once`, async () => {
+    const strategies = Array.from({length: 12}, (_, i) => ({id: 40 + i, title: 'Strategy ' + i, status: 'failed', market: 'btc15m', direction: 'momentum'}));
+    const s = raceSession(strategies);
+    await s.f.viewRun(9);
+    const btn = s.f.root.querySelector('[data-allstrats]');
+    if (!btn) { s.f.clearTimers(); return; }  // Tau lists its ideas under a details of its own
+    s.poll(); await s.settle();
+    s.f.root.querySelector('#run-artifacts').listeners.get('click')({target: btn});
+    await s.settle();
+    s.release(); await s.settle();
+    assert.equal(once(s.rows(), /Idea B/), 1);
+    assert.match(figs(s.f), /Tested\s*2/);
+    assert.match(list(s.f), /Strategy 11/);
+    assert.equal(s.f.root.querySelector('[data-allstrats]'), null);
+    s.f.clearTimers();
+  });
+
   test(`${name}: a long session that ran out of credits before its newest lines still says so`, async () => {
     const earlier = {before: 50, hypotheses: 3, dropped: 0, why_failed: [], pauses: [], out_of_credits: true, dreamed: false, kinds: []};
     const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
