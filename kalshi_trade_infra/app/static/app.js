@@ -23,7 +23,7 @@
     waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit,
     sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER, apPillLabel, apAgo, apEvery, FOCUS_WORDS,
     creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount, exitWord, AP_FOCUS, KIND_LABEL, runwayLabel,
-    paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode, sessionNo
+    paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode, sessionNo, olderRows
   } = window.TauCore;
 
   const root = document.getElementById('app');
@@ -3740,7 +3740,7 @@
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
     marketKalshiUrl, marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money,
-    notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
+    notice, num, olderRows, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
     runTag, runWaitLine, runwayLabel, S, sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,

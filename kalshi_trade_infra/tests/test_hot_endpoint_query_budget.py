@@ -89,6 +89,10 @@ BUDGET.update({"list_deployments": 10, "get_strategy": 8})
 BUDGET.update({"get_track_record": 3, "list_strategies": 6})
 # The trades download (user-clicked, not polled): the mode's closed trades, then their strategies once.
 BUDGET.update({"trades_csv": 2})
+# Funds (the shell's first read, a visit and its 30s poll): each key once, the books' version and realized pass,
+# demo's capital, the open positions, the paper balance and the newest LEDGER_LISTED history entries. Its "Show older
+# entries" (/api/funds/ledger, clicked, never polled) is one read of its own and adds none to Funds.
+BUDGET.update({"funds": 8, "funds_ledger": 1})
 
 # Statements that return one aggregate row; any other SELECT answers no rows unless listed below.
 AGGREGATE = ("SELECT COALESCE(", "SELECT COUNT(", "SELECT MAX(", "SELECT st.started")
@@ -702,6 +706,23 @@ def test_the_track_record_rebuilds_its_times_and_drops_a_trade_whose_deployment_
     assert log[1][1] == (5, 8)
     log = []
     assert server.repo.track_record_rows(CountingCursor(log, {}), 7) == [] and len(log) == 1  # no trades, no 2nd read
+
+
+def test_funds_and_its_older_history_page_stay_in_their_query_budget(production):
+    log = _call("funds", 10.0)
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats and len(log) <= BUDGET["funds"], "funds sent %d statements (budget %d):\n  %s" % (
+        len(log), BUDGET["funds"], "\n  ".join(s for s, _ in log))
+    # Its history is the newest page alone, as before the older pages: one read, LEDGER_LISTED rows.
+    pages = [(s, p) for s, p in log if s.startswith("SELECT id, kind, amount, memo, created_at FROM app_ledger")]
+    assert pages == [("SELECT id, kind, amount, memo, created_at FROM app_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+                      (7, server.repo.LEDGER_LISTED))]
+    # An older page: one statement on the user's own rows, newest first, bounded at a page and one more (for `more`).
+    log = _call("funds_ledger", 10.0, query={"before": "9001"})
+    assert log == [("SELECT id, kind, amount, memo, created_at FROM app_ledger FORCE INDEX (idx_ledger_user_time) "
+                    "WHERE user_id=%s AND id<%s ORDER BY id DESC LIMIT %s",
+                    (7, 9001, server.repo.LEDGER_LISTED + 1))]
+    assert len(log) <= BUDGET["funds_ledger"]
 
 
 def test_the_trades_download_stays_in_its_query_budget_and_reads_each_strategy_once(production):

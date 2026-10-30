@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, openCost, pageAssets, PAPER_NET,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, errText, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, olderRows, openCost, pageAssets, PAPER_NET,
     paint, painted, poll, refreshed, root, S, SEP, settleAt, shell, tone, usd, when
   } = T;
 
@@ -128,6 +128,14 @@ window.TauPage('funds', (T) => {
   const ledgerAt = (iso) => `<time datetime="${esc(iso || '')}">${esc(settleAt(iso))}</time>`;
   // Fees and settlement, once, in plain words, where the cash moves.
   const LEDGER_HOW = 'Cash in and out of your paper account, newest first. A buy takes the contracts\u2019 price plus Kalshi\u2019s fee, as a real order would. When a market settles, each winning contract pays $1 and each losing one pays $0; a sale before then pays the price it sold at, less the fee. A trade\u2019s P&amp;L is what it brought back less everything it cost, fees included.';
+  // One paper history row, the newest page's and every older page's alike, each cell labelled for a phone (data-lab).
+  const ledgerRow = (r) => `<tr><td class="hint lead-cell" data-lab="When">${ledgerAt(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`;
+  // /api/funds lists the newest LEDGER_PAGE entries. A six-month account's history held its last two days and no way
+  // to the rest (walked 2026-10-30): "Show older entries" reads the LEDGER_PAGE before the oldest one shown
+  // (/api/funds/ledger?before=), clicked and never polled, until the server says there are no more. Display only:
+  // every balance and total on the page comes from its own read, never from these rows.
+  const LEDGER_PAGE = 50;
+  const LEDGER_END = 'That\u2019s every entry in your paper history.';
   async function viewFunds() {
     const gen = S.gen;
     shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl><p class="stale-note" id="funds-stale" role="status"></p>', loading(300));
@@ -137,7 +145,7 @@ window.TauPage('funds', (T) => {
     // The poll (cfg) redraws the panels below only when a figure in them moved and nobody is using them:
     // a field with focus or something typed, a press on its way or waiting for its confirm, or what an action
     // just said. The perps panel keeps its own state, so the poll leaves it alone.
-    const FLASHES = ['#flash', '#kflash', '#dmflash', '#pflash', '#kdflash'];
+    const FLASHES = ['#flash', '#kflash', '#dmflash', '#pflash', '#kdflash', '#lflash'];
     const inUse = (el) => {
       const a = document.activeElement;
       return !!(a && a !== document.body && el.contains(a)) || [...el.querySelectorAll('input, textarea')].some((x) => x.value)
@@ -155,6 +163,11 @@ window.TauPage('funds', (T) => {
     // on its own (neither waits on the other's Kalshi read) and drawn into the figures and its spots in the
     // panels. One that fails says so. A later full read (a write, the poll) supersedes it.
     let shown = null;
+    // The paper history's older pages, once "Show older entries" has read one (paged): `older` lies under the newest
+    // page, and `olderMore` says whether the server has older still. Each fresh read keeps them under its newest page
+    // while the two still join (core olderRows: the entries that slid off the newest page stay too), so a poll never
+    // takes them away; a reset, or more than a page of new entries between reads, starts the history from its newest page.
+    let older = [], olderMore = true, paged = false;
     // cashAsk: each book's follow-up for the answer last read in full, resolving to its cash once back (the demo
     // key's save says its balance from it).
     let cashAsk = {};
@@ -205,10 +218,31 @@ window.TauPage('funds', (T) => {
       if (fold) fold.open = true;
       if (to && to.scrollIntoView) to.scrollIntoView({ block: 'start' });
     };
+    // "Show older entries": the next page before the oldest entry the history holds, kept under the newest page, then
+    // the history drawn again from the answer shown (load's `got`: no other read). Asked once per click (busy); one that
+    // fails says so under the history and leaves the button to try again; one that no longer joins (the history was
+    // reset while it was out) is dropped.
+    const showOlder = (btn) => holdFocus(null, () => busy(btn, async () => {
+      const base = shown ? shown.paper.ledger.concat(older) : [], last = base[base.length - 1];
+      if (!last || last.id == null) return;
+      try {
+        const page = await api('/api/funds/ledger?before=' + encodeURIComponent(last.id));
+        if (gen !== S.gen || !shown) return;
+        const kept = olderRows(shown.paper.ledger, base.concat(page.ledger || []), LEDGER_PAGE);
+        if (!kept) return;
+        older = kept; olderMore = !!page.more; paged = true;
+        const fl = root.querySelector('#lflash'); if (fl) fl.innerHTML = '';
+        await load(null, shown);
+      } catch (err) { if (gen === S.gen) flash('#lflash', errText(err), 'bad'); }
+    }));
     // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.
     const load = async (cfg, got) => {
       const d = got || await api('/api/funds', undefined, cfg);
       if (gen !== S.gen) return;
+      if (!got && paged && shown) {
+        const kept = olderRows(d.paper.ledger, shown.paper.ledger.concat(older), LEDGER_PAGE);
+        if (kept) older = kept; else { older = []; olderMore = true; paged = false; }
+      }
       shown = d;
       // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.
       const k = cashNow(d.kalshi);
@@ -286,6 +320,10 @@ window.TauPage('funds', (T) => {
         </section>`;
       const accounts = keyless ? paperSec + `<details class="panel funds-connect" id="connect-kalshi"><summary><span class="funds-connect-h">Connect Kalshi</span><span class="hint">For live money, or Kalshi’s demo sandbox. The autopilot trades paper, which needs neither.</span></summary>${liveSec}${demoSec}</details>`
         : liveSec + demoSec + paperSec;
+      const hist = d.paper.ledger.concat(older), full = d.paper.ledger.length >= LEDGER_PAGE, done = paged && !olderMore;
+      const ledgerHow = `${LEDGER_HOW}${full && !done ? ` The latest ${num(hist.length)} entries.` : ''}`, ledgerBody = hist.map(ledgerRow).join('');
+      const ledgerMore = !full ? '' : done ? `<p class="hint ledger-end">${LEDGER_END}</p>` : '<button type="button" class="btn" id="ledger-older-btn">Show older entries</button>';
+      const histSpots = [['#ledger-how', ledgerHow], ['#ledger-rows', ledgerBody], ['#ledger-older', ledgerMore]];
       const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         ${accounts}
@@ -294,10 +332,9 @@ window.TauPage('funds', (T) => {
         <div class="funds-col funds-history">
         <section class="panel">
           <h2>Paper history</h2>
-          <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
-          <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${ledgerAt(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
-          </tbody></table>
+          <p class="hint ledger-how" id="ledger-how">${ledgerHow}</p>
+          <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody id="ledger-rows">${ledgerBody}</tbody></table>
+          <div class="ledger-older" id="ledger-older">${ledgerMore}</div><div id="lflash"></div>
         </section>
         </div></div>`;
       if (got) {
@@ -305,6 +342,8 @@ window.TauPage('funds', (T) => {
         // the perps box stay as they are.
         const spots = { 'live-ok': () => keyLine(k, 'live'), 'live-cell': () => cashCell(k), 'demo-ok': () => demoLine(kd) };
         host.querySelectorAll('[data-cash]').forEach((el) => { const f = spots[el.dataset.cash]; if (f) el.innerHTML = f(); });
+        // An older page just read lands the same way: the history alone is drawn again, the forms stay as they are.
+        histSpots.forEach(([sel, html]) => paint(host.querySelector(sel), html));
         painted.set(host, main);
         return d;
       }
@@ -314,6 +353,9 @@ window.TauPage('funds', (T) => {
       host.innerHTML = main; painted.set(host, main);
       if (connectOpen && host.querySelector('#connect-kalshi')) host.querySelector('#connect-kalshi').open = true;
       openLinked(host);
+      histSpots.forEach(([sel, html]) => { const el = host.querySelector(sel); if (el) painted.set(el, html); });
+      const lo = host.querySelector('#ledger-older');
+      if (lo) lo.onclick = (e) => { const btn = e && e.target && e.target.closest ? e.target.closest('#ledger-older-btn') : null; if (btn) showOlder(btn); };
       if (S.perps) { S.perps.destroy(); S.perps = null; }
       if (window.TAU_PERPS_LIVE) mountPerps(); else pageAssets('funds').then(mountPerps);
       const df = root.querySelector('#demo');

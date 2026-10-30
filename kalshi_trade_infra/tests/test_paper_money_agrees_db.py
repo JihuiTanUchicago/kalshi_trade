@@ -192,3 +192,56 @@ def test_every_paper_money_figure_agrees_to_the_cent(conn, monkeypatch):
     assert week["paper_started"] == 1
     status = server.autopilot_status(ctx)
     assert status["today_paper_pnl"] == _money(realized)
+
+
+def test_funds_paper_history_pages_to_its_first_entry_and_moves_no_figure(conn):
+    """Funds' paper history past its newest page (/api/funds/ledger?before=), against MySQL: a six-month account's
+    ledger read 50 at a time from the oldest entry shown, newest first, each entry once, never another user's, to the
+    first one; the balance and every figure on the page read the same before and after. A reset ends the old pages."""
+    from app import server
+    from app import repository as repo
+    from app.web.routes import funds as funds_routes
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "pages@example.com", "P", None)["id"]
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "other@example.com", "O", None)["id"]
+    for k in range(130):  # the two accounts' entries interleaved, as busy writers leave them
+        repo.add_ledger(cur, uid, "trade", -1.25 if k % 2 else 2.5, "Paper entry %d" % k)
+        if k % 4 == 0:
+            repo.add_ledger(cur, other, "trade", -0.5, "Someone else's %d" % k)
+    cur.execute("SELECT id FROM app_ledger WHERE user_id=%s ORDER BY id DESC", (uid,))
+    mine = [int(r["id"]) for r in cur.fetchall()]
+    assert len(mine) >= 131  # the starting deposit and 130 entries
+
+    ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
+    before_page = server.funds(ctx)["paper"]
+    first = before_page["ledger"]
+    assert [int(r["id"]) for r in first] == mine[:repo.LEDGER_LISTED]
+    shown, got, asks = [int(r["id"]) for r in first], None, 0
+    while got is None or got["more"]:
+        got = funds_routes.funds_ledger(server.Ctx(conn, ctx.user, (), {"before": str(shown[-1])}, {}, None))
+        asks += 1
+        assert 0 < len(got["ledger"]) <= repo.LEDGER_LISTED
+        assert set(got["ledger"][0]) == {"id", "kind", "amount", "memo", "created_at"}
+        assert not any("Someone else" in (r["memo"] or "") for r in got["ledger"])
+        shown += [int(r["id"]) for r in got["ledger"]]
+    assert shown == mine and asks == -(-(len(mine) - repo.LEDGER_LISTED) // repo.LEDGER_LISTED)
+    # The figures come from their own reads: paging moves none of them.
+    after_page = server.funds(ctx)["paper"]
+    assert {k: v for k, v in after_page.items() if k != "ledger"} == {k: v for k, v in before_page.items() if k != "ledger"}
+    assert after_page["cash"] == _money(repo.paper_balance(cur, uid))
+    # One statement on an existing index: this user's entries found by key (idx_ledger_user_time), never a scan of
+    # the table or of other accounts' entries down the primary key.
+    log = []
+    real = cur.execute
+    cur.execute = lambda sql, params=None: log.append((sql, params)) or real(sql, params)
+    repo.ledger_rows_before(cur, uid, mine[60], repo.LEDGER_LISTED + 1)
+    cur.execute = real
+    [(sql, params)] = log
+    cur.execute("EXPLAIN " + sql, params)
+    plan = cur.fetchall()
+    assert len(plan) == 1 and plan[0]["key"] == "idx_ledger_user_time" and plan[0]["type"] == "ref", plan
+    # A reset wipes the ledger: a page asked before it finds nothing older, and says so.
+    repo.reset_paper_account(cur, uid, 500)
+    assert funds_routes.funds_ledger(server.Ctx(conn, ctx.user, (), {"before": str(mine[0] + 1)}, {}, None)) == {"ledger": [], "more": False}
+    assert [r["memo"] for r in server.funds(ctx)["paper"]["ledger"]] == ["Paper account reset"]

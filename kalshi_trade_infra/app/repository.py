@@ -74,8 +74,8 @@ from app.adapters.db.position_repository import (  # noqa: F401
     score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions, user_positions_in_ticker,
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
-    STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits, paper_ledger_summary,
-    paper_ledger_version, paper_reset_at, reset_paper_account,
+    LEDGER_LISTED, STARTING_PAPER_BALANCE, add_ledger, ledger_rows, ledger_rows_before, lock_user, paper_balance,
+    paper_deposits, paper_ledger_summary, paper_ledger_version, paper_reset_at, reset_paper_account,
 )
 from app.adapters.db.demo_capital_repository import (  # noqa: F401
     demo_account, demo_equity, reload_demo,
