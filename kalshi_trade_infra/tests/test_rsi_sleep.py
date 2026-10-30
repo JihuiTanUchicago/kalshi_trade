@@ -248,23 +248,36 @@ def test_sleep_round_trip_on_mysql():
     conn.close()
 
 
-def test_a_market_is_exhausted_only_when_every_mechanism_is(monkeypatch):
+def test_a_market_closes_once_most_mechanisms_are_exhausted_and_none_gated(monkeypatch):
     names = list(dict.fromkeys(n for n, _ in MECHANISMS))
     cell = lambda tested, gated=0: {"tested": tested, "gated": gated, "passed": 0, "tags": {}}
-    led = {"markets": {"btc15m": {n: cell(12) for n in names}, "btc_daily": {n: cell(12) for n in names[1:]}}}
-    led["markets"]["btc_daily"][names[0]] = cell(9)          # one bucket short of the bar
+    led = {"markets": {"btc15m": {n: cell(12) for n in names}}}
+    led["markets"]["btc_daily"] = {n: cell(12) for n in names[:-2]}          # prod shape: late buckets thin
+    led["markets"]["btc_daily"][names[-2]] = cell(3)
     led["markets"]["btc15m_tick"] = {n: cell(12) for n in names}
-    led["markets"]["btc15m_tick"][names[2]] = cell(30, gated=1)   # something reached the gate
-    assert sl.market_exhausted(led, "btc15m")
+    led["markets"]["btc15m_tick"][names[2]] = cell(30, gated=1)              # something reached the gate
+    led["markets"]["eth15m"] = {n: cell(12) for n in names[:len(names) // 2 - 1]}  # under half exhausted
+    assert sl.open_buckets(led, "btc15m") == [] and sl.market_exhausted(led, "btc15m")
+    assert sl.open_buckets(led, "btc_daily") == [names[-1], names[-2]]      # least tested first
     assert not sl.market_exhausted(led, "btc_daily")
-    assert not sl.market_exhausted(led, "btc15m_tick")
-    assert not sl.market_exhausted(led, "eth15m")    # never researched
+    assert sl.open_buckets(led, "btc15m_tick") is None
+    assert sl.open_buckets(led, "eth15m") is None
+    assert sl.open_buckets(led, "sol15m") is None                            # never researched
 
     from app.research import agent
     reads = []
     monkeypatch.setattr(sl, "latest", lambda cur, uid, fam: reads.append(fam) or {"ledger": led})
-    assert agent.exhausted_markets(None, 1, ["btc15m", "btc_daily", "btc15m_tick"]) == ["btc15m"]
-    assert reads == ["crypto"]                                # one memory read per family
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=500: [
+        {"market": "btc_daily", "prompt": agent.probe_angle(names[-1])}])
+    assert agent.closed_markets(None, 1, ["btc15m", "btc_daily", "btc15m_tick"]) == {
+        "btc15m": [], "btc_daily": [names[-2]]}                              # one bucket already probed
+    assert reads == ["crypto"]                                               # one memory read per family
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily"])
+    monkeypatch.setattr(agent, "focus_keys", lambda cur, uid, keys: list(keys))
+    assert agent.next_probe(None, 1) == ("btc_daily", names[-2])
+    assert not agent.autopilot_research_exhausted(None, 1)
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily", "btc15m_tick"])
+    assert agent.next_probe(None, 1) is None                                 # a live market: normal research
     monkeypatch.setattr(agent, "AUTOPILOT_SKIP_EXHAUSTED", False)
     assert agent.exhausted_markets(None, 1, ["btc15m"]) == []
     monkeypatch.setattr(agent, "AUTOPILOT_SKIP_EXHAUSTED", True)

@@ -217,8 +217,8 @@ def research_floor_due(cur, uid: int) -> bool:
     last = repo.list_runs(cur, uid, limit=1)
     if last and now - last[0]["created_at"] < timedelta(minutes=RESEARCH_FLOOR_MINUTES):
         return False
-    # Todd 2026-10-30: no taker research on markets long-term memory marks exhausted. When that is every
-    # market the autopilot may research, idle is the intended state, not a stall.
+    # Todd 2026-10-30: no taker research on markets long-term memory closes. Once every market the
+    # autopilot may research is closed and its probes have run, idle is the intended state, not a stall.
     return not agent.autopilot_research_exhausted(cur, uid)
 
 
@@ -228,7 +228,9 @@ def start_research_floor(cur) -> list:
     for uid in repo.autopilot_user_ids(cur):
         if research_floor_due(cur, uid):
             user = repo.get_user(cur, uid) or {}
-            repo.create_run(cur, uid, "research", None, None, RESEARCH_FLOOR_IDEA, brief=True,
+            probe = agent.next_probe(cur, uid)  # every market closed: one probe of a kind tested too little
+            repo.create_run(cur, uid, "research", probe[0] if probe else None, None,
+                            agent.probe_angle(probe[1]) if probe else RESEARCH_FLOOR_IDEA, brief=True,
                             model=user.get("autopilot_model"))
             started.append(uid)
     return started

@@ -685,6 +685,13 @@ def test_autopilot_research_skips_markets_long_term_memory_marks_exhausted(monke
                        dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
     assert store.finished[0] == "succeeded"
 
+    # So is the floor's probe of a kind long-term memory tested too little.
+    store = Store(monkeypatch)
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**brief, "market": "btc15m", "prompt": agent.probe_angle("tick discreteness / rounding")},
+                       model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"
+
 
 def test_hypothesis_event_carries_thesis_and_mechanism(monkeypatch):
     store = Store(monkeypatch)

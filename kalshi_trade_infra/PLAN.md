@@ -32,6 +32,12 @@ mechanism buckets tested 10+ times with 0 gated on btc15m, btc15m_tick and btc_d
   an "Exhausted markets" line, so idle reads as intended, not as a stall.
 - The new-data lane stays open: a `rsi_repair` re-test ("Re-test ... has been collected") runs on an
   exhausted market. The maker lab keeps its own timer; the maker-lane thread raised policies per run.
+- Correction after deploy (17:25Z): MECHANISMS has 18 buckets, not 14. btc15m had 14 exhausted, the
+  tick and daily markets 13; the rest (contract age, moneyness band, settlement nowcast, tick rounding,
+  time of day, cross-venue on daily) had under 10 tests, so #676 never fired. `rsi_sleep.open_buckets`
+  now closes a market once half its buckets are exhausted and none gated, and the research floor runs
+  ONE probe per under-tested bucket (`agent.probe_angle`, pinned market, one at a time; ~14 runs, ~$55)
+  before standing down. Reviews cannot start probes.
 - Kill switch `TAU_AUTOPILOT_SKIP_EXHAUSTED=0`. Watch: autopilot research runs/day and $/day (was ~65
   runs and ~$200/day on BTC), data re-tests started, maker lab runs.
 
