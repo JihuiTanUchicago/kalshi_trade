@@ -251,6 +251,29 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     f.clearTimers();
   });
 
+  // Walked 2026-10-30: a hot-markets row opened Kalshi in a new tab, where the same contract's Explore row opens its
+  // page in Tau (the countdown, spot against the strike, the reader's own positions). The row now opens that page.
+  test(`${name}: a hot-markets row opens the market's page in Tau, as its Explore row does`, async () => {
+    const {f, el} = await rail({markets: NAME_ROWS.map((m) => ({...m, h: [.4, .5]}))});
+    const rows = el.querySelectorAll('.hot-row');
+    assert.equal(rows.length, 5);
+    rows.forEach((r, i) => {
+      assert.equal(r.getAttribute('href'), '/explore?m=' + encodeURIComponent(NAME_ROWS[i].t), `hot row ${i}`);
+      assert.equal(r.getAttribute('target'), null, 'opens in place, not a new tab');
+      assert.doesNotMatch(r.innerHTML + (r.getAttribute('aria-label') || ''), /kalshi\.com|Opens Kalshi|new tab/);
+    });
+    // The page's own link handler takes it there in place.
+    const clicks = f.documentListeners.filter(([type]) => type === 'click').map(([, cb]) => cb);
+    let prevented = false;
+    const target = rows[0].querySelector('.hot-title');
+    for (const cb of clicks) cb({target, preventDefault: () => { prevented = true; }});
+    await settle();
+    assert.equal(prevented, true);
+    assert.equal(f.navigations.at(-1), '/explore?m=' + encodeURIComponent(NAME_ROWS[0].t));
+    assert.equal(f.location.search, '?m=' + encodeURIComponent(NAME_ROWS[0].t));
+    f.clearTimers();
+  });
+
   test(`${name}: with an old spot the rail leaves the figures out and says the feed's age once`, async () => {
     const {f, el} = await rail({markets: ROWS.map(({vs, ...m}) => ({...m, h: [.4, .5]})), spot: {...SPOT, age_s: 840, stale: true}});
     assert.equal(el.querySelectorAll('.hot-note').length, 1);

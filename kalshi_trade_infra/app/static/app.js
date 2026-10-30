@@ -2897,6 +2897,7 @@
   const comboTitle = (t) => /^(?:yes|no) [^,]+(?:,\s*(?:yes|no) [^,]+)+$/i.test(t) ? t.split(/,\s*/).join(', ').replace(/^./, (c) => c.toUpperCase()) : t;
   const mktLabel = (m) => { const t = comboTitle((m.ti || '').trim()), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
+  const marketHref = (ticker) => `/explore?m=${encodeURIComponent(ticker || '')}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
 
@@ -2999,6 +3000,9 @@
     left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
     when: (iso, s) => `${s > 0 ? 'closes' : 'closed'} ${keepZone(settleAt(iso))}`,
     in: (iso, s) => (s <= 0 ? 'Closed, result pending' : s < 172800 ? 'in ' + soonText(s) : ''),
+    // The status line under a market page's name: an open market's "Open for trading" read on after its close until a
+    // reload, beside a Closes figure already saying "Closed, result pending". Only an open status follows the clock.
+    status: (iso, s) => (s > 0 ? MKT_STATUS.open : MKT_STATUS.closed),
   };
   const closeWords = (iso, form, skew, cap) => { const t = CLOSE_FORM[form](iso, closeLeft(iso, skew)); return cap ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
   const liveClose = (iso, form, { skew = 0, cap = false, cls = '' } = {}) => `<span${cls ? ` class="${cls}"` : ''} data-close="${esc(iso)}" data-form="${form}"${skew ? ` data-skew="${Math.round(skew)}"` : ''}${cap ? ' data-cap="1"' : ''}>${esc(closeWords(iso, form, skew, cap))}</span>`;
@@ -3119,7 +3123,11 @@
       : fig('Closes', keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
-    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market'].filter(Boolean).join(SEP)) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
+    // An open market's status follows the same clock as its Closes figure (closeClock), flipping to "Closed, result
+    // pending" once the close passes; Kalshi's own closed and settled statuses stay as Kalshi sent them.
+    const statusLine = d.close_time && (d.status === 'active' || d.status === 'open') ? liveClose(d.close_time, 'status', { skew: closeSkew })
+      : esc(MKT_STATUS[d.status] || d.status || 'Market');
+    shell('/explore', boardTitle(label, [esc(contractMarket(d.ticker)), statusLine].filter(Boolean).join(SEP) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
@@ -4237,10 +4245,12 @@
   function hotRowHtml(m) {
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
-    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
+    // A row opens the market's own page in Tau, as Explore's rows do: it opened Kalshi in a new tab, away from the
+    // countdown, the spot section and the reader's positions there.
+    return `<a class="hot-row" href="${marketHref(m.t)}">
       <span class="hot-title" title="${esc(mktLabel(m))}">${glueTarget(esc(mktLabel(m)))}</span>${hotWhen(m)}
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
-      <span class="hot-foot">${contractShort(m.t) ? `<span class="mk quiet">${esc(contractShort(m.t))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol${SEP}24h</span>${ICON.ext}</span></a>`;
+      <span class="hot-foot">${contractShort(m.t) ? `<span class="mk quiet">${esc(contractShort(m.t))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol${SEP}24h</span></span></a>`;
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;
@@ -4264,6 +4274,12 @@
       const to = rail.querySelector(next ? '.hot-x' : '.hot-tab'); if (to && to.focus) to.focus({ preventScroll: true });
     });
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
+    // Up to 1080px the open rail lies over the page (hotOver): picking a market closes it, so the page it opens shows.
+    // The document's link handler then opens the page; a modified click (a new tab) leaves the rail as it is.
+    rail.querySelectorAll('.hot-row').forEach((a) => a.onclick = (e) => {
+      if (!hotOver() || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      localStorage.setItem('tau_hotrail', '0'); document.body.classList.remove('hot-open');
+    });
   }
   // Resolves false when the read failed. The rail is repainted anyway, so its age line counts on from
   // the last snapshot's own time instead of saying "just now" for as long as reads fail.

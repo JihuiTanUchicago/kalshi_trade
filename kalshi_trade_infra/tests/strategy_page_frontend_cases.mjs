@@ -561,7 +561,8 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     // Walk 2026-10-27 at 1280px: "Paper Oct" ended a line and "27–Oct 27" began the next, and a deployment removed the
     // day it was made read "Oct 27–Oct 27".
     const f = await open({status: 'passed', deployments: [], past_deployments: [
-      {id: 7, mode: 'paper', created_at: '2026-10-27T08:00:00+00:00', removed_at: '2026-10-27T15:00:00+00:00', realized_pnl: 1, closed_trades: 2},
+      // Made and removed the same day in any reader's zone from Chicago to Tokyo (08:00-15:00 UTC crossed Tokyo's midnight).
+      {id: 7, mode: 'paper', created_at: '2026-10-27T09:00:00+00:00', removed_at: '2026-10-27T13:00:00+00:00', realized_pnl: 1, closed_trades: 2},
       {id: 6, mode: 'demo', created_at: '2026-09-28T08:00:00+00:00', removed_at: '2026-10-01T08:00:00+00:00', realized_pnl: 1, closed_trades: 2}]});
     const html = f.root.querySelector('.past-deps').innerHTML;
     assert.match(html, /<span class="nobr">Paper Oct 27<\/span>, <span class="gain">\+\$1\.00<\/span> over 2 closed trades/);
