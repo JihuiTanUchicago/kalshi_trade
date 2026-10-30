@@ -254,7 +254,7 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
   });
 }
 
-// Walk 2026-10-30 (390px phone, Meridian): the open autopilot sheet is one scroll (app-autopilot.js scrolls the sheet to
+// Walk 2026-10-30 (390px phone, Meridian): the open autopilot sheet is one scroll (page-autopilot.js scrolls the sheet to
 // a sent message and its answer), but Meridian's activity feed kept the research log's 52vh cap, so it was a 440px scroll
 // of its own inside the sheet: a long reply scrolled in that box while the sheet scrolled around it. On the phone sheet
 // neither bundle caps the feed; it takes its full height and the sheet scrolls it.

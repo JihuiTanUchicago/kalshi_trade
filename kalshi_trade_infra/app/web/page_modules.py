@@ -3,8 +3,8 @@
 A cold load downloaded and compiled all of app.js (or app.meridian.js) before the first figure showed,
 though Dashboard draws from about half of it: on a phone's slow network the bundle's bytes were the
 largest part of the cold first-figure time. Each page file holds one area's views (app-<name>.js for
-Tau, app.meridian-<name>.js for Meridian); the bundle's router stands in for them (pageView) and runs
-the file once it has arrived (pageLoad).
+Tau, app.meridian-<name>.js for Meridian, or page-<name>.js for both); the bundle's router stands in for
+them (pageView) and runs the file once it has arrived (pageLoad).
 
 The page shell carries each file's ?v= version for the bundle to fetch it by (#tau-boot data-tau-pages,
 data-mer-pages), and a signed-in shell preloads the file its page needs, so that file arrives beside the
@@ -14,6 +14,10 @@ views answer is listed here; tests/test_page_modules.py checks both routers agai
 
 A panel file holds what opens over any page rather than a page of its own (the autopilot panel, open):
 no path preloads it, and the bundle fetches it the first time it opens.
+
+A shared page file (SHARED) is one file both themes load, written once: what a theme draws differently in
+it comes from the bundle that runs it (shared()), never from the page. It has one version, so it is in both
+themes' builds.
 """
 from __future__ import annotations
 
@@ -50,6 +54,9 @@ ASSETS: Dict[str, Tuple[str, ...]] = {
               "alpaca-paper.js", "kalshi-perps-live.js", "broker-connections.js"),
 }
 PREFIX = {"tau": "app-", "meridian": "app.meridian-"}
+# Page files both themes load, page-<name>.js: each bundle's pageSrc names them too.
+SHARED = ("autopilot",)
+SHARED_PREFIX = "page-"
 BUNDLE = {"tau": "app.js", "meridian": "app.meridian.js"}
 # The shared core: the pure helpers (escaping, money, counts, dates) both themes' bundles take from it as they
 # start, written once instead of in each bundle. It runs right before the bundle, in every shell and theme.
@@ -61,12 +68,12 @@ def names(theme: str) -> Tuple[str, ...]:
     return tuple(name for name in NAMES if theme == "tau" or name not in TAU_ONLY)
 
 
-FILES = tuple(PREFIX[theme] + name + ".js" for theme in PREFIX for name in names(theme))
-_PATHS = {name: re.compile(r"^/(?:%s)$" % rx) for name, rx in PAGES.items()}
-
-
 def file_name(theme: str, name: str) -> str:
-    return PREFIX[theme] + name + ".js"
+    return (SHARED_PREFIX if name in SHARED else PREFIX[theme]) + name + ".js"
+
+
+FILES = tuple(dict.fromkeys(file_name(theme, name) for theme in PREFIX for name in names(theme)))
+_PATHS = {name: re.compile(r"^/(?:%s)$" % rx) for name, rx in PAGES.items()}
 
 
 def page_for(path: str) -> Optional[str]:
@@ -81,7 +88,8 @@ def versions_attr(theme: str, versions: Dict[str, str]) -> str:
 
 def build_version(theme: str, versions: Dict[str, str]) -> str:
     """The theme's build as the page knows it (window.__BUILD__, /api/version): its bundle's version, its page
-    files' and the core's in one hash, so a deploy that changes only a page file or the core still offers a reload."""
+    files' (a shared one in both themes') and the core's in one hash, so a deploy that changes only a page file or
+    the core still offers a reload."""
     parts = [versions[BUNDLE[theme]]] + [versions[file_name(theme, name)] for name in names(theme)] + [versions[CORE]]
     return hashlib.sha256(",".join(parts).encode()).hexdigest()[:10]
 

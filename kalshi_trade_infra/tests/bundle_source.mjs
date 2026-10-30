@@ -1,6 +1,6 @@
 // A theme's code as the browser runs it: the shared core both themes take their pure helpers from
 // (core.js, run before the bundle), the bundle (app.js, app.meridian.js), then each page file it fetches
-// on first use (app-<name>.js, app.meridian-<name>.js, app/web/page_modules.py), in one script.
+// on first use (app-<name>.js, app.meridian-<name>.js, page-<name>.js in both, app/web/page_modules.py), in one script.
 // Every page's code is in, registered with the bundle as it would be once fetched, so a harness that
 // renders any page, or a check that reads the source, covers the page files too.
 import {readdirSync, readFileSync} from 'node:fs';
@@ -8,10 +8,11 @@ import {readdirSync, readFileSync} from 'node:fs';
 const DIR = new URL('../app/static/', import.meta.url);
 const read = (name) => readFileSync(new URL(name, DIR), 'utf8');
 
-// The bundle's page files, by name: Tau's are app-<name>.js, Meridian's app.meridian-<name>.js.
+// The bundle's page files, by name: Tau's are app-<name>.js, Meridian's app.meridian-<name>.js, and both
+// themes load the shared ones, page-<name>.js.
 export function pageFiles(bundle) {
   const prefix = bundle === 'app.js' ? 'app-' : bundle.replace(/\.js$/, '-');
-  return readdirSync(DIR).filter((f) => f.startsWith(prefix) && /^[a-z.]+-[a-z]+\.js$/.test(f)).sort();
+  return readdirSync(DIR).filter((f) => (f.startsWith(prefix) || f.startsWith('page-')) && /^[a-z.]+-[a-z]+\.js$/.test(f)).sort();
 }
 
 // An object of the named bindings that are in scope where it is evaluated: a harness lists what it

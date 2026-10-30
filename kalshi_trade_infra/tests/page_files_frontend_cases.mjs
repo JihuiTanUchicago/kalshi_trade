@@ -11,7 +11,7 @@
 //   frame has painted, each once; one that fails leaves its part out, never fails the page, and the next
 //   ask fetches it afresh; those already on the page are neither fetched nor prefetched again; Funds'
 //   perps box mounts once its script is in;
-// - the autopilot panel's file (app-autopilot.js) is fetched the first time the panel opens, once: the
+// - the autopilot panel's file (page-autopilot.js, one for both themes) is fetched the first time the panel opens, once: the
 //   pill needs none, the panel shows its head over a skeleton meanwhile, and a file that doesn't
 //   arrive says so in the panel with Try again; a panel closed meanwhile stays closed.
 // The harnesses run every page file up front (bundle_source.mjs); a case takes one out to see it fetched.
@@ -232,7 +232,7 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
   test(`${name}: the autopilot panel's file is fetched the first time the panel opens, once`, async () => {
     const {f, head, reports, box, panel, open, close} = pill();
     open(); await flush();
-    assert.deepEqual(head.map((s) => [s.tag, s.src]), [['script', `/static/${prefix}autopilot.js?v=9f8e7d`]]);
+    assert.deepEqual(head.map((s) => [s.tag, s.src]), [['script', `/static/page-autopilot.js?v=9f8e7d`]]);
     // Meanwhile the panel's head (its label, and the close button that takes focus) over a skeleton.
     assert.ok(box.querySelector('.apf-x') && box.querySelector('.skeleton'));
     assert.match(box.className, /\bopen\b/);
@@ -257,7 +257,7 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
     assert.ok(box.querySelector('.load-fail'), 'the failure is in the panel');
     assert.match(box.querySelector('.apf-top').innerHTML, /The autopilot panel didn\u2019t load\. Check your connection and try again\./);
     assert.ok(box.querySelector('.apf-x'), 'and it still closes');
-    assert.deepEqual(reports, [['api', `GET /static/${prefix}autopilot.js did not load`]]);
+    assert.deepEqual(reports, [['api', `GET /static/page-autopilot.js did not load`]]);
     box.querySelector('[data-retry]').onclick(); await flush();
     assert.equal(head.length, 2);
     assert.equal(head[1].src, head[0].src);

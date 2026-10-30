@@ -40,9 +40,8 @@ test('the autopilot panel’s live gate says “Live trading isn’t open yet.�
   }
   // Said once in either theme: the gate line steps aside when the summary above it already says it
   // (test_production_ui_reconciliation.mjs walks both).
-  for (const file of ['static/app-autopilot.js', 'static/app.meridian-autopilot.js']) {
-    assert.match(read(file), /some\(\(line\) => \/live trading isn’t open yet\/i\.test\(line\)\);\n {8}gates\.innerHTML = saidAbove \? '' : /, file);
-  }
+  // One file both themes load (page-autopilot.js).
+  assert.match(read('static/page-autopilot.js'), /some\(\(line\) => \/live trading isn’t open yet\/i\.test\(line\)\);\n {8}gates\.innerHTML = saidAbove \? '' : /);
   // The panel's summary (the server's) and the deploy refusal say it in these words; neither changes here.
   assert.match(read('web/routes/chat.py'), /" Live trading isn’t open yet\."/);
   assert.match(read('web/routes/deployments.py'), /ApiError\(409, "Live trading isn't open yet\."\)/);

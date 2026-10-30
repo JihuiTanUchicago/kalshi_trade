@@ -132,10 +132,10 @@ def test_billing_copy_does_not_promise_list_price_while_a_markup_applies():
     static = Path(__file__).resolve().parents[1] / "app" / "static"
     if billing.USAGE_MARGIN == 1:
         pytest.skip("no markup configured")
-    # Both bundles and their page files (app-billing.js holds Tau's Billing page).
+    # Both bundles and their page files (app-billing.js holds Tau's Billing page), the shared ones both load too.
     # And the shared core both bundles take their money and count helpers from.
-    bundles = sorted(p.name for p in static.glob("app*.js")) + ["core.js"]
-    assert {"app.js", "app.meridian.js", "app-billing.js", "app.meridian-billing.js"} <= set(bundles)
+    bundles = sorted(p.name for p in static.glob("app*.js")) + sorted(p.name for p in static.glob("page-*.js")) + ["core.js"]
+    assert {"app.js", "app.meridian.js", "app-billing.js", "app.meridian-billing.js", "page-autopilot.js"} <= set(bundles)
     for bundle in bundles:
         src = (static / bundle).read_text()
         assert "list price" not in src, bundle

@@ -45,7 +45,7 @@ const sentences = (file) => literals(readFileSync(new URL(file, DIR), 'utf8'))
   .filter(({text}) => !ALLOWED_TEXT.some(([f, rx]) => f === file && rx.test(text)));
 
 test('the guard reads both themes’ pages, sentence by sentence', () => {
-  for (const f of ['app.js', 'app.meridian.js', 'app-research.js', 'app.meridian-strategies.js', 'app-autopilot.js', 'session-chat.js']) assert.ok(scripts.includes(f), f);
+  for (const f of ['app.js', 'app.meridian.js', 'app-research.js', 'app.meridian-strategies.js', 'page-autopilot.js', 'session-chat.js']) assert.ok(scripts.includes(f), f);
   const research = sentences('app-research.js').map((s) => s.text);
   assert.ok(research.some((t) => t.includes('Watch the agent reason in real time')), 'a sentence inside markup');
   assert.ok(sentences('app.js').length > 500);

@@ -1,15 +1,18 @@
-/* Meridian's autopilot panel, open: its controls, the activity feed and the chat.
-   Fetched the first time the panel opens (pageLoad in app.meridian.js), which hands this function what
-   the bundle shares with its page files (shared()); the pill (renderAutopilot) calls what it returns. */
+/* The autopilot panel, open: its controls, the activity feed and the chat, in both themes.
+   Fetched the first time the panel opens (pageLoad in app.js or app.meridian.js), which hands this function
+   what the bundle shares with its page files (shared()); the pill (renderAutopilot) calls what it returns.
+   What Tau draws and Meridian doesn't goes by the bundle's theme (shared(): theme). */
 window.TauPage('autopilot', (T) => {
   'use strict';
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
     apEvery, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
-    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, pnlWin, refreshAutopilot, repaintKeep, S, SEP, settleAt, sinceMin, slipEstGl, usd, waitNote, waitSpan,
+    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, pnlWin, refreshAutopilot, repaintKeep, S, SEP, settleAt, sinceMin, slipEstGl, theme, usd, waitNote, waitSpan,
     wakers
   } = T;
+  // Tau's panel has a dot by its title and by the idle pulse, a line under the feed's title, and says when it's idle that reviews run on a schedule.
+  const tau = theme === 'tau';
 
   // The float is the single home for autopilot: the on/off toggle, live controls, and the agent
   // chat. The expanded shell is built ONCE; the 20s status poll updates only dynamic bits so it
@@ -196,7 +199,6 @@ window.TauPage('autopilot', (T) => {
     // old running count sat over a risk change the feed showed seconds before.
     if (moved) refreshAutopilot(box);
     if ('turn_cost' in d) { apTurnCost = d.turn_cost; apCostPaint(box); }
-    // The empty feed says what will fill it, as Tau's does: "No autopilot activity yet." alone left a new reader guessing.
     if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet. While it\u2019s on, it checks in on its own schedule: it reviews what\u2019s running, starts research, and puts the strategies that pass every research test on paper (pretend money). It trades real money only if you also turn on live autopilot. Each move lands here as it happens. Message it below to steer.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
     const pulse = box.querySelector('#apf-pulse');
@@ -219,7 +221,7 @@ window.TauPage('autopilot', (T) => {
           ? `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-shown aria-hidden="true">${shown}</span><span class="vh">${say}</span>`
           : d.agent_busy
           ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
-          : `<span data-ap-idle data-ap-shown aria-hidden="true">${esc(idle)}</span><span class="vh">${esc(say)}</span>`;
+          : `${tau ? '<span class="apf-idle-dot" aria-hidden="true"></span>' : ''}<span data-ap-idle data-ap-shown aria-hidden="true">${esc(idle)}</span><span class="vh">${esc(say)}</span>`;
       } else {
         const tick = pulse.querySelector('[data-ap-shown]');
         if (tick && shown != null && tick.textContent !== shown) tick.textContent = shown;
@@ -236,9 +238,10 @@ window.TauPage('autopilot', (T) => {
     const d = S.ap, la = d && d.last_action;
     const last = la && la.at && !spoken ? `${SEP}last move ` + sinceMin(la.at) : '';
     if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
-    // Its status not read (or the read failed): on, and no more. "Idle" was a guess.
+    // Its status not read (or the read failed): on, and no more. "Idle — reviews run on a schedule" was a guess.
     if (!d) return 'On';
-    return apNowWord(d) + last;
+    const now = apNowWord(d);
+    return now + last + (tau && now === 'Idle' ? ' — reviews run on a schedule' : '');
   }
   // The pulse's lead: what the status read says it is doing, so it never reads "Idle" over research.
   function apNowWord(d) {
@@ -273,7 +276,7 @@ window.TauPage('autopilot', (T) => {
       if (e.key === 'Tab' && apSheet() && apExpanded()) apSheetTab(box, e);
     };
     box.innerHTML = `
-      <div class="apf-head"><b id="apf-label"></b>
+      <div class="apf-head">${tau ? '<span class="apf-dot" aria-hidden="true"></span>' : ''}<b id="apf-label"></b>
         <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse autopilot">${ICON.cross || '×'}</button></div>
       <div class="apf-top">
         <div class="autopilot" id="apf-ap">
@@ -302,7 +305,7 @@ window.TauPage('autopilot', (T) => {
         </form>
       </div>
       <div class="apf-session">
-        <div class="apf-session-head"><span class="say-kind">Activity feed</span></div>
+        <div class="apf-session-head"><span class="say-kind">Activity feed</span>${tau ? '<span class="apf-session-sub">everything the autopilot does, end to end</span>' : ''}</div>
         <ol class="log stream apf-log" id="apf-messages" aria-label="Autopilot activity" aria-live="polite"></ol>
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
@@ -556,9 +559,11 @@ window.TauPage('autopilot', (T) => {
     if (fsel && Array.isArray(d.focus) && document.activeElement !== fsel && !fsel.disabled && fsel.dataset.cur !== d.focus.join(',')) apFocusOptions(fsel, d.focus);
     const gates = box.querySelector('#apf-gates');
     if (gates) {
-      // Say why autopilot is quiet (or soon will be) here too, not only on the dashboard card.
       if (d.billing_blocked) {
-        gates.innerHTML = d.billing_reason === 'card' ? 'Autopilot is paused. <a href="/billing">Add a payment method</a> to let it keep researching.' + apStillTrading(d)
+        // Autopilot is on but can't spend — tell the user WHY it's quiet (so it doesn't look broken).
+        gates.innerHTML = d.billing_reason === 'card'
+          ? (tau ? 'Autopilot is paused — <a href="/billing">add a payment method</a> to let it run.'
+            : 'Autopilot is paused. <a href="/billing">Add a payment method</a> to let it keep researching.') + apStillTrading(d)
           : apReloadFailed(d) ? `Autopilot is paused: ${AP_CARD_FIX}${apStillTrading(d)}`
           : `Autopilot is paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`;
         gates.classList.add('warn');
