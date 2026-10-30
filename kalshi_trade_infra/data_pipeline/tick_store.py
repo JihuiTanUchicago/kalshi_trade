@@ -72,14 +72,17 @@ class TickStore:
         if os.path.exists(p):
             return p
         os.makedirs(os.path.dirname(p), exist_ok=True)
+        # One temp file per process: parallel replay workers fetch the same hour, and a shared
+        # ".part" name let one worker rename the other's download away mid-flight.
+        part = "%s.%d.part" % (p, os.getpid())
         try:
-            self._client().download_file(self.bucket, key, p + ".part")
+            self._client().download_file(self.bucket, key, part)
         except Exception as e:  # noqa: BLE001 - a missing hour is normal (recorder down, not yet archived)
             code = getattr(e, "response", {}).get("Error", {}).get("Code") if hasattr(e, "response") else None
             if code in ("404", "NoSuchKey", "NotFound") or "404" in str(e) or "Not Found" in str(e):
                 return None
             raise
-        os.replace(p + ".part", p)
+        os.replace(part, p)
         return p
 
     def dates(self, table: str) -> Optional[set]:

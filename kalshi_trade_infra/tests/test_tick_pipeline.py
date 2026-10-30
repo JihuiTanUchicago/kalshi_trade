@@ -375,3 +375,29 @@ def test_features_backlog_drains_newest_first_and_a_killed_build_does_not_stall_
         pass
     assert built[-1] == hours[-1]                 # the stale "built" mark was rebuilt
     assert tick_archiver._load_attempts() == {hours[0].strftime("%Y-%m-%d %H"): 3}
+
+
+def test_two_workers_fetching_the_same_hour_do_not_rename_each_others_download(tmp_path, monkeypatch):
+    """Prod 10-28/29 16:45Z: the maker lab's two replay workers fetched the same features file into a
+    shared cache; both wrote <file>.part, the first renamed it away, and the second's rename failed
+    (FileNotFoundError) and killed the run. Each process now downloads to its own temp name."""
+    import data_pipeline.tick_store as ts_mod
+    from data_pipeline.tick_store import TickStore
+    key = "ticks/v1/features_1s/date=2026-10-29/hour=05/series=KXBTC15M/part.parquet"
+    cache = tmp_path / "cache"
+    final = cache / key
+
+    other = []
+
+    class S3:
+        def download_file(self, bucket, k, path):
+            with open(path, "w") as f:
+                f.write("x")
+            if not other:                        # the other worker finishes first and takes the name
+                other.append(1)
+                monkeypatch.setattr(ts_mod.os, "getpid", lambda: 222)
+                assert TickStore(cache_dir=str(cache), s3=S3())._fetch(k) == str(final)
+
+    monkeypatch.setattr(ts_mod.os, "getpid", lambda: 111)
+    assert TickStore(cache_dir=str(cache), s3=S3())._fetch(key) == str(final)
+    assert final.read_text() == "x" and not list(final.parent.glob("*.part"))
