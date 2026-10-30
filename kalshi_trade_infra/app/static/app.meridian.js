@@ -2638,7 +2638,9 @@
       const paperWorkspace = !hasLive && d.open_positions.concat(d.recent_closed, d.deployments).every(x => x.mode === 'paper');
       const sharedPaperRunning = d.deployments.length > 0 && d.deployments.every(x => x.mode === 'paper' && x.status === 'running');
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
-      // every user something was wrong that they couldn't act on).
+      // every user something was wrong that they couldn't act on). It stays red there: no Bitcoin spot candles, or
+      // none for 45 minutes, means the collector is down and new backtests run on missing prices. It names the feed it
+      // means: "No backtest history yet" beside a passed strategy read as that strategy having no backtest (walked 2026-10-30).
       const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
       const agentsBusy = d.agents.research_running + d.agents.research_queued;
       const paused = d.deployments.filter((x) => x.status === 'paused').length;
@@ -2654,7 +2656,7 @@
       const said = [
         hasLive ? `${liveOpen() ? 'Live money on' : 'Live trading isn\u2019t open yet'}: ${usd(d.live.realized_pnl, true)} realized all time${liveOpen() ? '' : ' on live money'}` : '',
         paused ? `<a class="needs-link" href="#dash-paused"><em>${num(paused)} paused, needs you</em></a>` : '',
-        stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
+        stale ? `<em>${d.freshness.btc == null ? 'No Bitcoin price history collected yet' : 'Bitcoin price history ' + age(d.freshness.btc) + ' behind'}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       // A live cash still being checked reads Checking\u2026 (or its last figure, with its age), never $0 (cashFig).
       // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.
@@ -2665,7 +2667,9 @@
       // added to it, and says when Kalshi was read, as Tau's dashboard does. Only a missing key stays in the menu.
       const cashInBand = !hasLive && lv.connected;
       const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, LIVE_IDLE())].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
-      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]}${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Live realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
+      // Each live figure in the band names its book, as "Live realized today (UTC)" does: beside a positions table headed
+      // "2 paper · 1 live", a bare "Open positions 1" didn't say it counted only the live book (walked 2026-10-30).
+      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]}${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Live realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Live open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Live open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
       const demoFigure = (demoKeyless(d.demo) ? fig(DEMO_BOOK, 'No demo key', { small: DEMO_NO_KEY }) : fig(DEMO_BOOK, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${num(d.demo.open_positions)} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}, after Kalshi fees` : `${usd(d.demo.capital)} capital${SEP}No demo deployments`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
@@ -4692,7 +4696,7 @@
     paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount, paperShown, paperSince, slipEst, slipTip, PAPER_COUNT_WHY,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
-    sessionNo, sessionTitle, settleAt, markedAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
+    sessionNo, sessionTitle, settleAt, keepZone, markedAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
     stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, wakers,
     WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));

@@ -4,8 +4,8 @@
 window.TauPage('community', (T) => {
   'use strict';
   const {
-    alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, clock, esc, flash, ICON, liveWaitMark, loading,
-    marketShort, mdLite, notice, num, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, shell,
+    alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, esc, flash, ICON, liveWaitMark, loading,
+    marketShort, mdLite, notice, num, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, settleAt, shell,
     statusMark, tone, trDay, usd, when
   } = T;
 
@@ -78,10 +78,12 @@ window.TauPage('community', (T) => {
   // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,
   // reaction pills, and a bottom-left action row (reply / replies count, plus edit on own posts).
   // A grouped post is a tight continuation of the author above it: no header, a hover-only time.
+  // Its time says its zone, and its date on another day than today (settleAt): it read a bare "07:49" in no zone, under
+  // a header that says "Oct 29" (walked 2026-10-30). In the 42px gutter it wraps, the time on its own line.
   function postCard(p, grouped) {
     const replies = p.comments || 0;
     return `<article class="post${grouped ? ' grouped' : ''}" data-id="${p.id}">
-      <div class="post-gutter">${grouped ? `<time class="gutter-time">${clock(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
+      <div class="post-gutter">${grouped ? `<time class="gutter-time" datetime="${esc(p.created_at)}">${settleAt(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
       <div class="post-col">
         ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`}
         <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>

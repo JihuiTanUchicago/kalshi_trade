@@ -4,9 +4,9 @@
 window.TauPage('community', (T) => {
   'use strict';
   const {
-    alert0, api, armed, attachMention, authorLine, BEHIND, busy, clock, deploymentMode, esc, flash, ICON,
+    alert0, api, armed, attachMention, authorLine, BEHIND, busy, deploymentMode, esc, flash, ICON, keepZone,
     liveWaitMark, loading, marketShort, mdLite, notice, num, overDays, pageLede, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
-    shell, statusMark, tone, trDay, usd, when
+    settleAt, shell, statusMark, tone, trDay, usd, when
   } = T;
 
   // ---------- community ----------
@@ -75,11 +75,13 @@ window.TauPage('community', (T) => {
   const GROUP_WINDOW = 5 * 60 * 1000;  // consecutive posts by one author within 5 min collapse the header
   // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,
   // reaction pills, and a bottom-left action row (reply / replies count, plus edit on own posts).
-  // A grouped post is a tight continuation of the author above it: no header, a hover-only time.
+  // A grouped post is a tight continuation of the author above it: no header, its time in the gutter.
+  // Its time says its zone, and its date on another day than today (settleAt), kept on one line with its zone
+  // (keepZone): at 390px it read a bare "07:49" in no zone, under a header that says "Oct 29" (walked 2026-10-30).
   function postCard(p, grouped) {
     const replies = p.comments || 0;
     return `<article class="post${grouped ? ' grouped' : ''}${p.picture ? ' post-photo' : ''}" data-id="${p.id}">
-      <div class="post-gutter">${grouped ? `<time class="gutter-time">${clock(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
+      <div class="post-gutter">${grouped ? `<time class="gutter-time" datetime="${esc(p.created_at)}">${keepZone(settleAt(p.created_at))}</time>` : avatar(p.picture, p.author)}</div>
       ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`}
       <div class="post-col">
         <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
