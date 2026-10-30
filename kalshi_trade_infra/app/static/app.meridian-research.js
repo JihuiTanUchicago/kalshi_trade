@@ -910,7 +910,7 @@ window.TauPage('research', (T) => {
   // know keeps the last stage lit and shows a humanised label, so the new
   // backend phase events never break it; it just gets richer as they land.
   // ======================================================================
-  const RSI_STAGES = [['explore', 'Explore'], ['backtest', 'Backtest'], ['gate', 'Validate'], ['dream', 'Refine']];
+  const RSI_STAGES = [['explore', 'Explore'], ['backtest', 'Backtest'], ['gate', 'Check'], ['dream', 'Improve']];
   // event kind -> [loop stage, human phase label]. New kinds the backend adds just fall through.
   const RSI_PHASE = {
     'run-start': ['explore', 'Starting up'], 'data-loaded': ['explore', 'Data loaded'],
@@ -936,7 +936,7 @@ window.TauPage('research', (T) => {
     host.innerHTML = `
       <details class="rsi-progress" open><summary class="rsiobs-head"><h2>Research progress</h2>
         <span class="rsiobs-live is-wait" data-live><span data-livetext>Spinning up…</span></span>${ICON.chev}</summary>
-      <ol class="rsi-labels" aria-label="Research cycle: explore, backtest, validate, refine, then repeat">${RSI_STAGES.map(([s, l]) => `<li class="rsi-lab" data-stage="${s}">${l}</li>`).join('')}</ol>
+      <ol class="rsi-labels" aria-label="Research cycle: explore, backtest, check, improve, then repeat">${RSI_STAGES.map(([s, l]) => `<li class="rsi-lab" data-stage="${s}">${l}</li>`).join('')}</ol>
       <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
       <p class="rsiobs-phase rsiobs-wait" data-wait hidden></p>
       <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree</figcaption>

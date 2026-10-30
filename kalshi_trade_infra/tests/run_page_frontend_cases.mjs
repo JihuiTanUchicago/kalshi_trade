@@ -435,4 +435,14 @@ export function runPageCases({name, frontend}) {
     if (html.includes('data-lab="Status"')) assert.match(html, /Demo: <span class="gain">\+\$0\.50<\/span>/);
     assert.doesNotMatch(html, /\$3\.70/);  // paper and demo are never added
   });
+
+  // Walk 2026-10-30: a session with no picked market opened "Agent’s choice · Session · …", nothing saying
+  // that was its market. The header names it as a market; the session still sends no market.
+  test(`${name}: a session with no picked market says the agent picks it, as a market, in its header`, async () => {
+    const f = await open({market: '', prompt: '', status: 'queued'});
+    const deck = f.root.querySelector('#runboard .deck').textContent;
+    assert.ok(deck.startsWith('Any market (agent’s choice)' + SEP + 'Session'), deck);
+    assert.equal(f.root.querySelector('#runboard h1').textContent, 'Session' + SEP + 'Any market (agent’s choice)');
+    assert.doesNotMatch(f.root.querySelector('#runboard').textContent, /^Agent’s choice/);
+  });
 }

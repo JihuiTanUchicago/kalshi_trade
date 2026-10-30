@@ -2161,7 +2161,7 @@ test('Research run polling keeps one current stage through unknown events, pause
   };
   await advance('queued', [], null, []);
   const stages = f.root.querySelector('#rsiobs .rsi-labels');
-  assert.equal(stages.tag, 'ol'); assert.deepEqual(stages.querySelectorAll('li').map(label => label.textContent), ['Explore', 'Backtest', 'Validate', 'Refine']);
+  assert.equal(stages.tag, 'ol'); assert.deepEqual(stages.querySelectorAll('li').map(label => label.textContent), ['Explore', 'Backtest', 'Check', 'Improve']);
   assert.equal(f.root.querySelector('.run-header > #runact'), f.root.querySelector('#runact'));
   const passed = () => f.root.querySelectorAll('#runfigs .m').find(fig => fig.querySelector('dt').textContent === 'Passed').querySelector('.fig').textContent;
   assert.equal(passed(), '0');

@@ -448,7 +448,11 @@
   const MKT_CATS = ['Crypto', 'Sports', 'Economics', 'Commodities', 'Science and Technology', 'Climate and Weather', 'Weather', 'Bittensor'];
   // Category sort shared by the research picker and the strategies market filter.
   const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
-  const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
+  // No market picked: the agent chooses. Said as a market ("Any market (agent’s choice)"), since a header or
+  // row shows it beside other labels ("Agent’s choice · Session" didn’t say it was the market). Display only:
+  // the stored market stays empty and the research model is sent nothing new.
+  const NO_MARKET = 'Any market (agent’s choice)';
+  const marketShort = (k) => (!k ? NO_MARKET : MKT_SHORT[k] || marketLabel(k));
   // A market named on its own, in a sentence or as a row's market ("Bitcoin up or down in 15 minutes"), by its full
   // label, as Billing's lines and every position name it; the short one stays for chips and meta lines joined by
   // " · ". The autopilot said "Researching BTC 15-min up/down" and Deploy's rows "BTC 15-min up/down" above
@@ -4385,7 +4389,7 @@
   function apLiveBlock(d) {
     if (!d) return '';
     if (!d.autopilot) return 'Live autopilot can only be turned on after autopilot (paper) is on. It moves a strategy to real money only after the strategy has proven itself on paper, and autopilot is what runs it there. ';
-    if (!d.live_enabled) return 'Live trading isn’t available on this server yet. ';  // no live button then, just this line
+    if (!d.live_enabled) return 'Live trading isn’t open yet. ';  // no live button then, just this line
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
