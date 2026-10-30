@@ -78,12 +78,13 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.deepEqual(low, []);
   });
 
-  test(`${bundle}: switches, sliders and the chosen market row show keyboard focus`, () => {
-    // `input:focus { outline: none }` is for fields, which show focus with their border. A switch and a
-    // slider have no border to change, so they get their own ring; the chosen market row is ink-filled,
+  test(`${bundle}: switches, sliders, the key file picker and the chosen market row show keyboard focus`, () => {
+    // `input:focus { outline: none }` is for fields, which show focus with their border. A switch, a
+    // slider and Funds' key file picker have no border to change, so they get their own ring (the file
+    // picker had none: a walk's Tab landed on it with nothing drawn); the chosen market row is ink-filled,
     // so its ring is light.
     assert.match(css, /\.input:focus, select:focus, input:focus \{[^}]*outline: none/);
-    assert.match(css, /\.switch input:focus-visible, input\[type=range\]:focus-visible \{ outline: 2px solid var\(--ink\); outline-offset: 2px; \}/);
+    assert.match(css, /\.switch input:focus-visible, input\[type=range\]:focus-visible, input\[type=file\]:focus-visible \{ outline: 2px solid var\(--ink\); outline-offset: 2px; \}/);
     assert.match(css, /\.mktrow-r:checked:focus-visible \+ \.mktrow-face \{ outline-color: var\(--stock-raised\); outline-offset: -4px; \}/);
     assert.match(css, /\.mktrow-r:checked \+ \.mktrow-face \{ background: var\(--ink\);/);
   });

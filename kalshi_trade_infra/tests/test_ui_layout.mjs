@@ -125,6 +125,10 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.equal(decl(all, '.stack tbody td', 'white-space', PHONE), 'normal');
     assert.equal(decl(all, '.stack tbody td::before', 'content', PHONE), 'attr(data-lab)');
     assert.equal(decl(all, '.stack thead', 'position', PHONE), 'absolute');
+    // The clipped header row keeps its column names for a screen reader, but not its (i) buttons: Tab landed on
+    // Deploy's Realized, Unrealized and Backtest estimate there, drawn nowhere, their definitions beside nothing.
+    assert.equal(decl(all, '.stack thead .info', 'display', PHONE), 'none');
+    assert.equal(decl(all, '.stack thead .info', 'display'), undefined, 'a desktop table keeps them');
   });
 }
 
@@ -535,6 +539,12 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.equal(decl(all, '.svc-link:focus-visible', 'outline-offset'), '-2px', 'drawn inside the tab');
   });
 }
+
+test('Tau: the markets rail\'s See all markets link is underlined after its Updated line, not told apart by a grey alone', () => {
+  // axe link-in-text-block (walk 2026-10-30, 1280px): the link's ink beside the line's grey was 2.86:1.
+  const all = rules(read('app.css'));
+  assert.equal(decl(all, '.hot-ft a', 'text-decoration'), 'underline');
+});
 
 test('Tau: the markets rail and the theme picker draw the ring inside, light on the ink-filled chosen theme', () => {
   const all = rules(read('app.css'));

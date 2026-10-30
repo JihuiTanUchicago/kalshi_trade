@@ -150,6 +150,7 @@ class Element {
   getAttribute(key) { return this.attributes[key] ?? null; }
   hasAttribute(key) { return key in this.attributes; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
+  removeAttribute(key) { delete this.attributes[key]; }
   // Records the focus a script hands it, so a check can say where a keyboard user was left.
   focus(options) { this.focusOptions = options; this.focused = true; }
   remove() { this.removed = true; }
