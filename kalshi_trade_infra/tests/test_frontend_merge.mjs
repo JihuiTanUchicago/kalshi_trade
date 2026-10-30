@@ -1443,9 +1443,12 @@ test('the floating autopilot pill steps aside while it would cover a primary or 
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
-test('the floating autopilot pill steps aside from a card’s Market line and from a page’s or section’s heading', () => {
+test('the floating autopilot pill holds its place over a card’s Market line and a page’s or section’s heading', () => {
   // Walk 2026-10-28 at 390px: the pill sat on a Strategies card's "ETH 15-min up/down · Volatility mispricing" as
-  // the list scrolled, and on a market page's "Price history · Yes price · Kalshi hourly candles" as it opened.
+  // the list scrolled, and on a market page's "Price history · Yes price · Kalshi hourly candles" as it opened, and
+  // stepping aside for them was added. Walk 2026-10-30: with every such line on the list it showed at 25 of 742
+  // scroll positions on a 390px Deploy, so a customer couldn't reach the chat. A line or a heading scrolls out from
+  // under it (the body's bottom room clears the last one), so it holds its place over them now.
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<main id="main"><div class="board-title"><h1 class="page">Highest temperature in NYC today?</h1></div>'
     + '<table class="stack"><tbody><tr><td class="name" data-lab=""><a href="/strategies/3">Idea</a></td><td data-lab="Market"><span class="tick">ETH 15-min up/down · Volatility mispricing</span></td></tr></tbody></table>'
@@ -1458,21 +1461,24 @@ test('the floating autopilot pill steps aside from a card’s Market line and fr
   const market = f.root.querySelector('td[data-lab="Market"]'), head = f.root.querySelector('.sect-head'), title = f.root.querySelector('.board-title');
   for (const el of [market, head, title, f.root.querySelector('p.plain')]) el.getBoundingClientRect = away;
   f.apYield(); assert.equal(box.classes.has('yield'), false);
-  for (const el of [market, head, title]) {
+  for (const el of [market, head, title, f.root.querySelector('p.plain')]) {
     el.getBoundingClientRect = rect(16, 800, 374, 830);
-    f.apYield(); assert.equal(box.classes.has('yield'), true, el.className || el.getAttribute('data-lab'));
+    // Holds: the line scrolls out from under the pill; stepping aside for each one hid it on most of a page.
+    f.apYield(); assert.equal(box.classes.has('yield'), false, el.className || el.getAttribute('data-lab'));
     el.getBoundingClientRect = away;
-    f.apYield(); assert.equal(box.classes.has('yield'), false);
   }
-  // Running prose is not on the list: the pill stays put over a paragraph.
-  f.root.querySelector('p.plain').getBoundingClientRect = rect(16, 800, 374, 830);
-  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // The card's name is a link, something to press: the pill steps aside for it.
+  const name = f.root.querySelector('td.name a');
+  name.getBoundingClientRect = rect(16, 800, 300, 830);
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
 });
 
-test('the floating autopilot pill steps aside from a Deploy row’s title and lines and from a strategy page’s Since deploying record', () => {
+test('the floating autopilot pill steps aside for a Deploy row’s title link, and holds over its lines and a strategy page’s Since deploying record', () => {
   // Walk 2026-10-30 at 390px: the pill sat on the second Deploy row's title and the lines under it ("Its paper record
-  // toward live: …") as the board scrolled, and on the strategy page's "Since deploying" record as the page opened.
-  // A Deploy row's name block and that record count now, wherever their text sits under the pill; prose still doesn't.
+  // toward live: …") as the board scrolled, and on the strategy page's "Since deploying" record as the page opened,
+  // and the name block and that record were put on its list. With them (and figures, marks, headings) it showed at
+  // 25 of 742 scroll positions on Deploy and 57% of a strategy page's: the chat was out of reach. The lines and the
+  // record scroll out from under it, so it holds over them now; the row's title is a link and still sends it aside.
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<main id="main"><table class="stack t-dep"><tbody><tr><td class="name" data-lab=""><a href="/strategies/4">Late momentum</a>'
     + '<div class="sub-fig road-line">Its paper record toward live: 0/30 trades</div></td></tr></tbody></table>'
@@ -1487,33 +1493,34 @@ test('the floating autopilot pill steps aside from a Deploy row’s title and li
   const q = (sel) => f.root.querySelector(sel);
   f.location.pathname = '/deploy';
   f.apYield(); assert.equal(box.classes.has('yield'), false);
-  // The row's sub-lines under the pill, its title link clear of it: the name block alone sends it aside.
-  for (const el of [q('.t-dep td.name'), q('.real-record')]) {
-    el.getBoundingClientRect = under;
-    f.apYield(); assert.equal(box.classes.has('yield'), true, el.className || el.tag);
-    el.getBoundingClientRect = away;
-    f.apYield(); assert.equal(box.classes.has('yield'), false);
-  }
-  // Only Deploy's name block: another list's plain name cell and running prose are not on the list.
-  for (const el of [q('.t-strat td.name'), q('p.plain')]) {
+  // The row's sub-lines under the pill, its title link clear of it: it holds (was: stepped aside for the name block).
+  for (const el of [q('.t-dep td.name'), q('.road-line'), q('.real-record'), q('.paper-h'), q('.t-strat td.name'), q('p.plain')]) {
     el.getBoundingClientRect = under;
     f.apYield(); assert.equal(box.classes.has('yield'), false, el.className || el.tag);
     el.getBoundingClientRect = away;
   }
-  // Explore keeps its hold rule: a name block under the pill there doesn't send it aside.
+  // The row's title link under it: something to press, so it steps aside, and comes back once it scrolls away.
+  const link = q('.t-dep td.name a');
+  link.getBoundingClientRect = rect(16, 800, 300, 822);
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  link.getBoundingClientRect = away;
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // Explore keeps its hold rule: a row's link under the pill there doesn't send it aside.
   f.location.pathname = '/explore';
-  q('.t-dep td.name').getBoundingClientRect = under;
+  link.getBoundingClientRect = rect(16, 800, 300, 822);
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
-test('the floating autopilot pill steps aside from a table’s column header (Deploy’s Settles), outside Explore', () => {
-  // Walk 2026-10-30 at 1280px: the pill sat on the "Settles" header of Deploy's open positions, the column's only label.
-  // A header cell (thead th) counts now; a plain body cell and a row header in the body still don't, and Explore's
-  // hold rule (only a button, a field or a link outside a row) is unchanged.
+test('the floating autopilot pill holds over a table’s column header (Deploy’s Settles) and steps aside for a row’s link outside Explore', () => {
+  // Walk 2026-10-30 at 1280px: the pill sat on the "Settles" header of Deploy's open positions, the column's only label,
+  // and header cells were put on its list. The header scrolls out from under it with its table, and with every such
+  // label and figure on the list the pill was gone from 81% of Deploy's scroll positions at 1280px (97% at 390px): it
+  // holds over a header and a body cell now. A row's link is something to press: it still steps aside for one,
+  // except on Explore, whose rows are all links (its hold rule is unchanged).
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<main id="main"><div id="openpos"><table class="table stack"><thead><tr><th>Strategy</th><th>Market</th>'
     + '<th class="num">Settles</th></tr></thead><tbody><tr><th scope="row" class="rowhead">Late momentum</th><td class="plain">BTC</td>'
-    + '<td class="num" data-lab="Settles">17:00 EDT</td></tr></tbody></table></div></main>';
+    + '<td class="num" data-lab="Settles">17:00 EDT</td><td class="act"><a class="mlink" href="/explore?m=KXA">Market</a></td></tr></tbody></table></div></main>';
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
   box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
   const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
@@ -1522,24 +1529,19 @@ test('the floating autopilot pill steps aside from a table’s column header (De
   for (const el of [...f.root.querySelectorAll('*')]) el.getBoundingClientRect = away;
   const q = (sel) => f.root.querySelector(sel);
   const settles = f.root.querySelectorAll('thead th').find((el) => el.textContent === 'Settles');
-  f.location.pathname = '/deploy';
-  f.apYield(); assert.equal(box.classes.has('yield'), false);
-  settles.getBoundingClientRect = under;
-  f.apYield(); assert.equal(box.classes.has('yield'), true, 'steps aside for the Settles header');
-  settles.getBoundingClientRect = away;
-  f.apYield(); assert.equal(box.classes.has('yield'), false, 'comes back once it scrolls away');
-  for (const el of [q('th.rowhead'), q('td.plain')]) {
-    el.getBoundingClientRect = under;
-    f.apYield(); assert.equal(box.classes.has('yield'), false, el.className);
-    el.getBoundingClientRect = away;
-  }
-  // The strategy page's tables too; Explore and a market page keep holding over a header.
-  settles.getBoundingClientRect = under;
-  f.location.pathname = '/strategies/4';
-  f.apYield(); assert.equal(box.classes.has('yield'), true);
-  for (const path of ['/explore', '/explore/']) {
+  for (const path of ['/deploy', '/strategies/4', '/explore', '/explore/']) {
     f.location.pathname = path;
-    f.apYield(); assert.equal(box.classes.has('yield'), false, path);
+    f.apYield(); assert.equal(box.classes.has('yield'), false);
+    // Holds over the header, a row header and a body cell, on every page (was: stepped aside for the header off Explore).
+    for (const el of [settles, q('th.rowhead'), q('td.plain'), q('td.num')]) {
+      el.getBoundingClientRect = under;
+      f.apYield(); assert.equal(box.classes.has('yield'), false, `${path}: ${el.className || el.textContent}`);
+      el.getBoundingClientRect = away;
+    }
+    // A row's link: aside off Explore, held over on it.
+    q('a.mlink').getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), !path.startsWith('/explore'), `${path}: a row's link`);
+    q('a.mlink').getBoundingClientRect = away;
   }
 });
 
@@ -1576,13 +1578,131 @@ test('Tau: on Explore and a market page the pill holds its place over list rows,
       f.apYield(); assert.equal(box.classes.has('yield'), false);
     }
   }
-  // Every other page keeps stepping aside for a row's link, a figure and a heading.
+  // Every other page holds over a figure and a heading too now (they scroll away; stepping aside for them hid the
+  // pill from 97% of a 390px Deploy), but still steps aside for a row's link: other pages' rows carry their own
+  // controls (Deploy's Pause and Stop), so only Explore's all-link rows are held over.
   f.location.pathname = '/strategies';
-  for (const el of [q('td.name a'), q('.figures .m'), q('.sect-head')]) {
+  for (const el of [q('.figures .m'), q('.sect-head'), q('.mk'), q('td.num')]) {
+    el.getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), false, el.tag);
+    el.getBoundingClientRect = away;
+  }
+  for (const el of [q('td.name a'), q('td.xlink a'), q('#next')]) {
     el.getBoundingClientRect = under;
     f.apYield(); assert.equal(box.classes.has('yield'), true, el.tag);
     el.getBoundingClientRect = away;
     f.apYield(); assert.equal(box.classes.has('yield'), false);
+  }
+});
+
+// The pill steps aside for exactly the things you can press (or a bar pinned to the screen's foot), on every page.
+const AP_PRESS = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]'];
+// Puts each element of a rendered page under the pill in turn (all else away) and says whether the pill stepped
+// aside for it. With no elementsFromPoint the harness shows each element where it lies.
+function apYieldEach(f, path) {
+  // The page's render put the pill's box in the body already.
+  let box = f.document.getElementById('autopilot-float');
+  if (!box) { box = new Element('div', {id: 'autopilot-float', class: 'apf'}); f.root.parent.appendChild(box); }
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot · paper</button>';
+  box.classList.remove('yield', 'open');
+  box.querySelector('.apf-pill').getBoundingClientRect = () => ({left: 245, top: 798, right: 380, bottom: 834, width: 135, height: 36});
+  const away = () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0});
+  const under = () => ({left: 16, top: 800, right: 374, bottom: 830, width: 358, height: 30});   // 390x844 phone
+  const all = [], walk = (el) => el.children.forEach((c) => { all.push(c); walk(c); });
+  walk(f.root);
+  all.forEach((el) => { el.getBoundingClientRect = away; });
+  f.location.pathname = path;
+  f.apYield(); assert.equal(box.classes.has('yield'), false, `${path}: nothing under the pill`);
+  return all.map((el) => {
+    el.getBoundingClientRect = under;
+    f.apYield();
+    el.getBoundingClientRect = away;
+    return {el, yielded: box.classes.has('yield'), press: AP_PRESS.some((sel) => el.matches(sel))};
+  });
+}
+
+test('Tau: on Deploy the pill holds over every row line, figure, mark and header, and steps aside for every control', async () => {
+  // Walk 2026-10-30 at 390px (6 paper deployments, 20 open positions): the pill stepped aside for row names, figures,
+  // marks, Market lines, headings and column headers, and showed at 25 of 742 scroll positions (3%); at 1280px at 19%.
+  // A customer couldn't reach the chat. They all scroll out from under it, and the body's bottom room clears the
+  // last row, so the pill holds over them now (72% and 85% of positions after, measured the same way); a Pause,
+  // Stop or title link under it still sends it aside, so it never sits on something to press.
+  const dep = (o) => ({id: 1, strategy_id: 1, title: 'Late momentum', market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 3.2, closed_trades: 30, wins: 17, open_positions: 2, unrealized_pnl: 0.4, created_at: '2026-10-24T08:00:00Z',
+    curve: [[0, 0], [1, 1.2], [2, 3.2]], stake: 5, max_positions: 4, backtest: {out_of_sample: {pnl: 12, trades: 40}}, ...o});
+  const pos = (id, did) => ({id, deployment_id: did, title: 'Late momentum', mode: 'paper', ticker: 'KXBTC15M-26OCT271415-15', side: 'yes',
+    qty: 6, entry_price: 0.44, entry_fee: 0.14, at_cost: 2.78, cost: 2.78, unrealized: 0.3, mark_price: 0.5, market_close_time: '2026-10-27T18:15:00Z', market: 'btc15m'});
+  const f = frontend({fetchImpl: (path) => path === '/api/deployments'
+    ? response({deployments: [dep(), dep({id: 2, strategy_id: 2, title: 'Momentum fade', status: 'paused', status_reason: 'By you'})],
+      open_positions: [pos(5, 1), pos(6, 1), pos(7, 2)]}) : response({})});
+  f.location.pathname = '/deploy';
+  await f.viewDeploy(); await flush(); await flush();
+  const seen = apYieldEach(f, '/deploy');
+  for (const {el, yielded, press} of seen) assert.equal(yielded, press, `${el.tag}.${[...el.classes].join('.')} ${el.textContent.slice(0, 40)}`);
+  // What it held over includes what it used to step aside for; what it stepped aside for includes the row's controls.
+  const held = seen.filter((s) => !s.yielded).map((s) => s.el), aside = seen.filter((s) => s.yielded).map((s) => s.el);
+  for (const sel of ['.mk', 'td.num', 'thead th', '.t-dep td.name', 'td[data-lab="Market"]'])
+    assert.ok(held.some((el) => el.matches(sel.split(' ').at(-1)) && (!sel.includes(' ') || el.closest(sel.split(' ')[0]))), `held over ${sel}`);
+  assert.ok(aside.some((el) => el.tag === 'button'), 'a row’s button');
+  assert.ok(aside.some((el) => el.tag === 'a' && el.closest('td.name')), 'a row’s title link');
+  f.clearTimers();
+});
+
+test('Tau: on a strategy page the pill holds over Since deploying, figures and headings, and steps aside for every control', async () => {
+  // Walk 2026-10-30 at 390px: the pill showed at 57% of a strategy page's scroll positions, stepping aside for its
+  // Since deploying record, figures and headings; at 72% after. Those scroll away; its Deploy, Share and Remove
+  // controls still send it aside.
+  const deps = [{id: 3, strategy_id: 42, mode: 'paper', status: 'running', status_reason: null, realized_pnl: 2.4, closed_trades: 12,
+    open_positions: 1, unrealized_pnl: 0.2, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 4, backtest: {out_of_sample: null}}];
+  const f = strategyFrontend(detailStrategy({status: 'passed', deployments: deps, past_deployments: [],
+    book_totals: {paper: {pnl: 2.4, trades: 12, open: 1, paused: false}}}), () => response({}));
+  f.location.pathname = '/strategies/42';
+  await f.viewStrategy(42); await flush(); await flush();
+  assert.ok(f.root.querySelector('.real-record'), 'Since deploying renders');
+  const seen = apYieldEach(f, '/strategies/42');
+  for (const {el, yielded, press} of seen) assert.equal(yielded, press, `${el.tag}.${[...el.classes].join('.')} ${el.textContent.slice(0, 40)}`);
+  const held = seen.filter((s) => !s.yielded).map((s) => s.el);
+  for (const sel of ['.real-record', '.board-title', 'dd'])
+    assert.ok(held.some((el) => el.matches(sel)), `held over ${sel}`);
+  assert.ok(seen.some((s) => s.yielded && s.el.tag === 'button'), 'a control');
+  f.clearTimers();
+});
+
+test('Tau: the pill steps aside for a bar pinned to the screen’s foot, words and all, and every such bar is on its list', () => {
+  // A pinned bar can't scroll out from under the pill, so the pill holding over it would hide its words for good.
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><div class="bulkbar"><span class="bulk-n">3 selected</span><button class="btn sm">Deploy on paper</button></div>'
+    + '<form class="composer-post"><p class="hint">Posting as you</p><textarea></textarea></form><p class="plain">Prose</p></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const away = rect(0, 0, 0, 0), under = rect(16, 790, 374, 834);
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  for (const el of [...f.root.querySelectorAll('*')]) el.getBoundingClientRect = away;
+  for (const path of ['/strategies', '/community', '/explore']) {
+    f.location.pathname = path;
+    for (const sel of ['.bulkbar', '.composer-post']) {
+      f.root.querySelector(sel).getBoundingClientRect = under;   // its words under the pill, its controls clear of it
+      f.apYield(); assert.equal(box.classes.has('yield'), true, `${path}: ${sel}`);
+      f.root.querySelector(sel).getBoundingClientRect = away;
+      f.apYield(); assert.equal(box.classes.has('yield'), false);
+    }
+    f.root.querySelector('p.plain').getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), false, 'prose scrolls away');
+    f.root.querySelector('p.plain').getBoundingClientRect = away;
+  }
+  // Every box app.css pins (sticky or fixed) to the screen's bottom is on the list, or can't sit under the pill:
+  // the pill itself, the version bar (drawn above the pill's layer) and the hot-markets rail (the screen's left side).
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const pinnedBottom = [...css.matchAll(/(?:^|\n)\s*([^{}\n]+?)\s*\{([^{}]*)\}/g)]
+    .filter(([, , decl]) => /position:\s*(?:sticky|fixed)/.test(decl) && /(?:^|;)\s*bottom:/.test(decl)).map(([, sel]) => sel.trim());
+  assert.ok(pinnedBottom.length >= 5, pinnedBottom.join(' | '));
+  const listed = /const AP_PINNED = \[([^\]]*)\]/.exec(source)[1].match(/'([^']+)'/g).map((s) => s.slice(1, -1));
+  for (const sel of pinnedBottom) {
+    if (/^\.apf\b/.test(sel)) continue;   // the pill and its open panel
+    if (sel === '.verbar') { assert.match(css, /\.verbar \{[^}]*z-index: 100;/); assert.match(css, /\.apf \{[^}]*z-index: 60;/); continue; }
+    if (sel === '.hotrail') { assert.match(css, /\.hotrail \{ position: fixed; left: 0;/); continue; }
+    assert.ok(listed.includes(sel), `${sel} is pinned to the bottom: add it to AP_PINNED`);
   }
 });
 
@@ -2793,7 +2913,10 @@ test('Tau: separators wrap with the item after them, the phone tabs show which e
   assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{ledgerAt\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
 
-test('the floating autopilot pill also steps aside from a figure under it', () => {
+test('the floating autopilot pill holds its place over a figure under it, which scrolls away', () => {
+  // It used to step aside from a figure (a balance, a P&L, a card's number). With every figure, mark, heading and
+  // row line on that list it showed at 25 of 742 scroll positions on a 390px Deploy (walk 2026-10-30), and the chat
+  // was out of reach. A figure scrolls out from under it, and the body's bottom room clears the page's last one.
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<div id="boardbody"><dl class="figures"><div class="m"><dt>Kalshi cash</dt><dd><span class="fig">Not connected</span></dd></div></dl></div><main id="main"><table class="stack"><tbody><tr><td class="num" data-lab="Trades">12</td></tr></tbody></table></main>';
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
@@ -2804,17 +2927,18 @@ test('the floating autopilot pill also steps aside from a figure under it', () =
   const block = f.root.querySelector('.figures .m'), fig = f.root.querySelector('.fig'), cell = f.root.querySelector('td.num');
   [block, fig, cell].forEach((el) => { el.getBoundingClientRect = none; });
   block.getBoundingClientRect = rect(212, 800, 374, 900);   // the figure's label peeks in at the bottom of the screen
-  f.apYield(); assert.equal(box.classes.has('yield'), true);
-  block.getBoundingClientRect = rect(212, 200, 374, 300);   // scrolled up and away
-  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  f.apYield(); assert.equal(box.classes.has('yield'), false, 'holds: the figure scrolls up into view past it');
+  fig.getBoundingClientRect = rect(230, 800, 360, 830);
+  f.apYield(); assert.equal(box.classes.has('yield'), false, 'holds over the figure itself too');
   cell.getBoundingClientRect = rect(263, 790, 374, 830);    // a deployment card's number
-  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  f.apYield(); assert.equal(box.classes.has('yield'), false, 'and a card’s number');
 });
 
 // Walk 2026-10-27 at 390px: on Deploy's first screen the pill sat on the first card's Status marks ("Paused" over
-// "Paper") and stayed, as a mark was neither a control nor a figure to it. A mark says which money a row is and
-// whether it trades, so the pill steps aside from one as from a figure, and comes back once it scrolls away.
-test('the floating autopilot pill steps aside from a status mark under it', () => {
+// "Paper"), and stepping aside from a mark was added. Walk 2026-10-30: with marks, figures, headings and row lines all
+// on its list, the pill showed at 25 of 742 scroll positions on a 390px Deploy. A mark scrolls out from under it like
+// the rest of its card, so the pill holds its place over one now; a control in the card still sends it aside.
+test('the floating autopilot pill holds its place over a status mark under it', () => {
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<main id="main"><table class="t-dep stack"><tbody><tr><td data-lab="Status"><span class="mk armed">Paused</span><span class="mk">Paper</span></td><td data-lab="Market"><span class="tick">Bitcoin up or down in 15 minutes</span></td></tr></tbody></table></main>';
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
@@ -2826,31 +2950,36 @@ test('the floating autopilot pill steps aside from a status mark under it', () =
   tick.getBoundingClientRect = rect(139, 790, 250, 830);    // plain words under its left edge: not a reason to step aside
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   marks[0].getBoundingClientRect = rect(263, 786, 331, 806);   // the card's "Paused" mark
-  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  f.apYield(); assert.equal(box.classes.has('yield'), false, 'holds: the mark scrolls away with its card');
   marks[0].getBoundingClientRect = rect(263, 300, 331, 320);   // scrolled up and away
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   f.clearTimers();
 });
 
-test('the floating autopilot pill steps aside from any control or value under it, only where it shows through, and never while focused', () => {
+test('the floating autopilot pill steps aside from any control under it, only where it shows through, and never while focused', () => {
   const f = frontend(), body = f.root.parent;
-  f.root.innerHTML = '<main id="main"><form><input class="input" name="amt"><textarea class="input"></textarea></form><details><summary>More</summary></details><dl><div><dt>Balance</dt><dd>$1,000.00</dd></div></dl><p>Plain text</p></main>';
+  f.root.innerHTML = '<main id="main"><form><input class="input" name="amt"><textarea class="input"></textarea></form><details><summary>More</summary></details><dl><div><dt>Balance</dt><dd>$1,000.00</dd></div></dl><p>Plain text <a href="/funds">Funds</a></p></main>';
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
   box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
   const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
   const pill = box.querySelector('.apf-pill'), main = f.root.querySelector('#main');
   pill.getBoundingClientRect = rect(245, 794, 380, 834);   // 390x844 phone
-  const els = ['input', 'textarea', 'summary', 'dd'].map((s) => f.root.querySelector(s));
-  els.forEach((el) => { el.getBoundingClientRect = rect(0, 0, 0, 0); });
+  const els = ['input', 'textarea', 'summary', 'a'].map((s) => f.root.querySelector(s)), dd = f.root.querySelector('dd');
+  [...els, dd].forEach((el) => { el.getBoundingClientRect = rect(0, 0, 0, 0); });
   let shows = main;  // what elementsFromPoint finds under the pill (the pill itself on top)
   f.document.elementsFromPoint = () => [pill, box, shows];
-  for (const el of els) {  // Funds' fields, a disclosure, a dl's figure: each one sends the pill aside
+  for (const el of els) {  // Funds' fields, a disclosure, a link: each one sends the pill aside
     el.getBoundingClientRect = rect(30, 790, 360, 830); shows = el;
     f.apYield(); assert.equal(box.classes.has('yield'), true, el.tag);
     el.getBoundingClientRect = rect(30, 300, 360, 340);
     f.apYield(); assert.equal(box.classes.has('yield'), false, el.tag);
   }
-  // A value its panel clips out of view (laid out under the pill, but the panel is what shows) doesn't count.
+  // A dl's figure no longer does (it did): it scrolls out from under the pill, and stepping aside for every figure,
+  // mark and heading hid the pill from 97% of a 390px Deploy (walk 2026-10-30).
+  dd.getBoundingClientRect = rect(30, 790, 360, 830); shows = dd;
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  dd.getBoundingClientRect = rect(0, 0, 0, 0);
+  // A control its panel clips out of view (laid out under the pill, but the panel is what shows) doesn't count.
   els[3].getBoundingClientRect = rect(288, 802, 317, 820); shows = main;
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   shows = els[3];
@@ -2858,7 +2987,7 @@ test('the floating autopilot pill steps aside from any control or value under it
   // Tabbing onto the stepped-aside pill brings it back, so a keyboard user can always open it.
   f.document.activeElement = pill;
   f.apYield(); assert.equal(box.classes.has('yield'), false);
-  // Plain text under the pill isn't a control or a figure; and the page's foot always clears it.
+  // Plain text under the pill isn't a control; and the page's foot always clears it.
   f.document.activeElement = null; els[3].getBoundingClientRect = rect(0, 0, 0, 0);
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
@@ -5613,11 +5742,12 @@ test('Tau: the run page poll leaves its unchanged title, figures and next line a
 test('Tau: the pill does not hit-test log rows its scrolling log has clipped out of view', () => {
   const styles = new Map(), plain = {overflowX: 'visible', overflowY: 'visible', position: 'static'};
   const f = frontend({globals: {getComputedStyle: el => styles.get(el) || plain}}), body = f.root.parent;
-  f.root.innerHTML = '<main id="main"><ol class="log stream"><li><dl><dd>0.21</dd></dl></li></ol></main>';
+  // A row's link (a figure, the row's dd, was what counted here before the pill held over figures).
+  f.root.innerHTML = '<main id="main"><ol class="log stream"><li><dl><dd><a href="/strategies/4">0.21</a></dd></dl></li></ol></main>';
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
   box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
   const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
-  const log = f.root.querySelector('.log'), dd = f.root.querySelector('dd');
+  const log = f.root.querySelector('.log'), dd = f.root.querySelector('dd a');
   box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
   styles.set(log, {overflowX: 'visible', overflowY: 'auto', position: 'static'});
   log.getBoundingClientRect = rect(16, 200, 374, 700);   // the log's box ends well above the pill
@@ -5627,8 +5757,8 @@ test('Tau: the pill does not hit-test log rows its scrolling log has clipped out
   f.apYield(); assert.equal(box.classes.has('yield'), false); assert.equal(hits, 0);
   log.getBoundingClientRect = rect(16, 200, 374, 810);   // the log reaches the pill: the row shows there
   f.apYield(); assert.equal(box.classes.has('yield'), true); assert.ok(hits > 0);
-  // One pass over the page for every kind of thing it steps aside from.
-  assert.match(source, /for \(const el of document\.body\.querySelectorAll\(hold \? AP_PRESS_SEL : AP_UNDER_SEL\)\)/);
+  // One pass over the page's controls and pinned bars (every page now steps aside only for those).
+  assert.match(source, /for \(const el of document\.body\.querySelectorAll\(AP_YIELD_SEL\)\)/);
 });
 
 test('Tau: a long run log stays cheap to animate on a phone', () => {
