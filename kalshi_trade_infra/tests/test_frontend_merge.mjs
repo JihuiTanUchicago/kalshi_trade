@@ -6029,3 +6029,23 @@ test('Tau: the Passed filter with nothing passed says so and points to Research,
   assert.equal(empty.querySelectorAll('a.btn').length, 0);
   f.clearTimers(); g.clearTimers();
 });
+
+test('Tau Research: with nothing tested yet the status line names the first step instead of repeating the subtitle', async () => {
+  const example = {id: 1, status: 'succeeded', prompt: 'Example', market: 'btc15m', example: true, created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 0};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/research/estimate') return response({yours: null, sessions: 0, typical: {}});
+    if (path === '/api/runs') return response({runs: [example], totals: {tried: 0, passed: 0, not_cleared: 0}, counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 0}});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  f.location.pathname = '/research'; f.location.search = '';
+  await f.viewResearch(); await flush(); await flush();
+  const said = f.root.querySelector('#rstatus .said').innerHTML;
+  assert.equal(said, 'Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.');
+  assert.doesNotMatch(said, /tests each on data it never saw/);
+  f.clearTimers();
+});

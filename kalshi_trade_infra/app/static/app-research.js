@@ -427,7 +427,9 @@ window.TauPage('research', (T) => {
         ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
         : tried
           ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
-          : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
+          // Nothing tested yet: it repeated the page's subtitle word for word ("describe an idea, it writes strategies
+          // and tests each on data it never saw"), under a form that already asks for the idea.
+          : `Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.`;
       paint(root.querySelector('#rstatus .said'), said);
       paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Waiting', num(queued)) +
         // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
