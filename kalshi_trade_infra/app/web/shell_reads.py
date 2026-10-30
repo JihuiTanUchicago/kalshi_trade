@@ -8,7 +8,7 @@ For the pages whose first read the shell can name exactly, the shell asks that r
 carries the answer, keyed by the URL the page asks for. The page takes it in place of that one
 request (api() in both bundles), once, during its first render. Same handler, same arguments, same
 JSON as the page's own request, read a moment earlier. A page whose URL carries a query (filters, a
-fresh form) carries nothing and asks as before; so does any read that fails.
+fresh form) carries none of its own reads (only the bell's, below) and asks as before; so does any read that fails.
 
 Billing asks with the browser's UTC offset (?tz=: its statement's days are the viewer's), which only the
 browser knows. boot.js keeps it in the tau_tz cookie on every load and the shell names Billing's read
@@ -37,6 +37,16 @@ The dashboard also carries the autopilot status: its autopilot card sits above t
 a round trip after them it pushed them down the screen. Research carries its loop card's board for the
 same reason (it pushed the session list down), but only while the server keeps one for the user: worked
 out cold it takes seconds, and the shell never waits on that.
+
+Every signed-in page's masthead carries the bell, so every signed-in shell carries its list too
+(/api/notifications, shell_requests), whatever the page and its query: one round trip fewer after paint on every
+page, for two statements (the newest 100 notices and the unread count, both on idx_notif_user) from our own
+database and nothing else (no Kalshi, Stripe, model or AWS read anywhere under it). The bell keeps its own
+minute's cadence from there (bellTick), and a shell whose bell read fails carries none, so the bell asks as before.
+The autopilot status stays the dashboard's alone: it is our database and the in-process cash memos only (never
+Kalshi, Stripe or a model), but ~7 statements warm and up to ~14 cold, past what a page that doesn't draw it
+above its figures should pay on every load. The Hot Markets rail (/api/explore/hot) is never carried: its
+feed is fetched from S3 on a cold cache and refetched in the background once it is 45s old.
 """
 from __future__ import annotations
 
@@ -46,6 +56,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.web.http import ApiError, Ctx
+from app.web.routes.account import notifications
 from app.web.routes.billing import asks_stripe, billing_state
 from app.web.routes.chat import autopilot_status
 from app.web.routes.dashboard import dashboard
@@ -65,6 +76,10 @@ LOOP_DAYS = 14  # Research's loop card asks /api/research/scoreboard?days=14 (rs
 
 MakeCtx = Callable[[Tuple[str, ...], Dict[str, str]], Ctx]
 Request = Tuple[str, Callable, Tuple[str, ...], Dict[str, str]]  # URL the page asks, handler, path params, query
+
+# /track-record only sends the page on to the dashboard (a second render, which drops anything carried), so
+# its shell carries none of the reads every other signed-in page asks (shell_requests).
+_NO_SHELL_READS = ("/track-record",)
 
 
 class NotKept(Exception):
@@ -153,6 +168,12 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
     return []
 
 
+def shell_requests(path: str) -> List[Request]:
+    """The reads every signed-in page asks beside its own, whatever its query: the masthead's bell (wireBell in
+    both bundles), two statements from our own database. [] for a path that only sends the reader on."""
+    return [] if path in _NO_SHELL_READS else [("/api/notifications", notifications, (), {})]
+
+
 def first_reads(path: str, query: str, cookies: Dict[str, str], make_ctx: MakeCtx) -> Tuple[List[Dict[str, Any]], List[str]]:
     """([{url, body}] for each first read that answered, with "then": the reads its page asks next, when
     there are any, each named once; the cookies they set). A read that fails is left out: the page asks for
@@ -160,7 +181,7 @@ def first_reads(path: str, query: str, cookies: Dict[str, str], make_ctx: MakeCt
     reads: List[Dict[str, Any]] = []
     set_cookies: List[str] = []
     named: set = set()
-    for url, fn, params, q in first_requests(path, query, cookies):
+    for url, fn, params, q in first_requests(path, query, cookies) + shell_requests(path):
         try:
             ctx = make_ctx(params, q)
             read = {"url": url, "body": fn(ctx)}
