@@ -574,6 +574,48 @@ def test_shared_billing_reads_answer_as_the_unshared_gate_does(monkeypatch):
         assert reads.customer() is cust and reads.balance() == bal
 
 
+# The dashboard polls every 15s and asked for both Kalshi key rows (the key's id and its encrypted bytes) only to
+# say whether each is saved. It asks whether each is saved, selecting a constant (repo.has_kalshi_key and
+# has_kalshi_dev_key): the same statements, none of them reading key material. Its demo deployment (id 6,
+# running) makes the demo check ask for the demo key, so both tables are probed.
+KEY_COLUMNS = ("private_key_enc", "key_id")
+
+
+@pytest.mark.parametrize("live_key,demo_key", [(True, True), (True, False), (False, True), (False, False)])
+def test_the_dashboard_poll_asks_whether_each_kalshi_key_is_saved_and_never_reads_one(production, live_key, demo_key):
+    rows = dict(_board_rows())
+    if live_key:
+        rows["FROM app_kalshi_keys WHERE user_id=%s"] = [{"present": 1}]
+    if demo_key:
+        rows["FROM app_kalshi_dev_keys WHERE user_id=%s"] = [{"present": 1}]
+    log = []
+    out = server.dashboard(_ctx(log, 10.0, extra=rows))
+    keys = [s for s, _ in log if "app_kalshi_keys" in s or "app_kalshi_dev_keys" in s]
+    assert sorted("app_kalshi_dev_keys" in s for s in keys) == [False, True], keys  # one probe of each table
+    assert all(s.startswith("SELECT 1 AS present FROM ") and s.endswith(" LIMIT 1") for s in keys), keys
+    assert not [s for s in keys if any(c in s for c in KEY_COLUMNS)], keys
+    assert not [s for s, _ in log if "private_key_enc" in s], log
+    # The answers say what the key rows said before: connected or not, and the demo key line when it is missing.
+    assert out["live"]["connected"] is live_key
+    health = out["demo"].get("health") or {}
+    assert (health.get("code") == "demo_key") is (not demo_key)
+
+
+def test_the_presence_reads_answer_as_the_key_reads_did():
+    """has_kalshi_key / has_kalshi_dev_key are True exactly when get_kalshi_key / get_kalshi_dev_key find a row,
+    and select a constant by the table's primary key, never a key column."""
+    for table, has, get in (("app_kalshi_keys", server.repo.has_kalshi_key, server.repo.get_kalshi_key),
+                            ("app_kalshi_dev_keys", server.repo.has_kalshi_dev_key, server.repo.get_kalshi_dev_key)):
+        for saved in (True, False):
+            log = []
+            row = {"key_id": "placeholder", "private_key_enc": b"\x00", "created_at": None, "present": 1}
+            cur = CountingCursor(log, {"FROM %s WHERE user_id=%%s" % table: [row] if saved else []})
+            assert has(cur, 7) is saved and (get(cur, 7) is not None) is saved
+            probe = log[0][0]
+            assert probe == "SELECT 1 AS present FROM %s WHERE user_id=%%s LIMIT 1" % table and log[0][1] == (7,)
+            assert not any(c in probe for c in KEY_COLUMNS)
+
+
 def _book_rows():
     """Three trades in two deployments (one still part-open), those deployments' strategy, and a
     deployed strategy card, so the track record and the Strategies page run every read they make."""

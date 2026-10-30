@@ -42,11 +42,11 @@ def test_a_demo_key_pause_says_the_key_is_back_once_it_is_connected():
 
 def test_demo_key_back_reads_the_key_only_for_a_demo_key_pause(monkeypatch):
     reads = []
-    monkeypatch.setattr(views.repo, "get_kalshi_dev_key", lambda cur, uid: reads.append(uid) or {"key_id": "k"})
+    monkeypatch.setattr(views.repo, "has_kalshi_dev_key", lambda cur, uid: reads.append(uid) or True)
     assert views._demo_key_back(None, 7, [_dep(), _dep(mode="demo", status="running", status_reason=None)]) is False
     assert reads == []  # nothing paused for the key: no read
     assert views._demo_key_back(None, 7, [_dep(mode="demo", status_reason=DEMO_KEY_REASON)]) is True
-    monkeypatch.setattr(views.repo, "get_kalshi_dev_key", lambda cur, uid: None)
+    monkeypatch.setattr(views.repo, "has_kalshi_dev_key", lambda cur, uid: False)
     assert views._demo_key_back(None, 7, [_dep(mode="demo", status_reason=DEMO_KEY_REASON)]) is False
     # A stopped one is not offered a resume.
     assert views._demo_key_back(None, 7, [_dep(mode="demo", status="stopped", status_reason=DEMO_KEY_REASON)]) is False
@@ -55,7 +55,7 @@ def test_demo_key_back_reads_the_key_only_for_a_demo_key_pause(monkeypatch):
 def test_the_demo_key_line_links_to_connect_kalshi_through_its_action(monkeypatch):
     # Every page renders `line` escaped and `action` as the link after it. The line ended "Add it on the Funds
     # page." in plain text before a separate "Add demo key" link; now those words are the link.
-    monkeypatch.setattr(views.repo, "get_kalshi_dev_key", lambda cur, uid: None)
+    monkeypatch.setattr(views.repo, "has_kalshi_dev_key", lambda cur, uid: False)
     health = views._health_from(None, 7, [_dep(mode="demo", status="running", status_reason=None)], None,
                                 lambda: pytest.fail("no demo cash read without a key"))
     assert health == {"code": "demo_key", "need": "your Kalshi demo key",
@@ -114,7 +114,7 @@ def test_the_deploy_board_passes_the_demo_key_back_to_its_rows(monkeypatch):
     monkeypatch.setattr(dep_routes, "_deploy_roads", lambda *a: {})
     monkeypatch.setattr(dep_routes, "demo_health_memo", lambda *a, **k: (None, False))
     monkeypatch.setattr(dep_routes.repo, "user_positions", lambda *a: [])
-    monkeypatch.setattr(views.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "k"})
+    monkeypatch.setattr(views.repo, "has_kalshi_dev_key", lambda cur, uid: True)
     monkeypatch.setattr(dep_routes.page_poll, "answer", lambda body, v: body)
     ctx = SimpleNamespace(cur=None, uid=7, query={})
     row = dep_routes.list_deployments(ctx)["deployments"][0]

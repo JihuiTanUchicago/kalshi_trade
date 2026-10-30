@@ -176,6 +176,9 @@ def _funds_db(monkeypatch, live_key=True, demo_key=True):
     r = funds_routes.repo
     monkeypatch.setattr(r, "get_kalshi_key", lambda cur, uid: {"key_id": "LIVEKEY-ABCD-1234"} if live_key else None)
     monkeypatch.setattr(r, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-WXYZ-5678"} if demo_key else None)
+    # The dashboard asks only whether each key is saved (never the key itself).
+    monkeypatch.setattr(r, "has_kalshi_key", lambda cur, uid: live_key)
+    monkeypatch.setattr(r, "has_kalshi_dev_key", lambda cur, uid: demo_key)
     monkeypatch.setattr(r, "demo_equity", lambda cur, uid, realized=None: {"capital": 1000, "equity": 1003.5, "realized": 3.5,
                                                                             "before_reload": 0})
     monkeypatch.setattr(r, "paper_balance", lambda cur, uid: Decimal("2001.745"))
@@ -529,6 +532,8 @@ def _cash_reads(monkeypatch, delay=0.2):
         return value
     monkeypatch.setattr(funds_routes.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "LIVEKEY-ABCD-1234"})
     monkeypatch.setattr(funds_routes.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-WXYZ-5678"})
+    monkeypatch.setattr(funds_routes.repo, "has_kalshi_key", lambda cur, uid: True)
+    monkeypatch.setattr(funds_routes.repo, "has_kalshi_dev_key", lambda cur, uid: True)
     monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("id", None))
     monkeypatch.setattr(kalshi_account, "balance", lambda creds: slow("live", 1234.5))
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: slow("demo", 500.0))

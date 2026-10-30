@@ -236,7 +236,7 @@ def _health_from(cur, uid: int, deps: List[Dict], stake: Optional[float], cash_r
               or (d["status"] == "paused" and _DEMO_KEY_PAUSE in (d.get("status_reason") or ""))]
     if not active and stake is None:
         return None
-    if repo.get_kalshi_dev_key(cur, uid) is None:
+    if not repo.has_kalshi_dev_key(cur, uid):  # whether one is saved; never the key's id or encrypted bytes
         if not active:
             return None  # nothing on demo; the deploy button already says to add the key
         # Every page renders `line` escaped with `action` as the link after it, so the line names the problem
@@ -276,11 +276,12 @@ def _usd(v: float) -> str:
 def _demo_key_back(cur, uid: int, deps: List[Dict]) -> bool:
     """True when a demo deployment is paused for a missing demo key and the key is connected now. The
     engine leaves it paused once the key is added, and its row still said to add the key, beside a
-    Funds page saying it is connected. Reads the key only when such a deployment is listed."""
+    Funds page saying it is connected. Reads whether the key is saved (never its id or encrypted bytes) only
+    when such a deployment is listed."""
     if not any(d["mode"] == "demo" and d["status"] == "paused" and _DEMO_KEY_PAUSE in (d.get("status_reason") or "")
                for d in deps):
         return False
-    return repo.get_kalshi_dev_key(cur, uid) is not None
+    return repo.has_kalshi_dev_key(cur, uid)
 
 
 def _paper_books(deps: List[Dict]) -> Dict[int, str]:
