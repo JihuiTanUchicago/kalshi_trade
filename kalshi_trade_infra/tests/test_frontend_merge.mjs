@@ -1236,6 +1236,22 @@ test('the live card says it is Kalshi cash, apart from what Tau trades realized'
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
 });
 
+test('with no Kalshi key the live card still says what Tau\'s live trades hold and made, as Meridian\'s does', async () => {
+  // Walk 2026-10-30: a live strategy with 2 open positions and its key not connected read "Not connected" and nothing of
+  // Tau's live book, where Meridian's live summary and Funds both gave its open positions and realized P&L.
+  const liveDep = {id: 9, strategy_id: 9, title: 'Live one', market: 'btc15m', mode: 'live', status: 'running', stake: 5, max_positions: 2,
+    realized_pnl: 2.2, unrealized_pnl: null, closed_trades: 10, open_positions: 2, created_at: '2026-10-25T08:00:00Z', curve: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), deployments: [liveDep],
+      live: {connected: false, balance: null, open_positions: 2, running: 1, realized_pnl: 2.2, today_pnl: -7.2, open_at_cost: 5.91, closed_trades: 10}});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const board = f.root.querySelector('#boardbody').innerHTML;
+  assert.match(board, /Not connected/);
+  assert.match(board, /to trade real money\u00a0· Tau trades: 2 open \(not in cash\)\u00a0· \+\$2\.20 realized all time\u00a0· −\$7\.20 realized today \(UTC\)/);
+});
+
 test('Funds names the live figure Kalshi cash, open positions not included', async () => {
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
     d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, funding_url: 'https://kalshi.com'}; return response(d); }});

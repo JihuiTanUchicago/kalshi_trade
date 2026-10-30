@@ -100,7 +100,7 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     const fig = (real) => plain(f.strategySlip({...s, real}, {}).match(/<div class="sub-fig real-fig">[\s\S]*?<\/td>/)[0]);
     assert.match(fig({pnl: 4, trades: 2, open: 0, mode: 'paper'}), /\+\$4\.00 on paper since deploying · 2 trades · after Kalshi fees and the spread/);
     assert.match(fig({pnl: -1.5, trades: 1, open: 0, mode: 'demo'}), /−\$1\.50 on demo since deploying · 1 trade · after Kalshi fees(?! and)/);
-    assert.match(fig({pnl: 2, trades: 3, open: 0, mode: 'live'}), /\+\$2\.00 since deploying · 3 trades · after Kalshi fees(?! and)/);
+    assert.match(fig({pnl: 2, trades: 3, open: 0, mode: 'live'}), /\+\$2\.00 on live since deploying · 3 trades · real money, after Kalshi fees(?! and)/);
     // A paper strategy's demo copy beside it says so too, never added in.
     const both = fig({pnl: 4, trades: 2, open: 0, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
     assert.match(both, /Demo: −\$0\.50 · 2 trades · after Kalshi fees(?! and)/);
