@@ -73,7 +73,7 @@ export function moneyAgreementCases({name, frontend, marketPage = true}) {
     };
     const traded = await board({deployments: [dep({}), dep({id: 2, mode: 'paper', realized_pnl: 3.71, closed_trades: 12})],
       realized_by_book: {demo: {listed: 1, removed: 0, removed_deployments: 0}, paper: {listed: 3.71, removed: 0, removed_deployments: 0, all: 3.71}}});
-    assert.match(traded, /Demo realized, deployments listed below\+\$1\.00real fills on Kalshi’s sandbox, not real money · after Kalshi fees · a demo reload doesn’t reset it, so it can differ from the demo book’s P&amp;L since reload/);
+    assert.match(traded, /Demo realized, listed below\+\$1\.00real fills on Kalshi’s sandbox, not real money · after Kalshi fees · a demo reload doesn’t reset it, so it can differ from the demo book’s P&amp;L since reload/);
     // Paper says nothing of a reload; the two books are never summed (+$4.71).
     assert.doesNotMatch(traded.slice(0, traded.indexOf('Demo realized')), /reload/);
     assert.doesNotMatch(traded, /\$4\.71/);

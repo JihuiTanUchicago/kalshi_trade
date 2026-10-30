@@ -8,7 +8,7 @@ window.TauPage('strategies', (T) => {
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
-    money, notice, num, overDays, paperShown, paperSince, pageLede, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
+    money, notice, num, overDays, paperShown, paperSince, pageLede, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
@@ -822,8 +822,10 @@ window.TauPage('strategies', (T) => {
     const apLine = apPaper ? `<p class="hint ap-paper" data-ap-next${apOn ? '' : ' hidden'}>The autopilot is putting this on paper at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows it once it’s there.</p>` : '';
     const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick">${apLine}<button class="btn primary" id="dep-paper-quick"${apOff}>Deploy on paper</button><p class="hint"${apOff}>Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy, apPaper });
-    // Already on paper (running or paused): where to find it, beside the button and its second-copy warning.
-    const paperHere = onPaper ? `<p class="hint on-paper">${onPaper.status === 'paused' ? 'Its paper deployment is paused. <a href="/deploy">Resume it on Deploy</a>.' : 'It runs on paper. <a href="/deploy">See it on Deploy</a>.'}</p>` : '';
+    // Its paper deployment is paused: where to resume it, beside the button and its second-copy warning. A running one
+    // gets no line here: "It runs on paper. See it on Deploy." repeated the warning's "It already runs on paper" right
+    // above it, and the panel already links to Deploy.
+    const paperHere = onPaper && onPaper.status === 'paused' ? '<p class="hint on-paper">Its paper deployment is paused. <a href="/deploy">Resume it on Deploy</a>.</p>' : '';
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('#main').innerHTML = `
       <div id="flash"></div>
@@ -858,7 +860,7 @@ window.TauPage('strategies', (T) => {
             const bookLine = (xs) => {
               const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
               const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
-              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : `${SEP}awaiting first mark`}.`;
+              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : `${SEP}${NOT_MARKED.toLowerCase()}`}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             // Each Unrealized figure says when its mark was read (the engine's mark_ts), as Deploy's does: a mark
@@ -866,7 +868,7 @@ window.TauPage('strategies', (T) => {
             // Beside a Live or Demo row a paper one says Paper too: untagged, it read as the real-money book.
             return `<section class="panel"><h3>Holding right now</h3>
             <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : books.length > 1 ? '<span class="mk">Paper</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
-              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? 'not marked yet' : money(p.unrealized) + (p.mark_ts ? ` as of ${markedAt(p.mark_ts)}` : '')}</span>${liveClose(p.market_close_time, 'settles', { cap: true })}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</li>`).join('')}</ul>
+              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? NOT_MARKED.toLowerCase() : money(p.unrealized) + (p.mark_ts ? ` as of ${markedAt(p.mark_ts)}` : '')}</span>${liveClose(p.market_close_time, 'settles', { cap: true })}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
@@ -889,7 +891,7 @@ window.TauPage('strategies', (T) => {
                 </div></details>
                 <div id="depflash"></div>
               </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A strategy tested only on a backtest can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
-            ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
+            ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open this market on Kalshi ↗</a></p>` : ''}
           </section>
           ${!restricted && passedAll ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>

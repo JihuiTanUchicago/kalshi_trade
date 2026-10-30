@@ -32,6 +32,24 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.ok(rule.root.querySelector('#dep-paper'));
   });
 
+  // Walk 2026-10-30: the Deploy panel's Kalshi link read "Open BTC above set price at 5pm ET on Kalshi ↗" (a market's
+  // short label inside a sentence), and a holding with no mark yet read "awaiting first mark" in its book's summary and
+  // "not marked yet" on its own line: one phrase now, as Deploy says it.
+  test(`${name}: the Kalshi link says "this market", and a holding with no mark yet says "not marked yet" in its summary too`, async () => {
+    const f = strategyFrontend(detailStrategy({status: 'passed', market: 'btc_daily',
+      holdings: [{ticker: 'KXBTCD-26OCT3117-T112999.99', side: 'yes', qty: 3, entry_price: 0.42, cost: 1.28, unrealized: null, mode: 'paper',
+        market_close_time: '2030-10-31T21:00:00Z'}]}), () => response({}));
+    f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above a set price at 5pm ET', short: 'BTC above set price at 5pm ET', close_hour_et: 17}];
+    await f.viewStrategy(42); await flush();
+    const html = main(f);
+    assert.match(html, /href="https:\/\/kalshi\.com\/markets\/kxbtcd" target="_blank" rel="noopener">Open this market on Kalshi ↗<\/a>/);
+    assert.match(html, /rel="noopener">Open this market on Kalshi ↗<\/a>/);
+    assert.doesNotMatch(html, /Open [^<]*(BTC|\$X)[^<]* on Kalshi/);
+    assert.match(html, /1 open position at cost \+ fees \$1\.28\u00a0· not marked yet\./);
+    assert.match(html, /Unrealized not marked yet/);
+    assert.doesNotMatch(html, /awaiting first mark/);
+  });
+
   // Every Kalshi strategy's pre-registration stores {fee: 'kalshi_taker', fill: 'ask/bid'} (agent.py), and its page
   // printed them as stored: "Fee: kalshi_taker · Fill: ask/bid".
   test(`${name}: the pre-registered cost assumptions read in words, never the stored codes`, async () => {

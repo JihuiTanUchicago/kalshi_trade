@@ -824,8 +824,11 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   assert.doesNotMatch(html, /Test expected/);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.match(html, /\+\$10\.00<div class="sub-fig">same 5 trades<\/div>/);
-  // Before the first close the cell names the live paper record that has none, not the backtest.
-  assert.match(html, /<span class="sub-fig">no paper trades closed yet<\/span>/);
+  // Before the first close the cell gives the backtest's own average a trade (what it will scale), under its own
+  // heading: walked 2026-10-30, "no paper trades closed yet" there spoke for the paper book, which Realized's
+  // "None yet" already does. $12 over 6 trades is +$2.00 a trade.
+  assert.match(html, /<span class="sub-fig bt-per-trade"><span class="amt">\+\$2\.00<\/span> a trade, on average<\/span>/);
+  assert.doesNotMatch(html, /trades closed yet/);
   assert.doesNotMatch(html, />no closed trades</);
   assert.doesNotMatch(html, /Backtest unseen/);
 });
@@ -1293,12 +1296,28 @@ test('Deploy realized says it counts only the strategies listed, never summing l
   const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
     backtest: {out_of_sample: null}});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/]]) {
     const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
     assert.match(figs, re); assert.doesNotMatch(figs, /\$7\.00/);
+  }
+});
+
+test('Deploy\u2019s Money figure says plainly which money its running deployments use', async () => {
+  // Walk 2026-10-30: "Money: PAPER — nothing on live money" read oddly. It says what runs, then that nothing is live.
+  const dep = (id, mode) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+    realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: null}});
+  for (const [deployments, line] of [[[dep(1, 'paper')], 'Paper money only, nothing live'], [[dep(1, 'paper'), dep(2, 'demo')], 'Paper and demo only, nothing live'],
+    [[dep(2, 'demo')], 'Demo only, nothing live'], [[dep(1, 'paper'), {...dep(3, 'live'), status: 'paused'}], 'Nothing running on live money']]) {
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const money = f.root.querySelector('#dfigs').innerHTML.match(/<dt class="lab">Money<\/dt>[\s\S]*$/)[0];
+    assert.match(money, new RegExp(`<dd class="sub-fig">${line}</dd>`));
+    assert.doesNotMatch(money, /nothing on live money/);
+    f.clearTimers && f.clearTimers();
   }
 });
 
@@ -1447,6 +1466,43 @@ test('the floating autopilot pill steps aside from a card’s Market line and fr
   }
   // Running prose is not on the list: the pill stays put over a paragraph.
   f.root.querySelector('p.plain').getBoundingClientRect = rect(16, 800, 374, 830);
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+});
+
+test('the floating autopilot pill steps aside from a Deploy row’s title and lines and from a strategy page’s Since deploying record', () => {
+  // Walk 2026-10-30 at 390px: the pill sat on the second Deploy row's title and the lines under it ("Its paper record
+  // toward live: …") as the board scrolled, and on the strategy page's "Since deploying" record as the page opened.
+  // A Deploy row's name block and that record count now, wherever their text sits under the pill; prose still doesn't.
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><table class="stack t-dep"><tbody><tr><td class="name" data-lab=""><a href="/strategies/4">Late momentum</a>'
+    + '<div class="sub-fig road-line">Its paper record toward live: 0/30 trades</div></td></tr></tbody></table>'
+    + '<table class="stack t-strat"><tbody><tr><td class="name" data-lab="">Other list</td></tr></tbody></table>'
+    + '<section class="real-record" id="since-deploying"><h3 class="paper-h">Since deploying</h3><p>No closed trades yet</p></section><p class="plain">Prose</p></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const away = rect(0, 0, 0, 0), under = rect(16, 800, 374, 830);
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  for (const el of [...f.root.querySelectorAll('*')]) el.getBoundingClientRect = away;
+  const q = (sel) => f.root.querySelector(sel);
+  f.location.pathname = '/deploy';
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // The row's sub-lines under the pill, its title link clear of it: the name block alone sends it aside.
+  for (const el of [q('.t-dep td.name'), q('.real-record')]) {
+    el.getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), true, el.className || el.tag);
+    el.getBoundingClientRect = away;
+    f.apYield(); assert.equal(box.classes.has('yield'), false);
+  }
+  // Only Deploy's name block: another list's plain name cell and running prose are not on the list.
+  for (const el of [q('.t-strat td.name'), q('p.plain')]) {
+    el.getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), false, el.className || el.tag);
+    el.getBoundingClientRect = away;
+  }
+  // Explore keeps its hold rule: a name block under the pill there doesn't send it aside.
+  f.location.pathname = '/explore';
+  q('.t-dep td.name').getBoundingClientRect = under;
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
@@ -2977,12 +3033,17 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
     await g.viewStrategy(42); await flush();
     assert.equal(g.root.querySelector('#dep-paper-quick'), null); assert.ok(g.root.querySelector('#dep-paper'));
   }
-  // Already on paper: only the panel's own button, with its second-copy warning and a link to the copy it has.
+  // Already on paper: only the panel's own button, with its second-copy warning, and the panel's foot links the copy it
+  // has. Walk 2026-10-30: "It already runs on paper. Deploying it again…" was followed by "It runs on paper. See it on
+  // Deploy.", and the foot read "Already deployed: Paper (running)": one line says it now, the foot in words.
   const on = strategyFrontend(detailStrategy({deployments: [{id: 3, mode: 'paper', status: 'running'}]}), () => response({deployments: [], open_positions: []}));
   await on.viewStrategy(42); await flush();
   assert.equal(on.root.querySelector('#dep-paper-quick'), null); assert.ok(on.root.querySelector('#dep-paper'));
-  assert.match(on.root.querySelector('#main').innerHTML, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
-  assert.match(on.root.querySelector('#main').innerHTML, /<p class="hint on-paper">It runs on paper\. <a href="\/deploy">See it on Deploy<\/a>\.<\/p>/);
+  const onHtml = on.root.querySelector('#main').innerHTML;
+  assert.match(onHtml, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
+  assert.doesNotMatch(onHtml, /on-paper|It runs on paper|Already deployed/);
+  assert.equal(onHtml.match(/runs on paper/g).length, 1);
+  assert.match(onHtml, /<p class="hint" style="margin-top:12px">Deployed on paper \(running\)\. <a href="\/deploy">See it on the Deploy page<\/a><\/p>/);
 });
 
 test('strategy page: unseen figures say their span, deployments go by book not row id, and a second paper copy is flagged', async () => {
@@ -2994,7 +3055,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days the agent never saw/);
   assert.match(figs, /Later period over 15 days\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most/);
-  assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
+  assert.match(html, /Deployed on demo \(running\) and paper \(paused\)\. <a href="\/deploy">See them on the Deploy page<\/a>/);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
   assert.match(html, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
