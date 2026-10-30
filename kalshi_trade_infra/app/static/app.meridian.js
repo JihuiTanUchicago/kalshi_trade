@@ -393,6 +393,15 @@
     const today = d.toDateString() === new Date().toDateString();
     return dateFmt(d, today ? CLOCK_ZONE : LOG_STAMP);
   };
+  // An open position's mark time for its "as of": settleAt's time and zone, and its age once the mark is older than
+  // the engine's mark-staleness gate (MARK_MAX_AGE_SECONDS, 90s: marks refresh every ~15s tick, so an older one means
+  // marking has stalled), in sinceMin's words ("as of 05:31 UTC, 3h ago"). A mark hours old read as fresh as this
+  // minute's. Display only: the figure is the same either way.
+  const MARK_STALE_S = 90;
+  const markedAt = (iso) => {
+    const at = settleAt(iso), ms = Date.parse(iso || '');
+    return Number.isFinite(ms) && (Date.now() - ms) / 1000 > MARK_STALE_S ? `${at}, ${sinceMin(iso)}` : at;
+  };
   // A time with its zone on one line: the market page's "Closes Oct 28, 02:45" left "UTC" alone on the next.
   const keepZone = (t) => String(t).replace(/ (?=\S+$)/, '\u00a0');
   const fmtCount = new Intl.NumberFormat('en-US');  // what Number#toLocaleString('en-US') builds on every call
@@ -1777,7 +1786,18 @@
     // tick already sits on it or so close the two would overlap.
     const zeroTick = lo < 0 && hi > 0 && levels.every((v) => Math.abs(y(v) - y(0)) >= 14) ? `<text class="chart-zero" x="${L - 8}" y="${y(0) + 4}" text-anchor="end">$0</text>` : '';
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(options.paper ? { timeZone: 'UTC' } : {}) });
-    const dates = options.paper ? [t0, (t0 + t1) / 2, t1].map((t, i) => `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}">${day(t)}</text>`).join('') : `<text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`;
+    // Each date on the axis once: two days of closed P&L put the midpoint on the second day's midnight, and the axis
+    // read "Oct 29, Oct 30, Oct 30". The ends keep their places; a tick that would repeat a date already shown is left
+    // out, and a span inside one day is labelled once.
+    const dateTicks = (times) => {
+      const seen = new Set();
+      return times.map((t, i) => ({t, i, label: day(t)})).filter((tick, i, all) => {
+        if (i > 0 && i < all.length - 1 && tick.label === all[all.length - 1].label) return false;
+        if (seen.has(tick.label)) return false;
+        seen.add(tick.label); return true;
+      });
+    };
+    const dates = options.paper ? dateTicks([t0, (t0 + t1) / 2, t1]).map(({t, i, label}) => `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}">${label}</text>`).join('') : dateTicks([t0, t1]).map(({i, label}) => i === 0 ? `<text x="${L}" y="${H - 6}">${label}</text>` : `<text x="${W - R}" y="${H - 6}" text-anchor="end">${label}</text>`).join('');
     const endLabel = options.paper && options.endLabel !== false ? `<text class="chart-end ${tone(curve[curve.length - 1][1])}" x="${W - R}" y="${Math.max(12, Math.min(H - B - 6, y(curve[curve.length - 1][1]) - 10))}" text-anchor="end">${usd(curve[curve.length - 1][1], true)}</text>` : '';
     const legend = dev ? `<g transform="translate(${L},${T - 12})">
         <line x1="0" x2="16" y1="0" y2="0" stroke="var(--ink)" stroke-width="2"/><text x="20" y="4" style="fill:var(--ink-2)">Simulated</text>
@@ -1833,7 +1853,7 @@
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
       <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">0</text>
       <text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>
-      <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
+      <text x="${L}" y="${H - 6}">${day(t0)}</text>${day(t1) === day(t0) ? '' : `<text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`}
     </svg>`;
   }
 
@@ -2640,7 +2660,7 @@
         <td class="position-expiry-cell">${expiry ? `<time class="position-expiry" datetime="${esc(close.toISOString())}">${esc(expiry)}</time>` : '<span class="unavailable" title="Expiry unavailable"><span aria-hidden="true">—</span><span class="vh">Expiry unavailable</span></span>'}</td>
         <td class="num position-entry">${cents(+r.entry_price)}</td>
         ${closed ? '' : `<td class="num"><span class="position-cost">${usd(r.cost != null ? r.cost : r.at_cost != null ? r.at_cost : r.qty * r.entry_price)}</span></td>`}
-        <td class="num"><span class="position-pnl">${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : NO_MARK)}</span>${!closed && r.unrealized != null && r.mark_ts ? `<span class="position-marked">as of ${esc(settleAt(r.mark_ts))}</span>` : ''}</td>
+        <td class="num"><span class="position-pnl">${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : NO_MARK)}</span>${!closed && r.unrealized != null && r.mark_ts ? `<span class="position-marked">as of ${esc(markedAt(r.mark_ts))}</span>` : ''}</td>
         </tr>`;
       }).join('');
       const paperOnly = (rows) => rows.length && rows.every(r => r.mode === 'paper');
@@ -2854,7 +2874,7 @@
       const posBook = (p) => p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
       // Each Unrealized figure says when its mark was read (the engine's mark_ts, the time with its zone, as Settles is):
       // the column had no "as of" time. A figure the answer gives no time for is still its last mark's, and says so.
-      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + settleAt(p.mark_ts) : 'at the last mark'}</div>`;
+      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + markedAt(p.mark_ts) : 'at the last mark'}</div>`;
       // The figure and its time are one block: a phone's stacked card set the time on a row of its own under the
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
       const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
@@ -4628,7 +4648,7 @@
     paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount, slipEst, slipTip, PAPER_COUNT_WHY,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
-    sessionNo, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
+    sessionNo, sessionTitle, settleAt, markedAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
     stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, wakers,
     WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));

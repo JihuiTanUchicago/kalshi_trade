@@ -393,6 +393,15 @@
     const today = d.toDateString() === new Date().toDateString();
     return dateFmt(d, today ? CLOCK_ZONE : LOG_STAMP);
   };  // fits the 40px log rail; '10:31 AM' wrapped to 'AM'
+  // An open position's mark time for its "as of": settleAt's time and zone, and its age once the mark is older than
+  // the engine's mark-staleness gate (MARK_MAX_AGE_SECONDS, 90s: marks refresh every ~15s tick, so an older one means
+  // marking has stalled), in sinceMin's words ("as of 05:31 UTC, 3h ago"). A mark hours old read as fresh as this
+  // minute's. Display only: the figure is the same either way.
+  const MARK_STALE_S = 90;
+  const markedAt = (iso) => {
+    const at = settleAt(iso), ms = Date.parse(iso || '');
+    return Number.isFinite(ms) && (Date.now() - ms) / 1000 > MARK_STALE_S ? `${at}, ${sinceMin(iso)}` : at;
+  };
   // A time with its zone on one line: the market page's "Closes Oct 28, 02:45" left "UTC" alone on the next.
   const keepZone = (t) => String(t).replace(/ (?=\S+$)/, '\u00a0');
   const fmtCount = new Intl.NumberFormat('en-US');  // what Number#toLocaleString('en-US') builds on every call
@@ -1767,6 +1776,7 @@
     // like −$24.72 and $26.69, with nothing saying where it had gained or lost. It gets its own label unless a
     // tick already sits on it or so close the two would overlap.
     const zeroTick = lo < 0 && hi > 0 && LEVELS.every((v) => Math.abs(y(v) - y(0)) >= 14) ? `<text class="chart-zero" x="${L - 8}" y="${y(0) + 4}" text-anchor="end">$0</text>` : '';
+    // Each date on the axis once: a curve inside one day labels it at the start only, never "Oct 30 … Oct 30".
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const legend = dev ? `<g transform="translate(${L},${T - 12})">
         <line x1="0" x2="16" y1="0" y2="0" stroke="var(--ink)" stroke-width="2"/><text x="20" y="4" style="fill:var(--ink-2)">Simulated</text>
@@ -1778,7 +1788,7 @@
               ${unseenLabel(cx, W - R, T - 10, options.cutLabel, dev ? L + 112 + 'Kalshi dev (real)'.length * 7 + 8 : 0)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${ticks}${zeroTick}
-      <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
+      <text x="${L}" y="${H - 6}">${day(t0)}</text>${day(t1) === day(t0) ? '' : `<text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`}
       <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
       ${dev ? `<polyline points="${line(dev)}" fill="none" stroke="var(--l-accent, #F05A28)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ''}
       ${legend}
@@ -1810,7 +1820,7 @@
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
       <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">0</text>
       <text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>
-      <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
+      <text x="${L}" y="${H - 6}">${day(t0)}</text>${day(t1) === day(t0) ? '' : `<text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`}
     </svg>`;
   }
 
@@ -2530,7 +2540,7 @@
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? (r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : openCost({ open_cost: r.cost, open_at_cost: r.at_cost != null ? r.at_cost : r.qty * r.entry_price }))}</span>
-            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· ${liveClose(r.market_close_time, 'settles')}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}${!closed && r.unrealized != null && r.mark_ts ? `\u00a0· worth as of ${settleAt(r.mark_ts)}` : ''}</small>${r.why ? `<small class="stub-why">${sepLine(r.why)}</small>` : ''}</div>`).join('')
+            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· ${liveClose(r.market_close_time, 'settles')}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}${!closed && r.unrealized != null && r.mark_ts ? `\u00a0· worth as of ${markedAt(r.mark_ts)}` : ''}</small>${r.why ? `<small class="stub-why">${sepLine(r.why)}</small>` : ''}</div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash-wrap"><div class="dash">
           <div>
@@ -2688,7 +2698,7 @@
       const posBook = (p) => p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
       // Each Unrealized figure says when its mark was read (the engine's mark_ts, the time with its zone, as Settles is):
       // the column had no "as of" time. A figure the answer gives no time for is still its last mark's, and says so.
-      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + settleAt(p.mark_ts) : 'at the last mark'}</div>`;
+      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + markedAt(p.mark_ts) : 'at the last mark'}</div>`;
       // The figure and its time are one block: a phone's stacked card set the time on a row of its own under the
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
       const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
@@ -4535,7 +4545,7 @@
     notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, paperCount, slipEst, slipTip, PAPER_COUNT_WHY, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
-    runTag, runWaitLine, runwayLabel, S, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark,
+    runTag, runWaitLine, runwayLabel, S, sessionTitle, settleAt, markedAt, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName,
     usd, waitNote, waitSpan, wakers, WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));
