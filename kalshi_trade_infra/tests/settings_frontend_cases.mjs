@@ -6,6 +6,10 @@
 // - Sign out that Tau didn't confirm stays on the page and says the reader is still signed in, from
 //   the profile menu and from the card wall's "Sign out instead"; a confirmed one (or a session that
 //   had already ended) goes to sign-in.
+// - Settings names the account (Google name and email, community name) and links to where the Kalshi keys
+//   and the card are managed;
+// - a confirmed sign-out forgets the unsent research and autopilot drafts on the device; one Tau didn’t confirm
+//   keeps them;
 // - the card wall's Save tapped before the card form is up says the form is still loading, and never
 //   submits the bare form (which reloaded the page to "/?" and started the form over).
 import assert from './assert_text.mjs';
@@ -171,4 +175,53 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
     await gate; await settle();
     assert.equal(hint(), '');
   });
+
+  test(`${name}: Settings says who is signed in and links to where the Kalshi keys and the card are managed`, async () => {
+    const f = frontend({fetchImpl: path => { throw new Error('Settings reads nothing on open: ' + path); }});
+    Object.assign(f.S.me.user, {name: 'Ada <b>Lovelace</b>', email: 'ada@example.invalid', username: 'ada'});
+    Object.assign(f.S.me, {kalshi_connected: false, kalshi_dev_connected: true});
+    await f.viewSettings();
+    const acct = f.root.querySelector('.account-settings').innerHTML;
+    assert.match(acct, /<h2>Account<\/h2><p>Signed in with Google<\/p>/);
+    assert.match(acct, /<dt>Name<\/dt><dd>Ada &lt;b&gt;Lovelace&lt;\/b&gt;<\/dd>/);
+    assert.match(acct, /<dt>Email<\/dt><dd>ada@example\.invalid<\/dd>/);
+    assert.match(acct, /<dt>Community name<\/dt><dd>@ada<\/dd>/);
+    assert.match(acct, /<dt>Kalshi keys<\/dt><dd><span>No live key · demo key connected<\/span><a href="\/funds#connect-kalshi">Manage keys on Funds<\/a><\/dd>/);
+    assert.match(acct, /<dt>Credits and card<\/dt><dd><a href="\/billing">Billing<\/a><\/dd>/);
+    assert.match(acct, /Your name and email come from your Google account\. Change them there, and Tau shows the new ones the next time you sign in\./);
+    // The theme stays the page's first section (its hint is what a switch writes beside).
+    assert.match(f.root.querySelector('.sect').innerHTML, /data-theme=/);
+    // A key on both, and no community name yet: it says so, and leaves the row out.
+    const g = frontend();
+    Object.assign(g.S.me, {kalshi_connected: true, kalshi_dev_connected: false});
+    await g.viewSettings();
+    const second = g.root.querySelector('.account-settings').innerHTML;
+    assert.match(second, /Live key connected · no demo key/);
+    assert.doesNotMatch(second, /Community name/);
+  });
+
+  for (const [what, reply, out] of [
+    ['Tau confirmed', () => response({ok: true}), true],
+    ['the session had already ended (401)', () => response({error: 'Please sign in.'}, 401), true],
+    ['got no reply', () => { throw new Error('Synthetic offline'); }, false],
+  ]) {
+    test(`${name}: Sign out when ${what} ${out ? 'forgets' : 'keeps'} the unsent research and autopilot drafts on this device`, async () => {
+      const local = new Map([['tau_ui', current], ['tau_tr_tab', 'paper'], ['tau_ap_draft:7', 'my unsent message'], ['tau_ap_draft:9', 'an older account’s']]);
+      const session = sessionStore({tau_research_draft: JSON.stringify({uid: 7, path: '/research', text: 'my idea'})});
+      const f = frontend({storage: storageFor(local), session,
+        fetchImpl: path => (path === '/api/logout' ? reply() : path === '/api/me' ? response({error: 'Please sign in.'}, 401) : response({}))});
+      f.location.pathname = '/settings';
+      await f.viewSettings();
+      await f.root.querySelector('[data-action="signout"]').onclick(); await settle();
+      // The device's own settings (theme, a remembered tab) stay either way.
+      assert.equal(local.get('tau_ui'), current); assert.equal(local.get('tau_tr_tab'), 'paper');
+      if (out) {
+        assert.deepEqual([...local.keys()].filter(k => k.startsWith('tau_ap_draft:')), []);
+        assert.equal(session.map.has('tau_research_draft'), false);
+        return;
+      }
+      assert.equal(local.get('tau_ap_draft:7'), 'my unsent message');
+      assert.ok(session.map.has('tau_research_draft'));
+    });
+  }
 }

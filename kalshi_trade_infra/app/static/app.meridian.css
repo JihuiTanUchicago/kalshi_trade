@@ -1559,12 +1559,19 @@ body.landing-body { background: #FBFBFA; }
 .theme-opt.on .theme-mark { opacity: 1; }
 .theme-mark svg { width: 16px; height: 16px; }
 /* Settings' email switch: the state line under it says what the switch stops, the next line what always comes. */
-.email-settings .section-head { max-width: 480px; padding-bottom: 4px; border: 0; }
+.email-settings .section-head, .account-settings .section-head { max-width: 480px; padding-bottom: 4px; border: 0; }
 .email-pref { display: grid; gap: 8px; max-width: 480px; margin-top: 8px; }
 .email-pref .switch span { font-family: var(--f-ui); font-size: 14px; font-weight: 500; color: var(--ink); }
 .email-pref .hint { margin: 0; line-height: 1.5; }
 .email-pref .email-always b { color: var(--ink-2); font-weight: 600; }
 .email-pref #email-flash:empty { display: none; }
+/* Settings’ Account section: who is signed in, and links to where the keys and the card are managed. */
+.acct-rows { display: grid; max-width: 480px; margin: 8px 0 0; }
+.acct-rows > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 2px 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.acct-rows dt { font-family: var(--f-ui); font-size: 13px; color: var(--ink-3); }
+.acct-rows dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.acct-hint { max-width: 480px; margin: 10px 0 0; line-height: 1.5; }
+@media (max-width: 560px) { .acct-rows > div { grid-template-columns: minmax(0, 1fr); } }
 .theme-mark circle { display: none; }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-err { display: grid; justify-items: start; gap: 8px; }
