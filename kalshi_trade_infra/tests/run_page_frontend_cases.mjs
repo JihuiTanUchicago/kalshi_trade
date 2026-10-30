@@ -438,11 +438,19 @@ export function runPageCases({name, frontend}) {
 
   // Walk 2026-10-30: a session with no picked market opened "Agent’s choice · Session · …", nothing saying
   // that was its market. The header names it as a market; the session still sends no market.
+  // The line under the title then repeated it ("Any market (agent’s choice) · Session · …"), and a session with
+  // no angle said a bare "Session" there; it now says only what the title doesn't.
   test(`${name}: a session with no picked market says the agent picks it, as a market, in its header`, async () => {
-    const f = await open({market: '', prompt: '', status: 'queued'});
-    const deck = f.root.querySelector('#runboard .deck').textContent;
-    assert.ok(deck.startsWith('Any market (agent’s choice)' + SEP + 'Session'), deck);
+    const deck = (f) => { const d = f.root.querySelector('#runboard .deck'); return d ? d.textContent : ''; };
+    let f = await open({market: '', prompt: '', status: 'queued', model_label: 'Sonnet'});
     assert.equal(f.root.querySelector('#runboard h1').textContent, 'Session' + SEP + 'Any market (agent’s choice)');
-    assert.doesNotMatch(f.root.querySelector('#runboard').textContent, /^Agent’s choice/);
+    assert.equal(deck(f), 'Sonnet');
+    assert.doesNotMatch(f.root.querySelector('#runboard').textContent, /Agent’s choice/);
+    f = await open({market: '', prompt: 'Idea', status: 'queued', model_label: 'Sonnet'});
+    assert.equal(deck(f), 'Any market (agent’s choice)' + SEP + 'Sonnet');
+    f = await open({market: 'btc15m', prompt: '', direction: 'momentum', status: 'queued', by_autopilot: 1});
+    assert.doesNotMatch(deck(f), /Momentum|BTC/); assert.match(deck(f), /^Started by autopilot/);
+    f = await open({prompt: 'Idea', direction: 'momentum', status: 'queued', by_autopilot: 1});
+    assert.equal(deck(f), 'BTC 15-min up/down' + SEP + 'Momentum' + SEP + 'Started by autopilot');
   });
 }

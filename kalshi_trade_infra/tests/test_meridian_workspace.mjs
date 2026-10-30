@@ -6493,7 +6493,7 @@ test('Meridian: a research session the autopilot started says so on the active c
   f.clearTimers();
   for (const [run, said, not] of [[ap, /BTC 15-min up\/down · Started by autopilot/, /· Session/],
     [{...ap, direction: 'momentum'}, /· Momentum · Started by autopilot/, /· Session/],
-    [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /· Session/, /Started by autopilot/]]) {
+    [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /BTC 15-min up\/down/, /Started by autopilot|· Session/]]) {
     const g = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/' + run.id)); return response({run, events: []}); }});
     g.S.me.directions = [{key: 'momentum', label: 'Momentum', brief: ''}];
     await g.viewRun(run.id);

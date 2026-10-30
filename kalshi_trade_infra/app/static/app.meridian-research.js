@@ -1253,7 +1253,13 @@ window.TauPage('research', (T) => {
       r.out_of_credits = outOfCredits && !active;
       // The 2s poll repaints only what changed: rewriting the same title and figures each time made
       // the phone lay the page out again (and the autopilot pill re-check what it covers).
-      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))}${SEP}${runKind(r)}${r.example ? SEP + EXAMPLE_NOTE : runSetup(r) ? SEP + runSetup(r) : ''}`));
+      // The line under the title says what the title doesn't: a session with no idea is titled by its angle and
+      // market (sessionTitle, "Session · Any market (agent’s choice)"), and the line repeated both under it; a
+      // session with no angle said a bare "Session" there ("BTC 15-min up/down · Session · …").
+      const named = r.title || (r.prompt && r.prompt.trim()), auto = +r.by_autopilot && !r.example;
+      const deck = [named ? esc(marketShort(r.market)) : '', named && (r.direction || auto) ? runKind(r) : !named && auto ? 'Started by autopilot' : '',
+        r.example ? EXAMPLE_NOTE : runSetup(r)].filter(Boolean).join(SEP);
+      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), deck));
       const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
       const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
