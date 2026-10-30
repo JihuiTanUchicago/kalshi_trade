@@ -5,7 +5,7 @@
 //   on a live one, and nothing a live deployment holds can be sold. So a running live deployment reads
 //   "Waiting: live trading isn't open yet", never "Running" or "1 on live money", and Resume is offered
 //   disabled, saying why. A Bitcoin perpetual deployment (research-only: no book trades it) says so too.
-// - A position names its market in plain words with its own strike ("Bitcoin above $68,499.99 at 5pm ET");
+// - A position names its market in plain words with its own strike, as Kalshi names it ("Bitcoin $68,500 or above at 5pm ET" for -T68499.99);
 //   its Kalshi ticker, which carries the raw series key, only sits on a small "Kalshi contract" line.
 // - A strategy row never shows its zero-padded id.
 import assert from './assert_text.mjs';
@@ -15,7 +15,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 const WAITING = 'Waiting', NO_ORDERS = 'Live trading isn’t open yet, so this places no orders';
-const TICKER = 'KXBTCD-26OCT2617-T68499.99', NAME = 'Bitcoin above $68,499.99 at 5pm ET';
+const TICKER = 'KXBTCD-26OCT2617-T68499.99', NAME = 'Bitcoin $68,500 or above at 5pm ET';
 const TICKER15 = 'KXBTC15M-26OCT262100-00', NAME15 = 'Bitcoin up or down in 15 minutes';
 const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17},
   {key: 'btc15m', series: 'KXBTC15M', label: NAME15}];

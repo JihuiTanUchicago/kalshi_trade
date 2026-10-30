@@ -162,7 +162,7 @@ window.TauPage('strategies', (T) => {
       return `<rect x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${col}" rx="3"/>
         <text x="${cx.toFixed(1)}" y="${(v >= 0 ? top - 5 : top + h + 13).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpRet(v)}</text>
         <text x="${cx.toFixed(1)}" y="${H - 18}" text-anchor="middle">${esc(day(f.from_ts || f.from) || ('W' + (i + 1)))}</text>
-        <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" style="fill:var(--ink-3)">${f.n_trades != null ? f.n_trades + 't' : ''}</text>`;
+        <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" style="fill:var(--ink-3)">${f.n_trades != null ? num(f.n_trades) + 't' : ''}</text>`;
     }).join('');
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average net return per trade in each slice of the validation window">
       <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
@@ -217,8 +217,8 @@ window.TauPage('strategies', (T) => {
     if (exp.alt_hypothesis) pre.push(['Alternative', exp.alt_hypothesis]);
     if (exp.primary_metric) pre.push(['Primary metric', rpPlain(exp.primary_metric)]);
     if (exp.planned_test) pre.push(['Planned test', rpPlain(exp.planned_test)]);
-    if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
-    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ` planned tests${SEP}` : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
+    if (exp.min_sample != null) pre.push(['Minimum sample', num(exp.min_sample) + ' trades']);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? num(exp.planned_n_tests) + ` planned tests${SEP}` : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
     if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${rpCost(v)}`).join(SEP)]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
@@ -517,7 +517,7 @@ window.TauPage('strategies', (T) => {
     if (roadClear(r)) {
       lines.push(`<p class="road-sum"><b>Its record clears every check.</b> It still trades paper money only. ${liveWhy ? 'Before it can go live: ' + liveWhy : 'Moving it to live money is your call: Deploy with live money, then type LIVE.'}</p>`);
     } else {
-      lines.push(`<p class="road-sum"><b>${left.length} of ${total} check${total === 1 ? '' : 's'} left</b> before it may trade real money: ${left.join('; ')}.</p>`);
+      lines.push(`<p class="road-sum"><b>${num(left.length)} of ${num(total)} check${total === 1 ? '' : 's'} left</b> before it may trade real money: ${left.join('; ')}.</p>`);
       const counts = c.realistic_trades === false || c.events === false || c.span === false;
       const paused = (s.deployments || []).some((d) => d.mode === 'paper' && d.status === 'paused');
       const tpd = pace && pace.trades_per_day;
@@ -574,7 +574,7 @@ window.TauPage('strategies', (T) => {
       + ' Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money.';
     else if (road) {
       const left = roadLeft(road, s);
-      need = `Next rung, live: ${roadClear(road) ? 'its record clears every check. It trades live money only once you deploy it there' : `${left.length} check${left.length === 1 ? '' : 's'} left, first ${left[0]}`}.`;
+      need = `Next rung, live: ${roadClear(road) ? 'its record clears every check. It trades live money only once you deploy it there' : `${num(left.length)} check${left.length === 1 ? '' : 's'} left, first ${left[0]}`}.`;
     }
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }

@@ -439,7 +439,7 @@
   // positions in "Bitcoin up or down in 15 minutes". A key the catalog doesn't list reads as marketShort does.
   const marketFull = (k) => { const m = k && ((S.me && S.me.markets) || []).find((x) => x.key === k); return m && m.label ? m.label : marketShort(k); };
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
-  // "Bitcoin above $68,499.99 at 5pm ET"), so an open position never shows only the raw ticker. Unknown: ''.
+  // "Bitcoin $68,500 or above at 5pm ET", as Kalshi names it), so an open position never shows only the raw ticker. Unknown: ''.
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
   // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
   const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
@@ -449,7 +449,17 @@
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
   // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
   // to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
-  const strikeIn = (label, ticker) => { const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || '')); return k ? label.replace('$X', '$' + num(k[1]) + (k[2] || '')) : label; };
+  const strikeIn = (label, ticker) => {
+    const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || ''));
+    if (!k) return label;
+    // A KXBTCD -T contract is Yes when Bitcoin ends above its strike (services/btc_spot.py contract_strike), and
+    // Kalshi names one whose strike is a cent under a whole dollar by that dollar: -T112999.99 is "$113,000 or
+    // above", the market page's heading. Walked 2026-10-30: the line under that heading said "Bitcoin above
+    // $112,999.99 at 5pm ET", two prices for one line. Display only: the ticker and the stored strike are unchanged.
+    // Any other strike, and a KXBTC -T end (the ticker doesn't say which way it points), keeps its exact figure.
+    if (/^KXBTCD-/.test(String(ticker)) && k[2] === '.99' && label.includes('above $X')) return label.replace('above $X', `$${num(+k[1] + 1)} or above`);
+    return label.replace('$X', '$' + num(k[1]) + (k[2] || ''));
+  };
   // Bitcoin series the app shows (Explore, the hot rail, a market page, a position held at Kalshi) that no
   // market here covers: KXBTC's hourly price ranges. Each still says its contract and close as the markets above
   // do, [chip, name], never the raw series or another market's label. Every series of services/btc_spot.py's
@@ -481,8 +491,8 @@
     return k[1] === 'B' ? `Bitcoin in the bucket around ${at} ${close}` : `Bitcoin range end at ${at}, ${close.replace(/^at /, '')}`;
   };
   const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : rangeName(ticker); };
-  // A position's contract as people name it: its market's plain label with its own strike ("Bitcoin above
-  // $68,499.99 at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
+  // A position's contract as people name it: its market's plain label with its own strike ("Bitcoin $68,500
+  // or above at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
   // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
   // sets it on a small line, there to find the contract on Kalshi.
   const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketFull(key), ticker) : 'Kalshi contract');
@@ -3166,7 +3176,8 @@
   // with "min" on the next.
   const soonText = (s) => (s < 60 ? 'under a minute' : leftText(s).replace(/(\d) /g, '$1\u00a0'));
   const CLOSE_FORM = {
-    chip: (iso, s) => (s > 0 ? `closes ${settleAt(iso)}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${settleAt(iso)}`),
+    // The time keeps its zone (keepZone): the hot rail and a row's chip ended a line on "05:00" with "UTC" on the next.
+    chip: (iso, s) => (s > 0 ? `closes ${keepZone(settleAt(iso))}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${keepZone(settleAt(iso))}`),
     left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
     when: (iso, s) => `${s > 0 ? 'closes' : 'closed'} ${keepZone(settleAt(iso))}`,
     in: (iso, s) => (s <= 0 ? 'Closed, result pending' : s < 172800 ? 'in ' + soonText(s) : ''),

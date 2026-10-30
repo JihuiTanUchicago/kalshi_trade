@@ -477,4 +477,42 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     assert.match(rows[0].querySelector('td.name').textContent, /in 58 min/);
     g.clearTimers();
   });
+
+  // A close chip's time keeps its zone (keepZone, as the market page's Closes figure does): the rail and a row ended a line
+  // on "05:00" with "UTC" alone on the next. Today's close ("05:00 UTC") and another day's ("Oct 28, 05:00 UTC") alike.
+  test(`${name}: a close chip keeps its time and zone together, on the rail and the list`, async () => {
+    const soon = row('KXBTCD-26OCT2717-T112999.99', {su: '$113,000 or above', ct: new Date(Date.now() + 30 * 60e3).toISOString()});
+    const far = row('KXBTCD-26OCT2717-T113999.99', {su: '$114,000 or above', ct: new Date(Date.now() + 3 * 86400e3).toISOString()});
+    const together = (text, what) => {
+      assert.match(text, /\d{2}:\d{2} [A-Z][\w+:-]*/, `${what}: the zone follows its time with a no-break space`);
+      assert.doesNotMatch(text, /\d{2}:\d{2} [A-Z]/, `${what}: no break before the zone`);
+    };
+    const {f, el} = await rail({markets: [{...soon, h: [.4, .5]}, {...far, h: [.4, .5]}]});
+    const when = el.querySelectorAll('.hot-when');
+    assert.equal(when.length, 2);
+    when.forEach((w, i) => together(w.textContent, `rail row ${i}`));
+    f.clearTimers();
+    const {f: g, rows} = await list({markets: [soon, far]});
+    assert.equal(rows.length, 2);
+    rows.forEach((r, i) => together(r.querySelector('td.name [data-form="chip"]').textContent, `list row ${i}`));
+    g.clearTimers();
+  });
+
+  // A row Kalshi sent no name for is named by Tau's label, which reads the strike as Kalshi names it: a KXBTCD -T strike a
+  // cent under a whole dollar is "$113,000 or above" (Yes above it, btc_spot.contract_strike), any other keeps its figure.
+  test(`${name}: an untitled Bitcoin row names its strike as Kalshi does, "$113,000 or above"`, async () => {
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 3, shown: 3, matched: 3, page: 0, per: 40, sort: 'v24',
+      markets: [row('KXBTCD-26OCT2717-T112999.99', {ti: '', su: ''}), row('KXBTCD-26OCT2717-T114000', {ti: '', su: ''}), row('KXBTCD-26OCT2712-T112999.99', {ti: '', su: ''})]}) : response({}))});
+    f.S.me.markets = NAMED;
+    f.location.pathname = '/explore'; f.location.search = '';
+    await f.viewExplore(); await settle();
+    const names = f.root.querySelectorAll('#xbody tbody tr').map((r) => r.querySelector('td.name a[href^="/explore?m="]'));
+    const text = (a) => (a.querySelector('strong') || a).textContent;
+    assert.equal(text(names[0]), 'Bitcoin $113,000 or above at 5pm ET');
+    assert.equal(text(names[1]), 'Bitcoin above $114,000 at 5pm ET');
+    assert.equal(text(names[2]), 'Bitcoin $113,000 or above at noon ET');
+    // Display only: the row still opens the contract by its own ticker.
+    assert.equal(names[0].getAttribute('href'), '/explore?m=KXBTCD-26OCT2717-T112999.99');
+    f.clearTimers();
+  });
 }

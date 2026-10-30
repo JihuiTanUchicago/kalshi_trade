@@ -772,4 +772,35 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.equal(await hint(held, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · unseen\u00a0data).');
     assert.equal(await hint(split, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · not\u00a0held\u00a0out).');
   });
+
+  // Road to live's "N of M checks left" and the ladder's "N checks left" are counts, and go through num() as the page's
+  // other counts do. No check list runs to 1,000, so a counting Intl marks what num() formats ("#3#"): a figure printed
+  // raw shows unmarked. Money and the gate rows below are left as they are.
+  test(`${name}: Road to live counts its checks left through num(), as the page's other counts`, async () => {
+    const MarkIntl = Object.create(Intl, {NumberFormat: {value: function NumberFormat(locale, options) {
+      const real = new Intl.NumberFormat(locale, options);
+      return locale === 'en-US' && options === undefined ? {format: (n) => `#${real.format(n)}#`} : real;
+    }}});
+    const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
+      paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
+        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization: null, demo_orders: 7, demo_orders_needed: 20,
+        checks: {realistic_trades: false, net_pnl: true, events: false, span: true, edge: false, recent: true}}};
+    // On paper and demo, so its next rung is live and the ladder says what is left too.
+    const deployments = [{id: 1, mode: 'paper', status: 'running', realized_pnl: 0, closed_trades: 0}, {id: 2, mode: 'demo', status: 'running', realized_pnl: 0, closed_trades: 0}];
+    const detail = detailStrategy({status: 'passed', deployments});
+    const f = frontend({globals: {Intl: MarkIntl}, fetchImpl: (path) => (path === '/api/strategies/42' ? response(detail)
+      : path === '/api/strategies/42/live-readiness' ? response(road) : path === '/api/strategies/42/dev-curve' ? response({dev_curve: []}) : response({}))});
+    await f.viewStrategy(42); await flush(); await flush();
+    const sum = f.root.querySelector('#road-live-body').querySelector('.road-sum');
+    assert.ok(sum, 'Road to live sums up what is left');
+    assert.match(sum.textContent, /^#3# of #\d+# checks left before it may trade real money: /);
+    const ladder = f.root.querySelector('#ladder-body');
+    assert.match(ladder.textContent, /Next rung, live: #3# checks left, first /);
+    if (f.clearTimers) f.clearTimers();
+    // Without the marking Intl it reads as before.
+    const g = strategyFrontend(detailStrategy({status: 'passed'}), (path) => response(path === '/api/strategies/42/live-readiness' ? road : {}));
+    await g.viewStrategy(42); await flush(); await flush();
+    assert.match(g.root.querySelector('#road-live-body .road-sum').textContent, /^3 of \d+ checks left before/);
+    if (g.clearTimers) g.clearTimers();
+  });
 }

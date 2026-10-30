@@ -73,14 +73,14 @@ export function moneyDisplayCases({name, frontend, strategyFrontend, detailStrat
     s.S.me.markets = BTC;
     await s.viewStrategy(42); await flush();
     const held = s.root.querySelector('#main').innerHTML;
-    assert.match(held, /<a href="\/explore\?m=KXBTCD-26OCT2712-T68499\.99">Bitcoin above \$68,499\.99 at noon ET<\/a>/);
+    assert.match(held, /<a href="\/explore\?m=KXBTCD-26OCT2712-T68499\.99">Bitcoin \$68,500 or above at noon ET<\/a>/);
     assert.doesNotMatch(held, /T68499\.99">[^<]*5pm/);
     // An open position on the Deploy board, under no deployment: its own close, not "Kalshi contract".
     const g = frontend({fetchImpl: (path) => path === '/api/deployments'
       ? response({deployments: [], open_positions: [pos({ticker: 'KXBTCD-26OCT2709-T68499.99'})]}) : response({})});
     g.S.me.markets = BTC;
     await g.viewDeploy(); await flush(); await flush();
-    assert.match(g.root.querySelector('#openpos').innerHTML, />Bitcoin above \$68,499\.99 at 9am ET<\/a>/);
+    assert.match(g.root.querySelector('#openpos').innerHTML, />Bitcoin \$68,500 or above at 9am ET<\/a>/);
   });
 
   test(`${name}: with holdings in more than one book, the strategy page tags a paper holding Paper as it tags Demo and Live`, async () => {
@@ -93,7 +93,7 @@ export function moneyDisplayCases({name, frontend, strategyFrontend, detailStrat
     };
     const mixed = await list([demo, paper]);
     assert.match(mixed, /<span class="mk dep">Demo<\/span>/);
-    assert.match(mixed, /T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a> <span class="mk">Paper<\/span>/);
+    assert.match(mixed, /T68499\.99">Bitcoin \$68,500 or above at 5pm ET<\/a> <span class="mk">Paper<\/span>/);
     // One book alone reads as before: no tag on a page that is all paper.
     assert.doesNotMatch(await list([paper]), /class="mk"/);
   });

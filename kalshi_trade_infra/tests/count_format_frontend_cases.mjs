@@ -213,4 +213,20 @@ export function countFormatCases({name, frontend, detailStrategy, strategyFronte
     assert.match(html, /1,201 open/); assert.doesNotMatch(html, /\b1201\b/);
     d.clearTimers();
   });
+
+  // The pre-registered test's minimum sample, its planned tests and the walk-forward chart's per-slice trade count ("Nt")
+  // printed the stored integer as it came ("1201 trades", "1201t") under an abstract that says "1,201 trades".
+  test(`${name}: the strategy page's minimum sample, planned tests and walk-forward slice counts read "1,201"`, async () => {
+    const f = strategyFrontend(detailStrategy({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
+      validation: {n_trades: 3, mean_net_return: 0.02, ci_lo: 0.001, ci_hi: 0.04, p_value: 0.02, equity_curve: [[1000, 0.5], [2000, -0.8], [3000, 1.0]]},
+      min_sample: 1201, planned_n_tests: 1201, folds: [{from_ts: 1000, to_ts: 2000, n_trades: 1201, mean_net_return: 0.01}]}}), () => response({}));
+    await f.viewStrategy(42); await flush();
+    const html = f.root.querySelector('#main').innerHTML;
+    assert.match(html, /<dt>Minimum sample<\/dt><dd>1,201 trades<\/dd>/);
+    assert.match(html, /<dt>Multiple-testing control<\/dt><dd>1,201 planned tests/);
+    const chart = html.slice(html.indexOf('Walk-forward windows'), html.indexOf('</svg>', html.indexOf('Walk-forward windows')));
+    assert.match(chart, />1,201t</);
+    assert.doesNotMatch(plain(html), /\b1201/);
+    if (f.clearTimers) f.clearTimers();
+  });
 }

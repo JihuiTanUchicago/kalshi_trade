@@ -42,7 +42,7 @@ export function explorePageCases({name, frontend}) {
     // The name line reads the market's name with this contract's strike, its status in words and the contract;
     // never the raw series alone.
     // The status follows the close clock (closeClock), so it sits in a data-close span of its own.
-    assert.match(f.root.innerHTML, /Bitcoin above \$113,499\.99 at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
+    assert.match(f.root.innerHTML, /Bitcoin \$113,500 or above at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
   });
 
   test(`${name}: a market Tau doesn't research says so, with no raw series key in its name line`, async () => {
@@ -64,12 +64,36 @@ export function explorePageCases({name, frontend}) {
 
   test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
     const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
-    assert.doesNotMatch(f.root.innerHTML, /Bitcoin above \S+ at 5pm ET ·/, 'the midnight contract is not the 5pm market');
-    assert.match(f.root.innerHTML, /Bitcoin above \$112,999\.99 at midnight ET\u00a0· <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span>\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
+    assert.doesNotMatch(f.root.innerHTML, /Bitcoin (?:above \S+|\S+ or above) at 5pm ET ·/, 'the midnight contract is not the 5pm market');
+    assert.match(f.root.innerHTML, /Bitcoin \$113,000 or above at midnight ET\u00a0· <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span>\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
     assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);
     assert.equal(next.querySelector('a.primary'), null, 'no research button that reads as researching this contract');
+  });
+
+  // Walked 2026-10-30: a page headed "$113,000 or above" said "Bitcoin above $112,999.99 at 5pm ET" on the line under it,
+  // two prices for one line. A KXBTCD -T contract is Yes above its strike (btc_spot.contract_strike), so a strike a cent
+  // under a whole dollar reads as Kalshi names it; any other strike, and a KXBTC end (no side in its ticker), keeps its figure.
+  test(`${name}: the line under a Bitcoin page's heading names its strike as the heading does, "$113,000 or above"`, async () => {
+    const deck = (f) => f.root.querySelector('.board-title .deck').textContent;
+    const f = await open(page({ticker: 'KXBTCD-26OCT2617-T112999.99', sub: '$113,000 or above'}));
+    assert.match(deck(f), /^Bitcoin \$113,000 or above at 5pm ET · /);
+    assert.doesNotMatch(f.root.innerHTML, /Bitcoin above \$112,999\.99/);
+    // Display only: the contract is still found on Kalshi by its own ticker, and read from the server by it.
+    assert.match(deck(f), /Kalshi contract KXBTCD-26OCT2617-T112999\.99$/);
+    assert.ok(f.requests.some(({path}) => path === '/api/explore/market?ticker=KXBTCD-26OCT2617-T112999.99'), f.requests.map(({path}) => path).join(', '));
+    // Another hour of the ladder reads the same way at its own close.
+    const noon = await open(page({ticker: 'KXBTCD-26OCT2612-T68499.99', title: 'Bitcoin price at 12pm EDT?', sub: '$68,500 or above'}));
+    assert.match(deck(noon), /^Bitcoin \$68,500 or above at noon ET · /);
+    // A strike that isn't a cent under a whole dollar keeps its exact figure.
+    const exact = await open(page({ticker: 'KXBTCD-26OCT2617-T114000', sub: '$114,000.01 or above'}));
+    assert.match(deck(exact), /^Bitcoin above \$114,000 at 5pm ET · /);
+    const cents = await open(page({ticker: 'KXBTCD-26OCT2617-T113499.5', sub: ''}));
+    assert.match(deck(cents), /^Bitcoin above \$113,499\.5 at 5pm ET · /);
+    // A KXBTC range end's ticker doesn't say which way it points: its figure stays as the ticker gives it.
+    const end = await open(page({ticker: 'KXBTC-26OCT2617-T114999.99', series: 'KXBTC', title: 'Bitcoin price range at 5pm EDT?', sub: '$115,000 or above'}));
+    assert.match(deck(end), /^Bitcoin range end at \$114,999\.99, 5pm ET · /);
   });
 
   test(`${name}: on a phone the price chart is drawn near the width it shows at, so its labels stay legible`, async () => {
