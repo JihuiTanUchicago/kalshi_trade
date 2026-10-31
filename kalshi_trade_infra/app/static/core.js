@@ -1167,9 +1167,12 @@
     const bal = +me.credit_balance || 0, ar = me.reload_failed ? null : me.auto_reload;
     if (me.min_run_balance != null && bal < +me.min_run_balance && !ar) return s;
     const n = covers(bal), k = ar ? covers(ar.amount) : 0;
-    if (ar) return s + (n >= 1 ? ` At that rate your ${usd(bal)} covers ${sessions(n)}${k >= 1 ? `, and each ${usd(ar.amount)} auto-reload about ${num(k)} more` : ''}.`
-      : k >= 1 ? ` At that rate each ${usd(ar.amount)} auto-reload covers ${sessions(k)}.` : '');
-    return s + (n >= 1 ? ` At that rate your ${usd(bal)} lasts ${sessions(n)}.`
+    // The count is research sessions only: the autopilot's check-ins between them spend credits too, so it says so
+    // rather than read as a promise of N sessions.
+    const also = ' Its check-ins between sessions use some credits too.';
+    if (ar) return s + (n >= 1 ? ` At that rate your ${usd(bal)} covers ${sessions(n)}${k >= 1 ? `, and each ${usd(ar.amount)} auto-reload about ${num(k)} more` : ''}.${also}`
+      : k >= 1 ? ` At that rate each ${usd(ar.amount)} auto-reload covers ${sessions(k)}.${also}` : '');
+    return s + (n >= 1 ? ` At that rate your ${usd(bal)} lasts ${sessions(n)}.${also}`
       : ` That’s more than the ${usd(bal)} you have, so a session may stop short when your credits run out.`);
   };
 
