@@ -24,7 +24,7 @@ window.TauPage('funds', (T) => {
       ? `<li>Kalshi’s demo is a separate site with its own login and play money. ${extLink(k.join, 'Sign up or sign in at demo.kalshi.co')} (free).</li><li>There, open ${extLink(k.keys, 'your demo profile')}, find API Keys and click Create New API Key.</li>`
       : `<li>On Kalshi, open ${extLink(k.keys, 'your profile')}, find API Keys and click Create New API Key.</li>`;
     return `<ol class="steps key-steps">${open}<li>Kalshi shows a <b>Key ID</b> (like <span class="nobr">a952bcbe-ec3b-…</span>) and downloads a <b>private key</b> file (.key), once. Keep the file; if it’s lost, make a new key.</li><li>Paste the Key ID below and choose the .key file (or paste its text). We check it with ${demo ? 'the demo exchange' : 'Kalshi'}, then store it encrypted; it is never shown again.</li></ol>
-      <p class="hint key-diff">${demo ? 'A demo key trades play money on Kalshi’s sandbox. A real-money key from kalshi.com won’t work here.' : 'A live key trades your real money. A key made on demo.kalshi.co won’t work here: add it under Demo key.'} ${extLink(KALSHI_KEYS.guide, 'Kalshi’s guide to API keys')}</p>`;
+      <p class="hint key-diff">${demo ? 'A demo key trades play money on Kalshi’s sandbox. A real-money key from kalshi.com won’t work here.' : `${liveOpen() ? 'A live key trades your real money.' : 'A live key is for your real-money account; live trading isn\u2019t open yet.'} A key made on demo.kalshi.co won’t work here: add it under Demo key.`} ${extLink(KALSHI_KEYS.guide, 'Kalshi’s guide to API keys')}</p>`;
   }
   // Plain words for the usual mix-ups, before anything is sent. Fixed text only: it never echoes the key.
   function keyProblem(kid, pem, kind) {
@@ -91,7 +91,10 @@ window.TauPage('funds', (T) => {
   // Not connected: the Kalshi cash figure links to the live key's form, in Connect Kalshi while no key of either
   // kind is in (its fold), else in the page. It said "Connect a key to trade real money" with nowhere to go
   // (Meridian said nothing at all).
-  const connectLive = (kd) => `<a href="${kd.connected ? '#kalshi' : '#connect-kalshi'}">Connect a Kalshi key</a> below to trade real money`;
+  // With live trading closed (liveOpen) a key reads the real cash and places nothing: "to trade real money" read as if
+  // connecting one opened live trading.
+  const connectLive = (kd) => `<a href="${kd.connected ? '#kalshi' : '#connect-kalshi'}">Connect a Kalshi key</a> below ${liveOpen() ? 'to trade real money' : `to see your real cash at Kalshi. ${LIVE_CLOSED_NONE}`}`;
+  const LIVE_CLOSED_NONE = 'Live trading isn\u2019t open yet, so Tau places no live trades';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
   // A key's cash the shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
   // pending (the bundle's cashFig and cashRead, which the dashboard shares): it reads Checking\u2026, never $0,
@@ -264,7 +267,7 @@ window.TauPage('funds', (T) => {
       const DEMO_SANDBOX = 'real fills, not real money';
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
-      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)}${liveLeft(k)}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)}${liveLeft(k)}` }) +
+      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : liveOpen() ? '' : '.') : cf ? `${cf[1]}${livePnl(k)}${liveLeft(k)}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)}${liveLeft(k)}` }) +
         (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'}${SEP}${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : `needs a demo key${SEP}`}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox: ${DEMO_SANDBOX}` })) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash${SEP}${openAt(d.paper, inBalance(d.paper))}${bookPnl(d.paper, 'paper')}practice money` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
@@ -280,7 +283,7 @@ window.TauPage('funds', (T) => {
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
             </div>` : `
-            <p class="lede" style="margin-bottom:12px">Connect your Kalshi account for live trading. Funds stay at Kalshi.</p>
+            <p class="lede" style="margin-bottom:12px">${liveOpen() ? 'Connect your Kalshi account for live trading.' : 'Connect your Kalshi account to see your real balance. Live trading isn\u2019t open yet.'} Funds stay at Kalshi.</p>
             <details class="connection-help" open><summary>Key setup</summary>${keySteps('live')}</details>
             <form id="kalshi" style="display:grid;gap:12px">
               <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>

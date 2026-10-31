@@ -121,8 +121,34 @@ export function fundsWalkCases({name, frontend, fundsData}) {
       assert.ok(link, JSON.stringify(dev));
       assert.equal(link.getAttribute('href'), href);
       assert.ok(f.root.querySelector('#' + target), `${href} is on the page`);
+      // Live trading open (the harness's S.me); closed, the words differ (the next case).
       assert.match(f.root.querySelector('#ffigs').textContent, /Connect a Kalshi key below to trade real money/);
       f.clearTimers();
     }
+  });
+
+  test(`${name}: Funds with no live key never says a key trades real money while live trading is closed`, async () => {
+    // Walked 2026-10-31 with the server's live switch closed: the Kalshi cash figure said "Connect a Kalshi key below to
+    // trade real money", the live box "Connect an API key to see your real balance and trade real money" (Meridian:
+    // "Connect your Kalshi account for live trading") and its steps "A live key trades your real money".
+    const page = async (open) => {
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), kalshi: {connected: false, balance: null}, kalshi_dev: {connected: true, key_id: 'DEVK…5678', balance: 250, balance_at: new Date().toISOString()}}) : response({})});
+      f.S.me.live_trading_available = open;
+      f.location.pathname = '/funds'; f.location.hash = '';
+      await f.viewFunds(); await settle();
+      const figs = f.root.querySelector('#ffigs').textContent, live = f.root.querySelector('#kalshi').closest('section').textContent;
+      f.clearTimers();
+      return {figs, live};
+    };
+    const closed = await page(false);
+    assert.doesNotMatch(closed.figs + closed.live, /trade real money|trades your real money|for live trading\./);
+    assert.match(closed.figs, /Connect a Kalshi key below to see your real cash at Kalshi\. Live trading isn’t open yet, so Tau places no live trades\.Tau’s demo book/);
+    assert.match(closed.live, /Live trading isn’t open yet/);
+    assert.match(closed.live, /A live key is for your real-money account; live trading isn’t open yet\. A key made on demo\.kalshi\.co won’t work here/);
+    // Open, the words say what a key does.
+    const open = await page(true);
+    assert.match(open.figs, /Connect a Kalshi key below to trade real money/);
+    assert.match(open.live, /A live key trades your real money\./);
+    assert.doesNotMatch(open.figs + open.live, /isn’t open yet/);
   });
 }
