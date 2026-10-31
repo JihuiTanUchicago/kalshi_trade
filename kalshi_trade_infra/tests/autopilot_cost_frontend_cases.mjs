@@ -67,7 +67,7 @@ export function autopilotCostCases({name, frontend, dashboard, apStatus}) {
     const c = card(f);
     assert.ok(c.includes(TODAY), c);  // today's line, unchanged
     assert.ok(c.includes('A research session usually costs about $0.85 in credits (recent sessions on Deep Model; typical, not a quote). '
-      + 'At that rate your $5.00 lasts about 5 sessions. Its check-ins between sessions use some credits too.'), c);
+      + 'At that rate your $5.00 lasts about 5 sessions. The autopilot\u2019s check-ins between sessions use some credits too.'), c);
     assert.doesNotMatch(c, /list price|margin|×|\bx2\b|mdl_/i);
     // Credits only: never beside the paper P&L.
     assert.doesNotMatch(f.root.querySelector('#dash-ap .apcard-main').innerHTML.split('A research session')[1], /P&amp;L|realized/);
@@ -143,11 +143,11 @@ export function autopilotCostCases({name, frontend, dashboard, apStatus}) {
     // Just switched on: nothing in the week yet.
     let f = await dash({...on, week: EMPTY_WEEK}, () => response(TYPICAL));
     const empty = f.root.querySelector('#dash-ap .ap-week');
-    assert.match(text(empty.innerHTML), /nothing yet\. Its research, paper strategies and credits spent show here once it starts\.\s?A research session usually costs about \$0\.85 in credits \(recent sessions on Deep Model; typical, not a quote\)\. At that rate your \$5\.00 lasts about 5 sessions\. Its check-ins between sessions use some credits too\.$/);
+    assert.match(text(empty.innerHTML), /nothing yet\. Its research, paper strategies and credits spent show here once it starts\.\s?A research session usually costs about \$0\.85 in credits \(recent sessions on Deep Model; typical, not a quote\)\. At that rate your \$5\.00 lasts about 5 sessions\. The autopilot\u2019s check-ins between sessions use some credits too\.$/);
     f.clearTimers();
     // After one session, on its first day.
     f = await dash({...on, week: FIRST_WEEK}, () => response(TYPICAL), {credit_balance: 19.56});
-    assert.match(f.root.querySelector('#dash-ap .ap-week-left').innerHTML, /^Credits left: <b>\$19\.56<\/b>, too soon to say how long they last: its first day sets the pace\. A research session usually costs about \$0\.85 in credits \(recent sessions on Deep Model; typical, not a quote\)\. At that rate your \$19\.56 lasts about 23 sessions\. Its check-ins between sessions use some credits too\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
+    assert.match(f.root.querySelector('#dash-ap .ap-week-left').innerHTML, /^Credits left: <b>\$19\.56<\/b>, too soon to say how long they last: its first day sets the pace\. A research session usually costs about \$0\.85 in credits \(recent sessions on Deep Model; typical, not a quote\)\. At that rate your \$19\.56 lasts about 23 sessions\. The autopilot\u2019s check-ins between sessions use some credits too\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
     // Once it has a pace of its own, that pace is what it says.
     f.S.ap = {...on, week: {...FIRST_WEEK, runway_days: 9.8, pace_days: 2}}; f.paintDashAp();
     assert.doesNotMatch(f.root.querySelector('#dash-ap .ap-week-left').innerHTML, /usually costs/);
@@ -166,7 +166,7 @@ export function autopilotCostCases({name, frontend, dashboard, apStatus}) {
     await f.apUpdate(box, OFF); await settle();
     await f.apUpdate(box, OFF); await settle();
     assert.equal(text(box.querySelector('#apf-week').innerHTML),
-      'A research session usually costs about $0.85 in credits (recent sessions on Deep Model; typical, not a quote). At that rate your $5.00 lasts about 5 sessions. Its check-ins between sessions use some credits too.');
+      'A research session usually costs about $0.85 in credits (recent sessions on Deep Model; typical, not a quote). At that rate your $5.00 lasts about 5 sessions. The autopilot\u2019s check-ins between sessions use some credits too.');
     // A model with no figure: nothing, as before.
     await f.apUpdate(box, {...OFF, model: 'mdl_b'}); await settle();
     assert.equal(box.querySelector('#apf-week').innerHTML, '');
@@ -226,7 +226,7 @@ export function billingCostCases({name, frontend, dashboard, billingPage, carded
     }
     const f = await page({}, () => response(TYPICAL));
     assert.equal(tile(f), 'Credits last Too soon to tell Your first day of research sets the pace. A research session usually costs about $0.85 in credits '
-      + '(recent sessions on Deep Model; typical, not a quote). At that rate your $19.56 lasts about 23 sessions. Its check-ins between sessions use some credits too.');
+      + '(recent sessions on Deep Model; typical, not a quote). At that rate your $19.56 lasts about 23 sessions. The autopilot\u2019s check-ins between sessions use some credits too.');
     // A sentence, not a figure's note: alone on its row at phone width, the tile takes the row (app.css m-wide).
     assert.match(f.root.querySelector('#bfigs').innerHTML, /<div class="m m-wide"><dt class="lab">Credits last<\/dt>/);
     f.clearTimers();
