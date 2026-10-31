@@ -142,6 +142,21 @@ def test_an_admin_grant_reads_as_tau_support_never_who_made_it():
         "Credits added by Tau support"
 
 
+def test_a_usage_memo_not_written_by_charge_usage_says_what_the_line_was_for():
+    # Billing walk 2026-10-31: a usage row whose memo isn't charge_usage's own ("Agent usage · " then the model id) went
+    # to the receipt's Memo column as stored: a job name and an experiment id. It says what the line was for, and the
+    # model's family when the memo names one by its id; charge_usage's own memo reads as before.
+    row = lambda memo, run_kind=None: {"kind": "usage", "amount": -0.004, "memo": memo, "run_kind": run_kind, "run_brief": 0}
+    assert billing_routes._ledger_memo(row("exp-4471 bandit arm B · job:hypo_gen_v2")) == "Agent usage"
+    assert billing_routes._ledger_memo(row("exp-4471 · job:hypo_gen_v2", "chat")) == "Chat"
+    assert billing_routes._ledger_memo(row("Research run · us.anthropic.claude-opus-4-6-v1", "research")) == \
+        "Research session · Claude Opus 4.6"
+    assert billing_routes._ledger_memo(row("Research run · anthropic.claude-3-haiku-20240307-v1:0")) == "Agent usage · Claude Haiku"
+    assert billing_routes._ledger_memo(row("Agent usage · %s" % MODEL_ID, "review")) == "Autopilot check-in · Claude Opus 4.6"
+    assert billing_routes._ledger_memo(row("")) == "Agent usage"
+    assert billing_routes._ledger_memo({"kind": "topup", "amount": 10, "memo": "Credits bought"}) == "Credits bought"
+
+
 def test_the_receipt_never_names_staff_or_a_model_id(monkeypatch):
     monkeypatch.setattr(repo, "get_user", lambda cur, uid: {"email": "trader@example.invalid"})
     monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 32.5)

@@ -346,6 +346,13 @@ def _ledger_memo(r: Dict) -> str:
     use = _usage_item(r)
     if use.get("model"):
         return "%s · %s" % (use["item"], use["model"])
+    if use:
+        # A usage row whose memo isn't charge_usage's own (an older or hand-written one) said whatever it held in the
+        # receipt's Memo column: a job name, an experiment id ("exp-4471 · job:hypo_gen_v2", walk 2026-10-31). It
+        # says what the line was for, and the model's family when the memo names a model by its id.
+        found = customer_text.MODEL_ID.search(r.get("memo") or "")
+        family = catalog.label_for_model_id(found.group(0)) if found else ""
+        return "%s · %s" % (use["item"], family) if family and family != "AI model" else use["item"]
     if r.get("kind") == "admin_grant":
         amount = r.get("amount", r.get("amount_usd"))
         return ADMIN_DEBIT_MEMO if amount is not None and Decimal(str(amount)) < 0 else ADMIN_GRANT_MEMO

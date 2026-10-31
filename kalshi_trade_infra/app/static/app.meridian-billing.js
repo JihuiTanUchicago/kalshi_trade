@@ -33,6 +33,16 @@ window.TauPage('billing', (T) => {
       return fig('Credits last', 'Too soon to tell', est ? { small: `Your first day of research sets the pace. ${est}`, cls: 'm-wide' }
         : { small: 'your first day of research sets the pace' });
     };
+    // Spend under a cent (a few short model calls) rounds to $0.00 in the server's figures, while the week's split
+    // names it (spent_7d_under_cent) and the statement's day says "under $0.01 used": "Spent, last 7 days $0.00" sat over
+    // "other agent calls under $0.01", "at $0.00 a week" and a $0.004 line (walk 2026-10-31). These say "under $0.01".
+    const tiny = (v) => !(+v >= 0.005);
+    const underCent = (d) => Array.isArray(d.spent_7d_under_cent) && d.spent_7d_under_cent.length > 0;
+    const spentWeek = (d) => tiny(d.spent_7d) && underCent(d) ? 'Under $0.01' : usd(d.spent_7d);
+    const pace = (d) => tiny(d.spent_7d) && underCent(d) ? 'under $0.01 a week' : paceWords(d.spent_7d, d.pace_days);
+    // The last 24 hours, from the statement's lines (the figures poll may carry none: then as the server sent it).
+    const spentDay = (d) => tiny(d.spent_24h) && (d.ledger || []).some((r) => r.kind === 'usage' && +r.amount < 0
+      && Date.now() - new Date(r.created_at).getTime() < 864e5) ? 'under $0.01' : usd(d.spent_24h);
     // The figures, the week's split and the out-of-credits note: drawn by the page's read and again by its poll.
     const paintFigs = (d) => {
       const low = isLow(d);
@@ -42,7 +52,7 @@ window.TauPage('billing', (T) => {
         fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0, small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
         // Nothing spent yet (a new account) is not a $0.00 result: "$0.00 · $0.00 in the last 24 hours · $0.00 all time"
         // read as three figures under a balance of free credits. It says what will draw on them instead.
-        (+d.spent > 0 ? fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(SEP) })
+        (+d.spent > 0 || underCent(d) ? fig('Spent, last 7 days', spentWeek(d), { small: [d.spent_24h != null ? `${spentDay(d)} in the last 24 hours` : '', `${+d.spent > 0 ? usd(d.spent) : 'under $0.01'} all time`].filter(Boolean).join(SEP) })
           : fig('Spent so far', 'None yet', { small: 'research sessions and chat draw on your credits as they run' })) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
         // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:
@@ -50,9 +60,9 @@ window.TauPage('billing', (T) => {
         // and at $2.40 it was a day late.
         (low ? fig('Research', 'Paused', { v: -1, small: `a session needs ${usd(d.min_run_balance)} to start` })
           : d.reload_days != null && d.auto_reload && !d.reload_failed
-          ? fig('Next auto-reload in', runwayLabel(d.reload_days), { small: `adds ${usd(Math.max(d.min_reload_amount, d.autoreload_amount))}, card charged ${usd(d.autoreload_charge)}, at ${paceWords(d.spent_7d, d.pace_days)}` })
+          ? fig('Next auto-reload in', runwayLabel(d.reload_days), { small: `adds ${usd(Math.max(d.min_reload_amount, d.autoreload_amount))}, card charged ${usd(d.autoreload_charge)}, at ${pace(d)}` })
           : d.runway_days != null
-          ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
+          ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${pace(d)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
           : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? firstDayFig()
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' })));
       const split = spendSplit(d.spent_7d_by, d.spent_7d_under_cent);
@@ -362,6 +372,10 @@ window.TauPage('billing', (T) => {
     });
     return out;
   }
+  // What a line is. Tau support taking credits back (an adjustment, a negative grant) read "Credits from Tau support
+  // −$2.50" (walk 2026-10-31): it says it adjusted them, as the server's memo and the receipt's memo do.
+  const ADJUSTED = 'Credits adjusted by Tau support';
+  const itemLabel = (r) => (r.kind === 'usage' && r.item) || (r.kind === 'admin_grant' && +r.amount < 0 ? ADJUSTED : KIND_LABEL[r.kind] || r.kind);
   function ledgerTable(d) {
     const rows = d.ledger || [], feePct = d.topup_fee_pct;
     if (!rows.length) return billMath(d.math) + '<p class="hint">No credit activity yet.</p>';
@@ -372,7 +386,7 @@ window.TauPage('billing', (T) => {
     // tone of its own, never the green a P&L gain wears. A debit is credit-out and keeps its minus sign.
     const line = (r) => `<tr>
       <td class="hint" data-lab="When"><time datetime="${esc(r.created_at)}">${r.day ? lineWhen(r) : settleAt(r.created_at)}</time></td>
-      <td class="name" data-lab="Item">${esc((r.kind === 'usage' && r.item) || KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
+      <td class="name" data-lab="Item">${esc(itemLabel(r))}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
       <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'credit-in' : 'credit-out'}">${ledgerAmount(cents && cents.has(r) ? -cents.get(r) / 100 : r.amount)}</span></td></tr>`;
     const head = (g) => {
       // Summed in millionths (the ledger's six places): a float sum can land a hair under a half cent.
