@@ -8,7 +8,7 @@ window.TauPage('research', (T) => {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, liveOpen, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
-    runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
+    runWaitLine, S, SEP, sessionEstimate, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     dateFmt, LOG_STAMP,
     whyFailedHtml, wireMarketPicker
   } = T;
@@ -368,9 +368,9 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       const sync = syncCost = () => {
         // The user's own figure for the model picked (yours_by_model): "yours" pooled every model, so a
         // history on the default model read beside the cheapest one too. An older server sends "yours" alone.
-        const key = (msel && msel.value) || mdl.default, byModel = est && est.yours_by_model;
-        const mine = !est ? null : byModel ? byModel[key] : est.yours, own = mine != null && (byModel ? 'model' : true);
-        const v = !est ? null : own ? mine : (est.typical || {})[key];
+        // (core's sessionEstimate: the autopilot's cost line reads the same figure through it.)
+        const key = (msel && msel.value) || mdl.default, picked = sessionEstimate(est, key);
+        const v = picked ? picked.v : null, own = picked ? picked.own : false;
         const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
         const myRate = ph.yours_by_model ? ph.yours_by_model[key] : ph.yours, ownRate = myRate != null && (ph.yours_by_model ? 'model' : true);
         const hourly = ownRate ? myRate : (ph.typical || {})[key];
@@ -390,7 +390,8 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         if (rh) rh.hidden = !!(none && forever);
       };
       if (msel) msel.addEventListener('change', sync);
-      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; estFailed = true; }).then(sync);
+      // Kept for the autopilot's cost line too (S.sessionEst), so the two say the same figure.
+      api('/api/research/estimate').then((d) => { est = d; S.sessionEst = { at: Date.now(), d }; }, () => { est = null; estFailed = true; }).then(sync);
     })();
     // A start Tau didn't confirm may have landed: the sessions on this page read every 5s, so the words
     // point there instead of at a reload (the typed idea is kept either way).
