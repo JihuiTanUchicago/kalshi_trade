@@ -2136,6 +2136,9 @@ body.landing-body .apf { display: none; }
 .apcard-alt { font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; min-height: 24px; }  /* a 24px touch target */
 .apcard-err { flex-basis: 100%; margin: 0; }
 .apcard-err:empty { display: none; }
+/* The card's Try again (status unread) sits in the grid of .apcard-main, which stretched it the card's full width;
+   it sizes to its words, as a .btn.sm does in any other card. */
+.apcard-main > [data-apcard="again"] { justify-self: start; }
 @media (max-width: 760px) {
   .apcard { padding: 16px; margin-top: 14px; }
   .apcard-main { flex-basis: 100%; }
