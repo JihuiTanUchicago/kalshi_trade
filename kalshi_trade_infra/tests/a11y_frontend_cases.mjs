@@ -657,6 +657,9 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     f.document.activeElement = btn;
     await f.root.querySelector('#ledger-older').onclick({target: btn}); await settle();
     assert.equal(f.root.querySelector('#ledger-older-btn'), null);
+    // The last page says its own count: the live region still held the previous page's "50 older entries shown."
+    assert.equal(f.root.querySelectorAll('.t-ledger tbody tr').length, 120);
+    assert.equal(said(f), '20 older entries shown.');
     const end = f.root.querySelector('.ledger-end');
     assert.equal(end.getAttribute('tabindex'), '-1');
     assert.ok(focusedOn(f, end), 'focus fell to <body> with the button');
