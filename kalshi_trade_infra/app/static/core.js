@@ -229,7 +229,9 @@
   // the track record's −$0.14 for the same two trades.
   const sum4 = (xs) => xs.reduce((a, v) => a + Math.round((+v || 0) * 1e4), 0) / 1e4;
   const money = (v) => `<span class="${tone(v == null ? v : halfUp(+v))}">${usd(v, true)}</span>`;
-  const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
+  // A volume in a narrow column (the hot rail): "9.0k", "1.2M". A count that rounds up into the next unit takes it:
+  // 999,960 read "1000.0k" and 999.6 "1000" (walked 2026-10-31).
+  const kfmt = (n) => { n = +n || 0; return n >= 999950 ? (n / 1e6).toFixed(1) + 'M' : n >= 999.5 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
 
   // ---------- paper P&L words ----------
@@ -769,7 +771,9 @@
   // a line and "PM EDT" began the next). Words and figures are untouched.
   const rulesText = (t) => String(t || '').replace(/(\w)'/g, '$1\u2019').replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')
     .replace(/\b([AP]M) (E[SD]T|ET|C[SD]T|UTC)\b/g, '$1\u00a0$2');
-  const MKT_STATUS = { initialized: 'Not open yet', unopened: 'Not open yet', active: 'Open for trading', open: 'Open for trading', paused: 'Trading paused', closed: 'Closed, result pending', determined: 'Result in, paying out', settled: 'Settled', finalized: 'Settled' };
+  // An open market is open on Kalshi: under a market page's name "Open for trading" read as trading open in Tau, which
+  // places no trade from Explore.
+  const MKT_STATUS = { initialized: 'Not open yet', unopened: 'Not open yet', active: 'Open on Kalshi', open: 'Open on Kalshi', paused: 'Trading paused', closed: 'Closed, result pending', determined: 'Result in, paying out', settled: 'Settled', finalized: 'Settled' };
   // A Bitcoin contract's page says where Bitcoin is against its strike, from the price the collectors
   // stored (/api/explore/spot). It is its own read, started with the market's, and fills its own section,
   // so a slow one never holds the page. An old price stays up and says how old it is.
