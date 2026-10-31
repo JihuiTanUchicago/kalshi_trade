@@ -315,12 +315,22 @@ def test_the_operators_system_boxes_count_research_sessions_and_strategies_as_a_
         def fetchall(self):
             return self.rows
 
+    from app.web.routes import admin as admin_routes
+    admin_routes._FLEET_COUNTS.clear()
     cur = FleetCursor()
     ctx = context(admin=True)
     ctx.conn.cursor = lambda: cur
     nodes = server.admin_system(ctx)['nodes']
     assert nodes['agents'] == {'running': 1, 'queued': 1, 'done': 53}
     assert nodes['backtest'] == {'strategies': 3}
+    # Those two read every row of their tables and the page polls every 4s: a second read within the minute reuses them.
+    counted = [q for q in cur.queries if 'GROUP BY status' in q[0] or 'FROM app_strategies' in q[0]]
+    assert len(counted) == 2
+    cur.queries.clear()
+    again = server.admin_system(ctx)['nodes']
+    assert again['agents'] == nodes['agents'] and again['backtest'] == nodes['backtest']
+    assert not [q for q in cur.queries if 'GROUP BY status' in q[0] or 'FROM app_strategies' in q[0]]
+    admin_routes._FLEET_COUNTS.clear()
     feed_sql, feed_params = next(q for q in cur.queries if 'FROM app_agent_events' in q[0])
     assert 'r.direction<>%s' in feed_sql and feed_params == ('random_walk',) and 'user_id=%s' not in feed_sql
     # The newest events by id, each one's run by its key: never every run read first and their events sorted.

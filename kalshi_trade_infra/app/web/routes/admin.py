@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from typing import Dict
 
 from app import repository as repo
@@ -144,6 +145,10 @@ def exec_latency(ctx: Ctx):
     return repo.order_latency_stats(ctx.cur, window_seconds=window, mode=mode)
 
 
+FLEET_COUNTS_TTL = 60.0  # seconds the operator's fleet-wide research and strategy counts are kept
+_FLEET_COUNTS: Dict = {}
+
+
 def admin_system(ctx: Ctx):
     """Live telemetry for the system map: per-node freshness + volume, so the
     graph shows what the running codebase is actually doing right now. Open to every
@@ -180,12 +185,19 @@ def admin_system(ctx: Ctx):
     # left out (its two canned strategies a user read as "strategies tested"), and a stopped session done
     # (it counted succeeded and failed only, so a stopped one was neither running nor done).
     if is_admin:
-        cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs WHERE kind='research'"
-                    " AND (direction IS NULL OR direction<>%s) GROUP BY status", (repo.DEMO_DIRECTION,))
-        runs = {r["status"]: int(r["c"]) for r in cur.fetchall()}
+        # Fleet-wide, these two read every row of their tables (kind and direction are in no index), and the page
+        # polls every 4s: kept for FLEET_COUNTS_TTL, a count a minute old is still the operator's figure.
+        hit = _FLEET_COUNTS.get("v")
+        if hit and time.time() - hit[0] < FLEET_COUNTS_TTL:
+            runs, strategies = hit[1]
+        else:
+            cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs WHERE kind='research'"
+                        " AND (direction IS NULL OR direction<>%s) GROUP BY status", (repo.DEMO_DIRECTION,))
+            runs = {r["status"]: int(r["c"]) for r in cur.fetchall()}
+            strategies = scalar("SELECT COUNT(*) c FROM app_strategies WHERE direction<>%s", repo.DEMO_DIRECTION)
+            _FLEET_COUNTS["v"] = (time.time(), (runs, strategies))
         cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE status='running' GROUP BY mode")
         running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
-        strategies = scalar("SELECT COUNT(*) c FROM app_strategies WHERE direction<>%s", repo.DEMO_DIRECTION)
         mine = {}
     else:
         cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs WHERE user_id=%s AND kind='research'"
