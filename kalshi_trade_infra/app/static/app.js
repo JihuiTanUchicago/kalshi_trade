@@ -1323,6 +1323,32 @@
     el.innerHTML = html;
     if (top && !a.isConnected) { const h = pageStart(); if (h && h.focus) h.focus({ preventScroll: true }); }
   }
+  // The Deploy board's 10s poll rewrites its figures, rows and open positions whenever a mark or a "Since" age moved,
+  // and keyboard focus on a row's Pause, its strategy link, a contract link or a term's info button fell to the page's
+  // body each time: a keyboard or screen-reader user was sent back to the top every 10 seconds (walk 2026-10-31).
+  // paintKeep puts focus on the same control in the new markup: the same deployment's same action, else the same tag
+  // with the same link, term and words, the same one of those in order. A control the repaint took away (the row left,
+  // or Pause became Resume) leaves focus where it fell, for the page to place (depActed).
+  // A control inside one deployment's block (an element marked data-deployment) is that deployment's: never another row's.
+  const twinSig = (e) => [e.tagName, e.id, e.dataset.dep, e.dataset.act, e.dataset.glo, ((e.closest && e.closest('[data-deployment]')) || {dataset: {}}).dataset.deployment,
+    e.getAttribute('href'), e.textContent.replace(/\s+/g, ' ').trim()].join('|');
+  const twinsOf = (host, e, sig) => [...host.querySelectorAll(e.tagName.toLowerCase())].filter((x) => twinSig(x) === sig);
+  const twinMark = (host) => {
+    const a = document.activeElement, had = host && a && a !== host && a.dataset && host.contains(a) ? a : null;
+    const sig = had && twinSig(had);
+    return { had, sig, nth: had ? twinsOf(host, had, sig).indexOf(had) : -1 };
+  };
+  const twinBack = (host, { had, sig, nth }) => {
+    const now = document.activeElement;
+    if (!had || had.isConnected || nth < 0 || (now && now !== document.body && now.isConnected !== false)) return;
+    const twin = twinsOf(host, had, sig)[nth];
+    if (twin && twin.focus) twin.focus({ preventScroll: true });
+  };
+  function paintKeep(el, html) {
+    const m = twinMark(el);
+    paint(el, html);
+    twinBack(el, m);
+  }
   // A list repaints row by row: while its rows are the same ones in the same order, only a row whose
   // markup changed is rewritten (a running session's spend moved, and the other 49 sessions stay as they
   // are). `rows` is [[key, markup]], each markup one element. Any other change rewrites the whole list.
@@ -2230,9 +2256,16 @@
       const books = d.realized_by_book || {};
       const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
       const listed = (m, xs) => (books[m] ? books[m].listed : sumPnl(xs));
-      const removedNote = (m) => {
+      // A board listing none of a book's deployments while it has removed ones (every one of them removed): its figure
+      // read "Realized $0.00" over "+$0.02 from 1 removed deployment, +$0.02 in all", a flat figure beside the book's
+      // real one (walk 2026-10-31). It shows the book's all-time figure (the server's `all`, else its removed total)
+      // and says it all comes from the removed deployments.
+      const gone = (m, xs) => (!xs.length && books[m] && +books[m].removed_deployments ? books[m] : null);
+      const shown = (m, xs) => { const b = gone(m, xs); return b ? (b.all != null ? b.all : b.removed) : listed(m, xs); };
+      const removedNote = (m, xs) => {
         const b = books[m];
         if (!b || !b.removed_deployments) return '';
+        if (gone(m, xs)) return `\u00a0· all from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}`;
         // A signed amount keeps its sign: at 390px "· −" ended one line and "$0.30 from 1 removed deployment" began the next.
         return `\u00a0· <span class="nobr">${usd(b.removed, true)}</span> from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, <span class="nobr">${usd(b.all, true)}</span> in all` : ''}`;
       };
@@ -2247,7 +2280,10 @@
       const realizedFig = (m, xs, v) => (noneYet(m, xs) ? 'None yet' : usd(v, true));
       const byMode = (m) => d.deployments.filter((x) => x.mode === m);
       const liveDeps = byMode('live'), paperDeps = byMode('paper'), demoDeps = byMode('demo');
-      const liveRealized = listed('live', liveDeps), paperRealized = listed('paper', paperDeps), demoRealized = listed('demo', demoDeps);
+      const liveRealized = shown('live', liveDeps), paperRealized = shown('paper', paperDeps), demoRealized = shown('demo', demoDeps);
+      // The listed paper deployments beside Live realized, before any of them closed a trade: "$0.00 on paper" read as
+      // paper trading flat (the figures say None yet for that everywhere else).
+      const paperNone = !paperRealized && paperDeps.every((x) => !+x.closed_trades && !+x.realized_pnl);
       // The listed paper deployments' figure after typical live slippage (the server's, beside `listed` only).
       const paperSlip = books.paper && books.paper.slippage_estimate;
       // Running and placing orders: a live deployment while live trading is closed, or a Bitcoin perpetual
@@ -2261,19 +2297,19 @@
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
-      paint(root.querySelector('#dfigs'), fig('Running', num(active.length), { small: `${num(d.deployments.length - running.length)} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
+      paintKeep(root.querySelector('#dfigs'), fig('Running', num(active.length), { small: `${num(d.deployments.length - running.length)} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed${removedNote('paper')}, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
+          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length && paperNone ? `\u00a0· no paper trade closed yet on the deployments listed${removedNote('paper', paperDeps)}` : paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed${removedNote('paper', paperDeps)}, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
           // Beside a Demo realized figure the paper one names its book: a bare "Realized" next to "Demo realized" read
           // as the board's total, demo included. Paper alone keeps "Realized".
-          : paperDeps.length || !demoDeps.length ? fig(listedLab(demoDeps.length ? 'Paper realized' : 'Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +
-        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}\u00a0· after Kalshi fees${noneYet('demo', demoDeps) ? '' : DEMO_RELOAD_KEPT}` }) : '') +
+          : paperDeps.length || !demoDeps.length ? fig(listedLab(demoDeps.length ? 'Paper realized' : 'Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper', paperDeps)}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +
+        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo', demoDeps)}\u00a0· after Kalshi fees${noneYet('demo', demoDeps) ? '' : DEMO_RELOAD_KEPT}` }) : '') +
         fig('Open positions', openSplit) +
         // Money says plainly what runs: "PAPER · nothing on live money" read oddly (walk 2026-10-30). A live deployment
         // listed but not running (paused) keeps "nothing running" on live money: it may still hold live positions.
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : liveDeps.length ? 'Nothing running on live money' : runDemo ? (runPaper ? 'Paper and demo only, nothing live' : 'Demo only, nothing live') : 'Paper money only, nothing live' }));
       const regs = curveRegs(d.deployments);
-      paint(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
+      paintKeep(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and deploy it here. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>'}</div>`);
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       // The board's read never waits on Kalshi: a demo check that needs the demo cash while the server's memo
@@ -2295,7 +2331,7 @@
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell. An old mark's figure
       // is dimmed and its time says how old (markFig, markedAt).
       const posUnreal = (p) => `<div class="pos-unreal">${markFig(p.mark_ts, money(p.unrealized))}${posMarked(p)}</div>`;
-      paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Position</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
+      paintKeep(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Position</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num"${closeData(p.market_close_time, 'settleTime')} data-lab="Settles">${esc(closeWords(p.market_close_time, 'settleTime'))}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };

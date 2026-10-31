@@ -521,6 +521,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(losing, /net P&amp;L above \$0 \(now <span class="amt">−\$13\.56<\/span>\)/);
     assert.match(losing, /every fill at \$0 or above \(now <span class="amt">−\$2\.00<\/span>\)/);
     assert.match(losing, /its newer trades above \$0 \(now <span class="amt">−\$0\.40<\/span>\)/);
+    // No newer trade closed yet: the sentence says so, as the check's row does ("—"); it read "(now $0.00)" (walk 2026-10-31).
+    const fresh = await road({...base, paper: {...paper, trades: 0, recent_trades: 0, recent_net_pnl: 0, checks: {...paper.checks, recent: false}}});
+    assert.match(fresh, /its newer trades above \$0 \(none closed yet\)/);
+    assert.doesNotMatch(fresh, /newer trades above \$0 \(now/);
     assert.doesNotMatch(near, /road-eta/);  // the counts are in, so no estimate for them
     // A paused or stopped record isn't growing, so there is no estimate; it says what to do.
     assert.match(await road({...base, pace: {running: false}}, [d(1, 'paper', 'paused')]), /paused, so its record isn’t growing\. <a href="\/deploy">Resume it on Deploy<\/a>/);

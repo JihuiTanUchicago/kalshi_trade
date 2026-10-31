@@ -166,7 +166,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
       // Each signed amount sits in a no-wrap span (walk 2026-10-27 at 390px: "· −" ended a line, "$0.30 from …" began the
       // next); the words around it are read without the span.
       const html = visible(f.root.querySelector('#dfigs').innerHTML);
-      for (const m of html.matchAll(/removed deployments?/g)) assert.match(html.slice(Math.max(0, m.index - 60), m.index), /<span class="nobr">[−+]?\$[\d.,]+<\/span> from \d+ $/);
+      for (const m of html.matchAll(/removed deployments?/g)) assert.match(html.slice(Math.max(0, m.index - 60), m.index), /(<span class="nobr">[−+]?\$[\d.,]+<\/span>|· all) from \d+ $/);
       return html.replace(/<span class="nobr">([−+]?\$[\d.,]+)<\/span>/g, '$1');
     };
     const paper = await board({deployments: [dep({realized_pnl: 146.04})],
@@ -192,7 +192,51 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     for (const html of [paper, books]) assert.ok(!/ ·/.test(html) && html.includes(' · '), html);
     // An empty board with removed deployments: no "listed below" over an empty list.
     const empty = await board({deployments: [], realized_by_book: {paper: {listed: 0, removed: 5.72, removed_deployments: 2, all: 5.72}}});
-    assert.match(empty, /<dt class="lab">Realized<\/dt>[\s\S]*\+\$5\.72 from 2 removed deployments, \+\$5\.72 in all/);
+    // Its figure is the book's (walk 2026-10-31: it read "$0.00" over "+$0.02 from 1 removed deployment, +$0.02 in all").
+    assert.match(empty, /<dt class="lab">Realized<\/dt>[\s\S]*\+\$5\.72[\s\S]*paper money, not real · all from 2 removed deployments · after Kalshi fees/);
+    assert.doesNotMatch(empty, /\$0\.00|in all|None yet/);
+    const lone = await board({deployments: [], realized_by_book: {paper: {listed: 0, removed: -0.3, removed_deployments: 1, all: -0.3}}});
+    assert.match(lone, /<dt class="lab">Realized<\/dt>[\s\S]*−\$0\.30[\s\S]*all from 1 removed deployment ·/);
+    // Beside Live realized, listed paper deployments with no closed trade say so, never "$0.00 on paper" (trading flat).
+    const flat = await board({deployments: [dep({id: 1, mode: 'live', realized_pnl: -1.59}), dep({id: 2, mode: 'paper', realized_pnl: 0, closed_trades: 0})],
+      realized_by_book: {live: {listed: -1.59, removed: 0, removed_deployments: 0, all: -1.59}, paper: {listed: 0, removed: 0, removed_deployments: 0, all: 0}}});
+    assert.match(flat, /real money · after Kalshi fees · no paper trade closed yet on the deployments listed/);
+    assert.doesNotMatch(flat, /\$0\.00/);
+  });
+
+  // The 10s poll rewrites the rows and open positions whenever a mark or an age moved: focus on a row's Pause, its
+  // strategy link or a contract link fell to the page's body each time (walk 2026-10-31). It stays on the same
+  // control's copy; once that control is gone (the row left), focus is not handed to another row's.
+  test(`${name}: a poll that repaints the board keeps focus on the same control, never another row's`, async () => {
+    let unreal = 0.1, ids = [1, 2];
+    const pos = (id) => ({id: 70 + id, deployment_id: id, title: 'Dep ' + id, ticker: `KXBTC15M-26OCT311645-${id}`, side: 'yes', qty: 2,
+      entry_price: 0.4, entry_fee: 0.02, mode: 'paper', unrealized: unreal * id, mark_ts: '2026-10-31T12:00:00Z', market_close_time: '2026-10-31T12:45:00Z'});
+    const f = frontend({fetchImpl: path => path.startsWith('/api/deployments')
+      ? response({deployments: ids.map((id) => dep({id, strategy_id: 10 + id, title: 'Dep ' + id, open_positions: 1, unrealized_pnl: unreal * id})), open_positions: ids.map(pos)})
+      : response({})});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const poll = f.intervals.get(f.S.timers.at(-1)); assert.equal(typeof poll, 'function');
+    const deps = () => f.root.querySelector('#deps'), open = () => f.root.querySelector('#openpos');
+    // Each harness records the focus a script hands an element; activeElement is set here as the browser would.
+    const hold = (el) => { el.focus(); f.document.activeElement = el; };
+    for (const [label, pick] of [
+      ['Pause', () => deps().querySelector('[data-dep="2"][data-act="pause"]')],
+      ['strategy link', () => deps().querySelector('a[href="/strategies/12"]')],
+      ['contract link', () => open().querySelector('a[href="/explore?m=KXBTC15M-26OCT311645-2"]')],
+    ]) {
+      const was = pick(); hold(was);
+      unreal += 0.05; poll(); await settle();
+      const now = pick();
+      assert.equal(was.isConnected, false, label + ': the poll repainted it');
+      assert.equal(now.focusOptions && now.focusOptions.preventScroll, true, label);
+    }
+    // The focused row leaves: focus stays where it fell, not on the other row's Pause.
+    hold(deps().querySelector('[data-dep="2"][data-act="pause"]'));
+    ids = [1]; poll(); await settle();
+    assert.equal(f.root.querySelector('[data-dep="2"]'), null);
+    assert.equal(deps().querySelector('[data-dep="1"][data-act="pause"]').focusOptions, undefined);
+    assert.equal(postRequests(f).length, 0);
   });
 
   // A demo copy the demo-copy sync paused while its paper deployment isn't running would be paused again

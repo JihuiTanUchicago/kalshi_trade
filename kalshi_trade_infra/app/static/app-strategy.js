@@ -425,7 +425,8 @@ window.TauPage('strategy', (T) => {
     if (c.net_pnl === false) left.push(`net P&amp;L above $0 (now ${roadAmt(p.net_pnl)})`);
     if (c.span === false) left.push(`${num(Math.ceil(p.span_needed_hours - p.span_hours))}h more of record (${num(Math.floor(p.span_hours))}h of ${num(p.span_needed_hours)}h)`);
     if (c.edge === false) left.push(p.p_value == null ? 'the edge test, run once the trades and events are in' : `a clearer edge (p ${roadP(p.p_value)}, needs ${p.p_value_needed.toFixed(2)} or lower)`);
-    if (c.recent === false) left.push(`its newer trades above $0 (now ${roadAmt(p.recent_net_pnl)})`);
+    // With no newer trade closed yet it says so, as the check's own row does ("—"): it read "(now $0.00)" beside that "—".
+    if (c.recent === false) left.push(`its newer trades above $0 (${+p.recent_trades ? `now ${roadAmt(p.recent_net_pnl)}` : 'none closed yet'})`);
     if (c.demo === false) {
       left.push(+p.demo_orders < +p.demo_orders_needed ? more(+p.demo_orders, +p.demo_orders_needed, 'demo orders') + (demoOn ? '' : ' on a demo deployment')
         : p.demo_unresolved ? `${num(p.demo_unresolved)} lost demo order${p.demo_unresolved === 1 ? '' : 's'} accounted for`
