@@ -2755,7 +2755,10 @@
     const guarded = (s.auto_paused || []).length;
     const auto = (did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`)
       + (guarded ? ` ${plural(guarded, 'strategy was', 'strategies were')} paused automatically to stop a loss.` : '');
-    const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
+    // While the server's live switch is closed a live-ready strategy stays on paper and a promote is refused: the
+    // strip said "is ready for live trading. Going live is your call." beside a bell that said it waits (walk 2026-10-31).
+    const needs = (ms.live_ready || []).slice(0, 3).map((sid) => liveOpen() ? `${named(sid)} is ready for live trading. Going live is your call.`
+      : `${named(sid)} cleared every paper-to-live check. Live trading isn\u2019t open yet, so it stays on paper and nothing trades real money.`);
     // A demo book paused for its missing demo key says the reason once: the demo line below says what it needs,
     // with "Add it on the Funds page" as its link. The row said the engine's "Add your Kalshi demo (sandbox) key on
     // the Funds page to run this on demo" and the next line said it again. Any other reason that sends someone to

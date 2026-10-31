@@ -6011,6 +6011,10 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.doesNotMatch(text, /Nothing new passed/);
   // Live-ready is the week's next step, first under Needs you; the runway warns before the pause.
   assert.match(text, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> is ready for live trading\. Going live is your call\./);
+  // Live trading closed on the server: it waits on paper, as the bell says, never "Going live is your call".
+  const shut = await strip({}, {live_trading_available: false});
+  assert.match(shut, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> cleared every paper-to-live check\. Live trading isn\u2019t open yet, so it stays on paper and nothing trades real money\./);
+  assert.doesNotMatch(shut, /ready for live trading|Going live is your call/);
   // Counted to the pause, not to $0: $6.15 above the $1.00 floor at $27.45 a week.
   assert.match(text, /Research pauses in about 2 days at this week’s pace, when credits fall under \$1\.00\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
   // Auto-reload on: no runway warning. A plenty balance: none either.
