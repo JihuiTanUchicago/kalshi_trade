@@ -90,18 +90,24 @@ window.TauPage('strategies', (T) => {
       // Under the Deployed toggle every counted strategy passed (only passed ones deploy), so its rate read
       // a meaningless 100%: it is left out there rather than shown.
       const rate = total && !f.deployed ? c('passed') / total : null;
-      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), num(c('passed')), { small: c('not_cleared') ? `${num(c('not_cleared'))} more passed but ${c('not_cleared') === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig(gl('Void on unseen data', 'void'), num(c('failed') - c('failed_no_record')), { small: c('failed_no_record') ? `${num(c('failed_no_record'))} more ${c('failed_no_record') === 1 ? 'was' : 'were'} void on a backtest that wasn’t held out` : '' }) + fig(gl('Rejected in testing', 'rejected'), num(c('rejected'))) +
+      // The seeded example's strategies are out of these figures but in the chips below (marked Example): a new
+      // account's "Rejected in testing 0" sat over a "Rejected (2)" chip with nothing saying why (walk 2026-10-31).
+      // A figure says so when the example has rows of its status.
+      const ex = counts.examples || {}, exN = (st) => +ex[st] || 0;
+      const exOut = (st) => exN(st) ? `not counting the example’s ${num(exN(st))}` : '';
+      const notes = (...xs) => xs.filter(Boolean).join(SEP);
+      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), num(c('passed')), { small: notes(c('not_cleared') ? `${num(c('not_cleared'))} more passed but ${c('not_cleared') === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '', exOut('passed')) }) + fig(gl('Void on unseen data', 'void'), num(c('failed') - c('failed_no_record')), { small: notes(c('failed_no_record') ? `${num(c('failed_no_record'))} more ${c('failed_no_record') === 1 ? 'was' : 'were'} void on a backtest that wasn’t held out` : '', exOut('failed')) }) + fig(gl('Rejected in testing', 'rejected'), num(c('rejected')), { small: exOut('rejected') }) +
         // Its denominator said: Research's rate is of every idea tested (most never become a strategy), so the
         // two pages read 8.6% and 12.0% for one account with nothing saying why. With nothing tested yet (a new
         // account, or a market with none) it says so, where it read a bare "—".
         fig('Pass rate', rate != null ? pct(rate, false) : f.deployed ? '—' : 'None yet', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : rate != null ? `of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : 'shows once a strategy here is tested' });
-      if (!tau) root.querySelector('#strategy-passrate').textContent = rate != null ? `${pct(rate, false)} pass rate, of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : 'Research results';
+      const exAll = Object.keys(ex).reduce((a, st) => a + exN(st), 0);
+      if (!tau) root.querySelector('#strategy-passrate').textContent = rate != null ? `${pct(rate, false)} pass rate, of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here${exAll ? `, not counting the example’s ${num(exAll)}` : ''}` : 'Research results';
       const kept = total - c('failed') - c('rejected');
       // Each chip counts the rows it lists. The seeded example's strategies are out of the figures above, but a chip
       // lists them (marked Example): "Rejected (0)" opened on the two example rows (walked 2026-10-31). The server
       // counts them per status (counts.examples) and lists the kept ones under Kept, as its matched total does.
       // Grouped in thousands as every count is: a busy autopilot's "Kept (1234)".
-      const ex = counts.examples || {}, exN = (st) => +ex[st] || 0;
       const exKept = Object.keys(ex).filter((st) => st !== 'failed' && st !== 'rejected').reduce((a, st) => a + exN(st), 0);
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${num(c(v) + exN(v))})` : `Kept (${num(kept + exKept)})`; if (v === 'not_cleared') b.hidden = !c(v) && !exN(v) && f.status !== v; });
       const depChip = root.querySelector('[data-toggle="deployed"]');

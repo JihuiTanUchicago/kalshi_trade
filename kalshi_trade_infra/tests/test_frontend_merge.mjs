@@ -611,7 +611,8 @@ test('the dashboard lists five deployments and positions, paused first, and link
   }});
   await f.viewDashboard(); await flush();
   const deps = f.root.querySelector('#dash-deps').innerHTML;
-  const shown = [...deps.matchAll(/href="\/strategies\/(\d+)"/g)].map((m) => m[1]);
+  // Each row's name links its strategy (its Backtest estimate cell links there too, for a row with no figure).
+  const shown = [...deps.matchAll(/<td class="name" data-lab=""><a href="\/strategies\/(\d+)"/g)].map((m) => m[1]);
   assert.deepEqual(shown, ['7', '1', '2', '3', '4']);  // the paused one needs the user, so it leads
   assert.match(deps, /See all 7 deployments on Deploy/);
   assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-deps"><em>1 paused, needs you<\/em><\/a>/);
@@ -638,6 +639,49 @@ test('the research status line links its "add an idea" ask to the form', async (
     // The page paints its shell twice (instant switch, then content); the bell reads once.
     assert.equal(f.requests.filter(({path}) => path === '/api/notifications').length, 1);
   }
+});
+
+test('Tau: with autopilot on and nothing tested yet, Research says it starts its first session itself', async () => {
+  // First-hour walk 2026-10-31: under "Autopilot is on", the line read "Describe an idea to start your first session", as
+  // though nothing would happen until the reader wrote one. Paused for credits, or with a session queued, it reads as before.
+  const said = async (autopilot, queued = 0, ap = {}) => {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: queued}, policy: null});
+      if (path.startsWith('/api/research/scoreboard')) return response({});
+      if (path === '/api/autopilot/status') return response({autopilot, mode: autopilot ? 'paper' : 'off', ...ap});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = autopilot; f.S.ap = {autopilot, mode: autopilot ? 'paper' : 'off', ...ap};
+    await f.viewResearch(); await flush(); await flush();
+    const html = f.root.querySelector('#rstatus .said').innerHTML;
+    f.clearTimers();
+    return html;
+  };
+  const on = await said(true);
+  assert.equal(on, 'Nothing tested yet. Autopilot is picking its first idea and starts the session itself, listed with your sessions. You can also <a href="#dispatch">describe an idea</a> yourself.');
+  assert.doesNotMatch(on, /to start your first session|below|above/);
+  for (const html of [await said(false), await said(true, 1), await said(true, 0, {billing_blocked: true})])
+    assert.equal(html, 'Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.');
+});
+
+test('Tau: a Deploy row with no backtest figure to scale says where its unseen-data result is, not a bare dash', async () => {
+  // First-hour walk 2026-10-31: a research-session strategy keeps its unseen-data result with the gatekeeper, not in its
+  // backtest, so the first strategy autopilot put on paper read "Backtest estimate —" on the dashboard and Deploy.
+  const dep = (id, extra) => ({id, strategy_id: 40 + id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 5.73, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 20,
+    backtest: {out_of_sample: null}, ...extra});
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/deployments') return response({deployments: [dep(1), dep(2, {backtest_only: true})], open_positions: []});
+    return response({});
+  }});
+  await f.viewDeploy(); await flush(); await flush();
+  const cells = [...f.root.querySelector('#deps').innerHTML.matchAll(/<td class="num" data-lab="Backtest estimate"[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1]);
+  assert.equal(cells.length, 2);
+  assert.equal(cells[0], '<span class="sub-fig bt-held">Its unseen-data result is on <a href="/strategies/41">its page</a></span>');
+  // A backtest-only row has no held-out result anywhere: it keeps its dash.
+  assert.equal(cells[1], '\u2014');
 });
 
 test('the research headline uses all-time totals, not the 50 newest runs', async () => {

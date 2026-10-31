@@ -370,4 +370,44 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
       assert.ok(keyed.at('Kalshi account (live money)') < keyed.at('Kalshi demo (sandbox) account') && keyed.at('Kalshi demo (sandbox) account') < keyed.at('Paper account (simulation)'), JSON.stringify(keys));
     }
   });
+
+  test(`${name}: one research session that has ended reads "started, now finished", not two bare verbs`, async () => {
+    // First-hour walk 2026-10-31: the strip read "1 strategy passed: … · 1 research session started, finished."
+    const at = async (runs, passed = {n: 0, items: []}) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/dashboard')) return response({...dashboard(), deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: false,
+          books: {paper: {pnl: 0, trades: 0}}, autopilot: {}, passed, runs}});
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        throw new Error('Unexpected offline request: ' + path);
+      }});
+      await f.viewDashboard(); await flush();
+      f.clearTimers();
+      return f.root.querySelector('#dash-since').innerHTML;
+    };
+    const done = await at({succeeded: 1}, {n: 1, items: [{id: 9, title: 'Rain'}]});
+    assert.match(done, /1 research session started, now finished<\/span>\./);
+    assert.doesNotMatch(done, /started, finished/);
+    assert.match(await at({succeeded: 1}), /1 research session started, now finished, <a href="\/research">see what each idea missed<\/a>/);
+    assert.match(await at({failed: 1}), /1 research session started, now failed</);
+    // Still going, or more than one: as before.
+    assert.match(await at({running: 1}), /1 research session started, still running, /);
+    assert.match(await at({succeeded: 2}), /2 research sessions started, all finished, /);
+  });
+
+  test(`${name}: after Buy credits redraws Billing, focus is on the new Buy credits, not the page`, async () => {
+    // First-hour walk 2026-10-31 (keyboard): the purchase redraws the panel and focus fell to <body>, so a keyboard or
+    // screen-reader user started again from the top after every purchase.
+    const f = billingPage(cardedBilling(), [], {'/api/billing/topup': () => response({ok: true, balance: 27.4213, charged: 21.10})});
+    await f.viewBilling(); await flush();
+    const btn = f.root.querySelector('#topup-btn');
+    btn.focus(); f.document.activeElement = btn;
+    btn.blur = () => { f.document.activeElement = f.document.body; };
+    await btn.onclick({currentTarget: btn}); for (let i = 0; i < 8; i++) await flush();
+    assert.match(f.root.querySelector('#topup-flash').innerHTML, /Added \$20\.00 in credits\./);
+    const now = f.root.querySelector('#topup-btn');
+    assert.notEqual(now, btn, 'the panel was drawn again');
+    assert.equal(now.focusOptions && now.focusOptions.preventScroll, true, 'focus is on the new Buy credits');
+    f.clearTimers();
+  });
+
 }
