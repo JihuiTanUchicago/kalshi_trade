@@ -963,6 +963,15 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // The second model that reads each idea before its test, by what it does (the verdicts already say
   // "The skeptic's review didn't pass it"), and its call in words, not the agent's codes.
   const REVIEW_SAID = { approve: 'approved', revise: 'asked for changes', reject: 'turned it down' };
+  // The empty log's line by the session's state. A session that ended (finished, failed, stopped) with no line logged
+  // says so plainly; one queued, paused or silent isn't spinning up either. Only a running one is starting.
+  const EMPTY_SAID = {
+    running: tau ? 'Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.' : 'Waiting for the first event.',
+    queued: 'Waiting for the first event. The session starts once an agent is free.',
+    paused: 'No events yet. Resume the session and its first event shows here.',
+    silent: 'No events recorded yet.',
+    done: 'No events were recorded for this session.',
+  };
   function runFeed(section) {
     const log = section.querySelector('.log');
     const jump = section.querySelector('.jumplatest');
@@ -1137,6 +1146,13 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       },
       // `said`: a finished session's status in the Status figure's words (runDoneText), said once if it ends while open.
       state(st, wait, said) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
+        // A log with no line yet says the session's state (EMPTY_SAID): "the agent is spinning up" sat under sessions
+        // that had finished or failed with nothing logged (audit 2026-10-31). Only one starting now says it.
+        const ph = log.querySelector('.log-empty');
+        if (ph) {
+          const empty = EMPTY_SAID[st === 'running' && wait && wait.overdue ? 'silent' : st] || EMPTY_SAID.running;
+          if (ph.textContent !== empty) ph.textContent = empty;
+        }
         if (st === 'done' && pulseKind && pulseKind !== 'done' && said) announce(`This session has ended: ${said}.`);
         ended = st === 'done';
         if (!tau) {
@@ -1655,7 +1671,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each idea, its backtest and its verdict as they happen. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
-        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
     } else {
       shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="flash"></div>

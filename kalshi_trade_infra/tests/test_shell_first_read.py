@@ -346,7 +346,7 @@ def _dashboard_db(monkeypatch, deps=()):
         "deployment_curves": lambda *a, **k: {}, "positions_version": lambda cur, uid: (0, 0, 0),
         "paper_ledger_summary": lambda cur, uid: {"balance": 1000.0, "deposited": 1000.0, "reset_at": None},
         "paper_ledger_version": lambda cur, uid: (1, 1),
-        "daily_pnl": lambda *a, **k: [], "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
+        "daily_pnl": lambda *a, **k: [], "activity_since": lambda cur, uid, since, **k: {"autopilot": {}, "runs": {}},
         "passed_since": lambda cur, uid, since, **k: {"n": 0, "items": []},
         "demo_equity": lambda cur, uid, realized=None: {"capital": 1000.0, "equity": 1003.5, "realized": 3.5, "roi": .0035,
                                                         "before_reload": 0},

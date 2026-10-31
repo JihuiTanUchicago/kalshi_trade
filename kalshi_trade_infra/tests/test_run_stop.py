@@ -110,6 +110,23 @@ def test_a_silent_session_is_counted_out_of_running_and_its_row_says_so(monkeypa
     assert edge < server._silent_before()
 
 
+def test_the_dashboards_since_strip_counts_a_silent_session_apart_by_the_same_line(monkeypatch):
+    """Home's since-your-visit strip said "1 running" for a session the Research page listed as "Silent 5 min" under
+    "Running 0" (walk 2026-10-31). The strip's read now draws the line the counts and the rows draw (_silent_before),
+    so a running session past the reaper's limit comes back as `silent`."""
+    from app.web.routes import dashboard as dashboard_routes
+    now = repo.now_utc()
+    quiet, beating = (now - server.timedelta(seconds=server.RUN_OVERDUE_SECONDS + 60), now - server.timedelta(seconds=30))
+    seen = {}
+    monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since, silent_before=None:
+                        seen.update(cut=silent_before) or {"autopilot": {}, "runs": {"queued": 1, "silent": 1}})
+    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since, **k: {"n": 0, "items": []})
+    monkeypatch.setattr(dashboard_routes, "_later_verdicts", lambda cur, uid, items: {})
+    out = server._since_visit(None, 1, now - server.timedelta(hours=2), False, {})
+    assert out["runs"] == {"queued": 1, "silent": 1}
+    assert seen["cut"] is not None and quiet < seen["cut"] < beating
+
+
 def test_the_run_page_carries_why_the_session_stopped(monkeypatch):
     """A session that stopped with no strategies read "Each strategy below says which check it missed";
     the page now says why it stopped, from the same services.run_stop the list uses."""

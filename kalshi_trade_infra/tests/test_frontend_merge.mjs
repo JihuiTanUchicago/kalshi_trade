@@ -66,6 +66,7 @@ import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
+import {sessionStateCases} from './session_state_frontend_cases.mjs';
 import {firstSessionCases} from './first_session_frontend_cases.mjs';
 import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 
@@ -6375,6 +6376,7 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
   assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
 });
 newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});
+sessionStateCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, dashboard: emptyDashboard});
 firstSessionCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn,
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 checkinCadenceCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, dashboard: emptyDashboard});
