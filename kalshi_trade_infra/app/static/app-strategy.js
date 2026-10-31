@@ -620,7 +620,8 @@ window.TauPage('strategy', (T) => {
       (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [`Later period${overDays(r.out_of_sample.days)}`, laterQual, r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
       // "Ideas tested", the session's count, as Meridian and the strategy lists say it: "Hypotheses tested 1 of 18"
       // said neither word the other pages use nor what the 1 was.
-      fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
+      // Its session's count, as the Strategies list reads it: 1 or more when known; null or a 0 not saved yet reads "—".
+      fig('Ideas tested', +s.hypotheses_tried > 0 ? num(s.hypotheses_tried) : '—', { small: !(+s.hypotheses_tried > 0) ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
     // Its title is the heading: a customer never sees its internal id (the zero-padded "No. 00002" it led with).
     root.querySelector('.board-title').outerHTML = boardTitle(s.title,

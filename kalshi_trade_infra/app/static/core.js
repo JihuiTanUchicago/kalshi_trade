@@ -1124,7 +1124,9 @@
   // so a session still queued isn't offered as if its ideas had been judged: "still queued", "all
   // running", "1 running, 2 finished". `point` (nothing passed) adds the link: what each idea missed
   // once any finished, else where to follow them.
-  const SINCE_RUN_STATES = [['queued', 'queued'], ['running', 'running'], ['paused', 'paused'], ['succeeded', 'finished'], ['failed', 'failed'], ['stopped', 'stopped']];
+  // `silent`: a running session past the reaper's limit, as the server counts it apart (activity_since), so the strip
+  // doesn't say "1 running" over a Research page listing it "Silent 5 min" under "Running 0".
+  const SINCE_RUN_STATES = [['queued', 'queued'], ['running', 'running'], ['silent', 'silent'], ['paused', 'paused'], ['succeeded', 'finished'], ['failed', 'failed'], ['stopped', 'stopped']];
   function sinceRunsState(runs, started, point) {
     const n = (k) => k === 'stopped' ? (runs.stopped || 0) + (runs.cancelled || 0) : runs[k] || 0;
     const known = SINCE_RUN_STATES.reduce((a, [k]) => a + n(k), 0);
@@ -1137,7 +1139,7 @@
       : parts.map(([c, w]) => `${num(c)} ${w}`).join(', ');
     if (!point) return state;
     return state + (n('succeeded') ? ', <a href="/research">see what each idea missed</a>'
-      : n('queued') || n('running') || n('paused') ? `, <a href="/research">follow ${started === 1 ? 'it' : 'them'} on Research</a>` : '');
+      : n('queued') || n('running') || n('silent') || n('paused') ? `, <a href="/research">follow ${started === 1 ? 'it' : 'them'} on Research</a>` : '');
   }
   // Each book's since-visit figure split by the strategy that traded it (the server's by_deployment, the
   // same rows, best first), shown for a book where two or more traded: "Paper −$24.19" alone hid that the
@@ -1216,10 +1218,22 @@
   // meanwhile, and the card never said so: someone back after a day read "Nothing open right now" and
   // not that a research session was running. Paper-waiting lines only (the others already say it).
   const AP_IDLE_PAPER = new Set(['flat', 'starting', 'waiting', 'market_closed']);
+  // Research as the Research page counts it (repo.active_run_counts, one rule for both pages): "N agents researching"
+  // for the sessions at work, a queued one said apart ("1 session queued"), and one silent past the reaper's limit in
+  // neither, as the server leaves it out of both counts. '' when none. The dashboard summed running and queued into
+  // "1 agent researching" over a Research page that read "Running 0 · Queued 1" (audit 2026-10-31).
+  function researchBusy(agents) {
+    const a = agents || {}, run = +a.research_running || 0, q = +a.research_queued || 0;
+    return [run ? `${num(run)} agent${run > 1 ? 's' : ''} researching` : '', q ? `${num(q)} session${q > 1 ? 's' : ''} queued` : ''].filter(Boolean).join(SEP);
+  }
   function apDoing(d) {
     if (!d || !d.autopilot) return '';
     if (d.billing_blocked) return 'paused';
-    if (d.research && (d.research.active || []).length) return 'researching';
+    // Its research.active holds the sessions queued to start too (research.queued): with only those, nothing is
+    // researching yet, and the pill read "researching" beside Research's "Running 0 · Queued 1".
+    const act = (d.research && d.research.active) || [];
+    if (act.length > ((d.research && d.research.queued) || []).length) return 'researching';
+    if (act.length) return 'session queued';
     if (d.reviewing) return 'reviewing';
     return d.paper_running ? `${num(d.paper_running)} on paper` : '';
   }
@@ -1357,6 +1371,6 @@
     demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, demoToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost,
-    pageLede, deploymentMode, sessionNo, olderRows
+    pageLede, deploymentMode, sessionNo, olderRows, researchBusy
   });
 })();

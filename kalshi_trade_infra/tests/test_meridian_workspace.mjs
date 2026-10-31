@@ -67,6 +67,7 @@ import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
+import {sessionStateCases} from './session_state_frontend_cases.mjs';
 import {firstSessionCases} from './first_session_frontend_cases.mjs';
 import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 
@@ -402,7 +403,8 @@ test('a strategy page stamps its status once: the verdict under the head drops a
 });
 
 test('strategy evidence identifies run-wide trial counts and places missing validation before backtest figures', async () => {
-  for (const [count, expected] of [[17, '17'], [0, '0'], [null, '—']]) {
+  // A 0 is its session's count not saved yet (a strategy is one of its session's ideas): unknown, "—", as null is.
+  for (const [count, expected] of [[17, '17'], [0, '—'], [null, '—']]) {
     const detail = detailStrategy({hypotheses_tried: count, experiment: null});
     const before = JSON.stringify(detail), f = strategyFrontend(detail);
     await f.viewStrategy(42); await flush();
@@ -416,7 +418,7 @@ test('strategy evidence identifies run-wide trial counts and places missing vali
     const saved = paper.querySelector('.saved-result');
     assert.equal(saved.tag, 'details'); assert.equal(saved.open, false);
     // The luck note sits under the Ideas tested figure, in Tau's words, and the folded result doesn't repeat it.
-    assert.equal(trials.textContent.includes('More ideas tried, more chance one passes by luck (multiple testing).'), count != null);
+    assert.equal(trials.textContent.includes('More ideas tried, more chance one passes by luck (multiple testing).'), count > 0);
     assert.equal(saved.textContent.includes('passes by luck'), false);
     assert.ok(f.root.querySelector('#dep-paper')); assert.ok(f.root.querySelector('#live-confirm input'));
     assert.equal(detail.status, 'passed'); assert.equal(JSON.stringify(detail), before);
@@ -1137,11 +1139,11 @@ test('Overview polling shares paper-running context only for a nonempty uniform 
   const paper = (id, status = 'running') => Object.freeze({...dashboardDeployment('paper', status), id, strategy_id: 100 + id, status_reason: 'Risk cap reached'});
   const first = paper(11), second = paper(22);
   const frames = [
-    {deployments: [first, second], agents: {research_running: 2, research_queued: 1}, context: 'Paper', activity: '3 agents researching'},
+    {deployments: [first, second], agents: {research_running: 2, research_queued: 1}, context: 'Paper', activity: '2 agents researching\u00a0· 1 session queued'},
     {deployments: [paper(11, 'paused'), second], agents: {research_running: 1, research_queued: 0}, context: null, activity: '1 agent researching'},
     {deployments: [first, Object.freeze({...paper(22, 'paused'), mode: 'demo'}), Object.freeze({...paper(33, 'stopped'), mode: 'live'})], agents: {research_running: 0, research_queued: 0}, context: null, activity: null},
     {deployments: [], agents: {research_running: 0, research_queued: 0}, context: null, activity: null},
-    {deployments: [first], agents: {research_running: 0, research_queued: 1}, context: 'Paper', activity: '1 agent researching'},
+    {deployments: [first], agents: {research_running: 0, research_queued: 1}, context: 'Paper', activity: '1 session queued'},  // queued is not researching, as on Research
   ];
   let data, poll, reads = 0;
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); reads++; return response(data); }});
@@ -6980,6 +6982,7 @@ test('a Deploy row’s details keep "Deployed" with its date and "Later-period P
   assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span> · <span class="nobr">unseen data<button[^>]*data-glo="unseen"[\s\S]*?<\/button><\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
+sessionStateCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, dashboard: dashboardData});
 firstSessionCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus, storageFor: m => m});
 checkinCadenceCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, dashboard: dashboardData});
 

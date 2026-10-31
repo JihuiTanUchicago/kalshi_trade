@@ -24,7 +24,7 @@
     shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, demoToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode,
-    sessionNo, olderRows
+    sessionNo, olderRows, researchBusy
   } = window.TauCore;
 
   const root = document.getElementById('app');
@@ -1710,7 +1710,12 @@
       verdictWord === 'did not pass' ? 'did\u00a0not\u00a0pass' : verdictWord].filter(Boolean).join(SEP);
     const pnlSub = !longSub ? '' : shortSub.replace(/\u00a0/g, ' ') === longSub.replace(/\u00a0/g, ' ') ? `<div class="sub-fig">${longSub}</div>`
       : `<div class="sub-fig bt-sub" title="${longSub}"><span class="bt-long">${longSub}</span><span class="bt-short" aria-hidden="true">${shortSub}</span></div>`;
-    const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
+    // Ideas tested is the count of the research session that found it (its run's hypotheses_tried), this idea included,
+    // so whenever it is known it is 1 or more, and it reads as the number in both themes. null: no session (an adjustment,
+    // which says so, or a shared copy). 0: the session's count isn't saved yet (it saves at the end of each round of
+    // ideas, and one stopped in its first round never saves it). Both are unknown and read "—" in both themes: Tau
+    // read 0 as "—" and Meridian as "0" (audit 2026-10-31).
+    const tried = +s.hypotheses_tried > 0 ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     // The Strategies search reads the name and the thesis, and a row shows only the name: a search for a word of the
     // thesis listed rows with the word nowhere on them (walked 2026-10-31). A row the search found by its thesis
@@ -2292,7 +2297,10 @@
       // none for 45 minutes, means the collector is down and new backtests run on missing prices. It names the feed it
       // means: "No backtest history yet" beside a passed strategy read as that strategy having no backtest (walked 2026-10-30).
       const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
-      const agentsBusy = d.agents.research_running + d.agents.research_queued;
+      // Research as the Research page counts it (one rule, the server's active_run_counts): researching is a session
+      // at work, a queued one is said apart, and one silent past the reaper's limit is in neither. "1 agent
+      // researching" sat over a Research page reading "Running 0 · Queued 1" (audit 2026-10-31).
+      const agentsBusy = researchBusy(d.agents);
       const paused = d.deployments.filter((x) => x.status === 'paused').length;
       const needs = stale || paused > 0;
       const accountsOpen = !!root.querySelector('#other-accounts[open]');
@@ -2334,7 +2342,7 @@
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
         ${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}
-        <div class="pagehead"><div class="overview-heading"><h1 class="page">Dashboard</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : cashInBand ? '' : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : ''}</div></div>`;
+        <div class="pagehead"><div class="overview-heading"><h1 class="page">Dashboard</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : cashInBand ? '' : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy}</a>` : ''}</div></div>`;
       const firstPaused = d.deployments.find((x) => x.status === 'paused');
       const depRegs = curveRegs(d.deployments);  // the status line's "paused, needs you" jumps here
       const deps = d.deployments.length

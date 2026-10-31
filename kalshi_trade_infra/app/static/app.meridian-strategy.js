@@ -615,7 +615,8 @@ window.TauPage('strategy', (T) => {
       // Strategies list's short form does ("later period · 9 days · unseen data"): it read "Unseen data over 9 days", or
       // "After the split date over 9 days", in neither's words. The qualifier keeps together, as the label's does.
       (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [`Later period${overDays(r.out_of_sample.days)}`, laterQual, r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
-      fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
+      // Its session's count, as the Strategies list reads it: 1 or more when known; null or a 0 not saved yet reads "—".
+      fig('Ideas tested', +s.hypotheses_tried > 0 ? num(s.hypotheses_tried) : '—', { small: !(+s.hypotheses_tried > 0) ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
     // How many figures the row holds (fig() opens each with <div class="m">): a research session's strategy has no
     // Return on capital, and its three figures sat in a four-column grid with an empty slot at the end. The grid
     // takes the count (.detail #figs[data-cols]), on first paint and after a what-if redraw.

@@ -181,7 +181,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
     pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it. A row
     whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
-    act = repo.activity_since(cur, uid, visit)
+    act = repo.activity_since(cur, uid, visit, silent_before=_silent_before())
     return {"at": visit, "first": first,
             "books": {m: _since_book(m, *b) for m, b in recent.items()},
             "passed": _passed_since(cur, uid, visit),

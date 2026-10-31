@@ -23,7 +23,7 @@
     waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, demoToday,
     sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER, apPillLabel, apAgo, apEvery, FOCUS_WORDS,
     creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount, exitWord, AP_FOCUS, KIND_LABEL, runwayLabel,
-    paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode, sessionNo, olderRows
+    paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode, sessionNo, olderRows, researchBusy
   } = window.TauCore;
 
   const root = document.getElementById('app');
@@ -1662,7 +1662,12 @@
       verdictWord === 'did not pass' ? 'did\u00a0not\u00a0pass' : verdictWord].filter(Boolean).join(SEP);
     const pnlSub = !longSub ? '' : shortSub.replace(/\u00a0/g, ' ') === longSub.replace(/\u00a0/g, ' ') ? `<div class="sub-fig">${longSub}</div>`
       : `<div class="sub-fig bt-sub" title="${longSub}"><span class="bt-long">${longSub}</span><span class="bt-short" aria-hidden="true">${shortSub}</span></div>`;
-    const tried = s.hypotheses_tried ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
+    // Ideas tested is the count of the research session that found it (its run's hypotheses_tried), this idea included,
+    // so whenever it is known it is 1 or more, and it reads as the number in both themes. null: no session (an adjustment,
+    // which says so, or a shared copy). 0: the session's count isn't saved yet (it saves at the end of each round of
+    // ideas, and one stopped in its first round never saves it). Both are unknown and read "—" in both themes: Tau
+    // read 0 as "—" and Meridian as "0" (audit 2026-10-31).
+    const tried = +s.hypotheses_tried > 0 ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const pickCell = opts.pick ? (bulkDeployable(s)
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select ${esc(s.title)} for deployment"></td>`
@@ -2169,7 +2174,10 @@
       // none for 45 minutes, means the collector is down and new backtests run on missing prices. It names the feed it
       // means: "No backtest history yet" beside a passed strategy read as that strategy having no backtest (walked 2026-10-30).
       const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
-      const agentsBusy = d.agents.research_running + d.agents.research_queued;
+      // Research as the Research page counts it (one rule, the server's active_run_counts): researching is a session
+      // at work, a queued one is said apart, and one silent past the reaper's limit is in neither. "1 agent
+      // researching" sat over a Research page reading "Running 0 · Queued 1" (audit 2026-10-31).
+      const agentsBusy = researchBusy(d.agents);
       // A deployment that places no orders (depIdle: live while live trading is closed) isn't counted running.
       const idle = d.deployments.filter(depIdle).length;
       const running = d.deployments.filter((x) => x.status === 'running').length - idle;
@@ -2182,7 +2190,7 @@
         // Paused rows list first; with nothing else on, the count is the whole story and Deploy is where to act on it.
         paused ? `<a class="needs-link" href="${running || idle ? '#dash-deps' : '/deploy'}"><em>${num(paused)} paused, needs you</em></a>` : '',
         // A link, as Meridian's is: where a new user goes to watch the autopilot's first session.
-        agentsBusy ? `<a href="/research">${num(agentsBusy)} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : '',
+        agentsBusy ? `<a href="/research">${agentsBusy}</a>` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No Bitcoin price history collected yet' : 'Bitcoin price history ' + age(d.freshness.btc) + ' behind'}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       // With no key connected the card still says what Tau's live trades hold and made (mSub), as Meridian's live summary and

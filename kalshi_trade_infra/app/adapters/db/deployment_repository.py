@@ -602,7 +602,7 @@ _AUTOPILOT_STRATEGIES = ("SELECT strategy_id FROM app_proposals WHERE user_id=%s
                          "AND status='applied' AND decided_at IS NULL AND strategy_id IS NOT NULL")
 
 
-def activity_since(cur, user_id: int, since) -> Dict:
+def activity_since(cur, user_id: int, since, silent_before=None) -> Dict:
     """What happened since `since` besides trades, in one read: the changes the autopilot made on
     its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...,
     plus `research`: the research sessions it started, its brief runs, which write no proposal),
@@ -620,13 +620,18 @@ def activity_since(cur, user_id: int, since) -> Dict:
     in the same read; a deleted strategy has none). Those passes happen days after the strategy was
     created, so passed_since never sees them. The strategies paused automatically to stop a loss
     (`auto_paused`, from their bell notices too): the engine's guards write no proposal, so `autopilot`
-    never counted them."""
+    never counted them.
+    With `silent_before` (views._silent_before), a running session whose last beat (or start) is older than it is
+    counted under `silent`, not `running`, by the line active_run_counts draws: the strip read "1 running" over a
+    Research page that listed the session as "Silent 5 min" and counted "Running 0" (walk 2026-10-31)."""
     week = now_utc() - timedelta(days=7)
+    run_k = ("status" if silent_before is None else
+             "CASE WHEN status='running' AND COALESCE(heartbeat_at, started_at, created_at) < %s THEN 'silent' ELSE status END")
     cur.execute(
         "SELECT 'ap' AS src, kind AS k, COUNT(*) AS n FROM app_proposals "
         "WHERE user_id=%s AND status='applied' AND decided_at IS NULL AND created_at>=%s GROUP BY kind "
-        "UNION ALL SELECT 'run' AS src, status AS k, COUNT(*) AS n FROM app_agent_runs "
-        "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY status "
+        "UNION ALL SELECT 'run' AS src, " + run_k + " AS k, COUNT(*) AS n FROM app_agent_runs "
+        "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY k "
         "UNION ALL SELECT 'ap' AS src, 'research' AS k, COUNT(*) AS n FROM app_agent_runs "
         "WHERE user_id=%s AND kind='research' AND created_at>=%s AND brief=1 GROUP BY kind "
         "UNION ALL SELECT 'own' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_agent_runs "
@@ -645,7 +650,7 @@ def activity_since(cur, user_id: int, since) -> Dict:
         "WHERE user_id=%s AND kind IN ('topup','autoreload') AND created_at>=%s GROUP BY kind "
         "UNION ALL SELECT 'bought_usd' AS src, kind AS k, SUM(amount_usd) AS n FROM app_credit_ledger "
         "WHERE user_id=%s AND kind IN ('topup','autoreload') AND created_at>=%s GROUP BY kind",
-        (user_id, since, user_id, since, DEMO_DIRECTION, user_id, since, user_id, DEMO_DIRECTION,
+        (user_id, since, *(() if silent_before is None else (silent_before,)), user_id, since, DEMO_DIRECTION, user_id, since, user_id, DEMO_DIRECTION,
          user_id, since, user_id, week, user_id, since, user_id, user_id, since, user_id, since),
     )
     out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,

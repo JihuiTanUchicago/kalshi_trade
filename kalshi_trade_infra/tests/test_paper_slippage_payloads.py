@@ -72,7 +72,7 @@ def _dashboard(monkeypatch, fills):
             realized, {"paper": 4, "live": 2, "demo": 1}, {m: (0.0, 0) for m in ("paper", "demo", "live")})
         + (({},) if split else ()) + ((fills_by_book,) if fills else ()),
         "daily_pnl": lambda *a, **k: [],
-        "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
+        "activity_since": lambda cur, uid, since, **k: {"autopilot": {}, "runs": {}},
         "passed_since": lambda cur, uid, since, **k: {"n": 0, "items": []},
         "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 501.0, "realized": 1.0, "roi": .002, "before_reload": 0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
