@@ -13,7 +13,9 @@ runs of the last few hours (plus everything still queued or running) and their e
   unclassified  many drops the classifier can't tag (rsi._DROP_RULES needs rules)
   repeat        one market researched again and again with nothing gated
   idle          an autopilot user with credit has had no research start for IDLE_MIN minutes, with
-                the newest system line the reviews posted (usually the refusal that is blocking it)
+                the newest system line the reviews posted (usually the refusal that is blocking it);
+                "low" when long-term memory has closed every market autopilot may research (Todd
+                2026-10-30), since idle is then the intended state
   features_stale  the newest features_1s hour in S3 is more than FEATURES_LAG_H behind the newest
                 raw Kalshi tick archive (the tick markets and the maker lab read those features)
 
@@ -163,8 +165,12 @@ def idle_anomalies(idle: List[Dict]) -> List[Dict]:
     for u in idle:
         since = ("for %.0f min (last run %s)" % (u["idle_min"], u["last_run_id"]) if u["last_run_id"]
                  else "and has never started one")
-        _flag(out, "high", "idle", None, "user %s: no research started %s; latest review note: %s" % (
-            u["user_id"], since, u["reason"] or "none posted"))
+        if u.get("exhausted"):
+            _flag(out, "low", "idle", None, "user %s: no research started %s, as intended: long-term memory "
+                  "closed every market autopilot may research and its probes have run" % (u["user_id"], since))
+        else:
+            _flag(out, "high", "idle", None, "user %s: no research started %s; latest review note: %s" % (
+                u["user_id"], since, u["reason"] or "none posted"))
         out[-1]["user_id"] = u["user_id"]
     return out
 
@@ -226,8 +232,19 @@ def load_idle(cur, now: datetime) -> List[Dict]:
                     "ORDER BY id DESC LIMIT 1", (uid, _naive(last["created_at"]) if last else now - timedelta(hours=6)))
         note = cur.fetchone()
         out.append({"user_id": uid, "idle_min": idle, "last_run_id": last and last["id"],
-                    "reason": note and str(note["content"])[:300]})
+                    "reason": note and str(note["content"])[:300], "exhausted": _exhausted(cur, uid)})
     return out
+
+
+def _exhausted(cur, uid: int) -> bool:
+    """Prod 2026-10-31 01:29Z on: the floor stood down by design (#676/#679) and the watch called it a
+    high idle alarm every 20 minutes."""
+    from app.research import agent
+    try:
+        return agent.autopilot_research_exhausted(cur, uid)
+    except Exception as e:  # noqa: BLE001 - unknown means alarm as before
+        print("[watch] exhausted check failed for user %s: %r" % (uid, e), flush=True)
+        return False
 
 
 def memory_rows(cur) -> List[Dict]:

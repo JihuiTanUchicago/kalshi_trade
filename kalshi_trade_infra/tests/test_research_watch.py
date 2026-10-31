@@ -192,3 +192,21 @@ def test_the_report_shows_the_long_term_memory(monkeypatch):
                      "ideas": 12, "lessons": 2, "changes": "kept",
                      "exhausted": {"btc15m": ["Kalshi lags spot (stale quotes)"]}}]
     assert rw.build_report([run], {7: events}, now, 3.0, memory=rows)["memory"] == rows
+
+
+def test_idle_is_low_when_long_term_memory_closed_every_market(monkeypatch):
+    """Prod 2026-10-31: after the last probe (01:29Z) the floor stood down by design (Todd 2026-10-30,
+    #676/#679) and every report carried a high idle flag. Idle is then expected, so it is low."""
+    from app.adapters.stripe import billing
+    from app.research import agent
+    monkeypatch.setattr(billing, "is_ready", lambda cur, uid: True)
+    monkeypatch.setattr(agent, "autopilot_research_exhausted", lambda cur, uid: uid == 1)
+    cur = _IdleCur({
+        1: ({"id": 4582, "created_at": NOW - timedelta(minutes=158)}, False, None),   # closed by memory
+        2: ({"id": 4590, "created_at": NOW - timedelta(minutes=60)}, False, None),    # idle by mistake
+    })
+    idle = rw.load_idle(cur, NOW)
+    assert [(u["user_id"], u["exhausted"]) for u in idle] == [(1, True), (2, False)]
+    flags = {a["user_id"]: a for a in rw.build_report([], {}, NOW, 3, idle)["anomalies"]}
+    assert flags[1]["severity"] == "low" and "as intended" in flags[1]["detail"]
+    assert flags[2]["severity"] == "high"
