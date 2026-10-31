@@ -120,6 +120,8 @@ def test_older_sessions_page_past_the_newest_and_number_from_the_users_own_count
     user, other = _user(cur), _user(cur)
     mine = [repo.create_run(cur, user["id"], "research", "btc15m", "momentum") for _ in range(repo.RUNS_LISTED + 7)]
     repo.create_run(cur, other["id"], "research", "btc15m", "momentum")  # never in this user's pages
+    # Finished, as six months of sessions are: one at work leads the first page however old (the next test).
+    cur.execute("UPDATE app_agent_runs SET status='succeeded', finished_at=%s WHERE user_id=%s", (repo.now_utc(), user["id"]))
     conn.commit()
     server._RUN_TOTALS.clear()
     first = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))
@@ -132,4 +134,49 @@ def test_older_sessions_page_past_the_newest_and_number_from_the_users_own_count
     assert [r["id"] for r in rest] == mine[::-1][repo.RUNS_LISTED:]
     assert [r["seq"] for r in rest] == list(range(7, 0, -1))
     assert sum(1 for r in older["runs"] if r["example"]) == 1  # the seeded example, on the last page
+    conn.commit()
+
+
+def test_a_session_at_work_leads_the_first_page_however_many_came_after_it(conn):
+    """A run-until-stopped session while the autopilot's short sessions pile up after it: the newest RUNS_LISTED had
+    passed it, so it was in no list while the head said "1 agent researching now" (walked 2026-10-31). The first page
+    carries it, unnumbered, ahead of the newest; its progress moves the list's version; the page's numbers and its
+    "Show older" cursor are those of the newest RUNS_LISTED, and the older page still holds it in its place."""
+    from app import repository as repo
+    from app import server
+
+    cur = conn.cursor()
+    user = _user(cur)
+    uid = user["id"]
+    at_work = repo.create_run(cur, uid, "research", "btc15m", "momentum", run_forever=True)
+    cur.execute("UPDATE app_agent_runs SET status='running', started_at=%s, heartbeat_at=%s WHERE id=%s",
+                (repo.now_utc(), repo.now_utc(), at_work))
+    after = [repo.create_run(cur, uid, "research", "eth15m", "momentum", brief=True) for _ in range(repo.RUNS_LISTED + 3)]
+    cur.execute("UPDATE app_agent_runs SET status='succeeded', finished_at=%s WHERE id IN (" + ",".join(["%s"] * len(after)) + ")",
+                (repo.now_utc(), *after))
+    conn.commit()
+    server._RUN_TOTALS.clear()
+    first = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))
+    ids = [r["id"] for r in first["runs"]]
+    assert ids == [at_work] + after[::-1][:repo.RUNS_LISTED]
+    assert first["runs"][0]["status"] == "running" and "seq" not in first["runs"][0]
+    assert first["counts"]["research_running"] == 1
+    total = len(after) + 1
+    assert first["own_total"] == total
+    assert [r["seq"] for r in first["runs"][1:]] == list(range(total, total - repo.RUNS_LISTED, -1))
+    # Its progress moves the version, though the newest RUNS_LISTED don't hold it.
+    v = first["v"]
+    assert server.list_runs(server.Ctx(conn, user, (), {"since": v}, {}, None)) == {"v": v, "same": True}
+    repo.update_run_progress(cur, at_work, 9, 0)
+    conn.commit()
+    server._RUN_TOTALS.clear()
+    moved = server.list_runs(server.Ctx(conn, user, (), {"since": v}, {}, None))
+    assert not moved.get("same") and moved["runs"][0]["hypotheses_tried"] == 9
+    # Show older pages from the oldest of the newest, and holds it in its place, numbered.
+    older = server.list_runs(server.Ctx(conn, user, (), {"before": str(ids[-1])}, {}, None))
+    own = [r for r in older["runs"] if not r["example"]]
+    assert [r["id"] for r in own] == after[::-1][repo.RUNS_LISTED:] + [at_work]
+    assert own[-1]["seq"] == 1
+    # Callers that want the newest N only (the agent, the worker) get them alone.
+    assert [r["id"] for r in repo.list_runs(cur, uid, limit=5)] == after[::-1][:5]
     conn.commit()

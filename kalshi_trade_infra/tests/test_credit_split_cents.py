@@ -156,7 +156,7 @@ def _quiet_research(monkeypatch, spent_usd):
     from tests.autopilot_status_parts import stub_merged_reads
 
     stub_merged_reads(monkeypatch)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: [])
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50, **k: [])
     monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [
         {"model": None, "runs": 1, "tried": 3, "passed": 0, "input_tokens": 0, "output_tokens": 0}])
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)

@@ -13,7 +13,7 @@ def _stub_list(monkeypatch, runs, own_total=None):
     counted = []
     monkeypatch.setattr(research_routes.repo, "active_run_counts", lambda *a, **k: {})
     monkeypatch.setattr(research_routes.repo, "list_runs_version", lambda *a, **k: [{"id": r["id"]} for r in runs])
-    monkeypatch.setattr(research_routes.repo, "list_runs", lambda cur, uid: [dict(r) for r in runs])
+    monkeypatch.setattr(research_routes.repo, "list_runs", lambda cur, uid, **k: [dict(r) for r in runs])
     monkeypatch.setattr(research_routes.repo, "runs_spent", lambda *a: {})
     monkeypatch.setattr(research_routes.repo, "get_policy", lambda *a: None)
     monkeypatch.setattr(research_routes, "_research_totals", lambda *a: {})

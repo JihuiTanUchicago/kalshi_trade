@@ -261,41 +261,59 @@ OUT_OF_CREDITS_STEP = "Paused \u2014 out of credits"
 RUNS_LISTED = 50  # the newest research sessions the Research list shows
 
 
-def list_runs(cur, user_id: int, limit: int = RUNS_LISTED, before: Optional[int] = None) -> List[Dict]:
+# A session at work (running, queued or paused) that the newest RUNS_LISTED have passed: a run-until-stopped session
+# while the autopilot's short sessions pile up after it. The Research list's first page carries it too.
+ACTIVE_RUN_STATUSES = "('running','queued','paused')"
+ACTIVE_RUNS_LISTED = 20  # a bound only: the session slots (MAX_ACTIVE_RESEARCH) hold a user to two
+_RUN_COLS = """r.id, r.market, r.direction, r.prompt, r.status, r.hypotheses_tried, r.strategies_passed,
+                  r.error, r.run_forever, r.created_at, r.started_at, r.finished_at, r.heartbeat_at,
+                  r.brief AS by_autopilot,
+                  CASE WHEN r.status='succeeded' AND r.run_forever=1 THEN EXISTS(
+                    SELECT 1 FROM app_agent_events e WHERE e.run_id=r.id AND e.kind='step' AND e.message LIKE %s)
+                  ELSE 0 END AS out_of_credits"""
+
+
+def list_runs(cur, user_id: int, limit: int = RUNS_LISTED, before: Optional[int] = None,
+              with_active: bool = False) -> List[Dict]:
     """The user's newest research sessions (with `before`, the newest older than that run id: the Research
     list's "Show older sessions" page). `by_autopilot` is 1 for a session the autopilot started
     (a brief run, which Billing calls "Autopilot research"), so the list can say whose it is.
     `out_of_credits` is 1 for a run-until-stopped session that finished because the credits ran out
     (its log holds OUT_OF_CREDITS_STEP), so the list can say why it stopped (services.run_stop). Still one statement: the log is probed only for a finished
-    run-until-stopped session, through idx_events_run_kind."""
-    cur.execute(
-        """SELECT r.id, r.market, r.direction, r.prompt, r.status, r.hypotheses_tried, r.strategies_passed,
-                  r.error, r.run_forever, r.created_at, r.started_at, r.finished_at, r.heartbeat_at,
-                  r.brief AS by_autopilot,
-                  CASE WHEN r.status='succeeded' AND r.run_forever=1 THEN EXISTS(
-                    SELECT 1 FROM app_agent_events e WHERE e.run_id=r.id AND e.kind='step' AND e.message LIKE %s)
-                  ELSE 0 END AS out_of_credits
-           FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research'""" + (" AND r.id<%s" if before else "") + """
-           ORDER BY r.id DESC LIMIT %s""",
-        (OUT_OF_CREDITS_STEP + "%", user_id, *((int(before),) if before else ()), int(limit)),
-    )
+    run-until-stopped session, through idx_events_run_kind.
+    `with_active` (the Research list's first page): every session at work too, running, queued or paused, older
+    than the newest `limit` or not, in the same statement, newest first. A run-until-stopped session the autopilot's
+    sessions had passed was in no list while the page's head said "1 agent researching now" (walked 2026-10-31)."""
+    newest = ("SELECT " + _RUN_COLS + " FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research'"
+              + (" AND r.id<%s" if before else "") + " ORDER BY r.id DESC LIMIT %s")
+    params = [OUT_OF_CREDITS_STEP + "%", user_id, *((int(before),) if before else ()), int(limit)]
+    if with_active and not before:
+        cur.execute(
+            "(" + newest + ") UNION (SELECT " + _RUN_COLS + " FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research'"
+            " AND r.status IN " + ACTIVE_RUN_STATUSES + " ORDER BY r.id DESC LIMIT %s) ORDER BY id DESC",
+            (*params, OUT_OF_CREDITS_STEP + "%", user_id, ACTIVE_RUNS_LISTED),
+        )
+    else:
+        cur.execute(newest, tuple(params))
     return cur.fetchall()
 
 
-def list_runs_version(cur, user_id: int, limit: int = 50) -> List[Dict]:
-    """Every field of the newest sessions that the research list derives what it shows from, except
-    the prompt and direction (never rewritten), and with the error as its CRC32; each row also carries
-    the user's newest credit-ledger id (a debit moves a session's spend) and their policy's fields. One
-    statement through idx_runs_user, idx_credit_user and the policy key: no log probe, no ledger sum.
-    services.research_list hashes it into the version the list's 5s poll sends back."""
+def list_runs_version(cur, user_id: int, limit: int = RUNS_LISTED) -> List[Dict]:
+    """Every field of the newest sessions, and of every session at work (list_runs' with_active), that the research
+    list derives what it shows from, except the prompt and direction (never rewritten), and with the error as its
+    CRC32; each row also carries the user's newest credit-ledger id (a debit moves a session's spend) and their
+    policy's fields. One statement through idx_runs_user, idx_credit_user and the policy key: no log probe, no
+    ledger sum. services.research_list hashes it into the version the list's 5s poll sends back."""
+    cols = """r.id, r.status, r.market, r.hypotheses_tried, r.strategies_passed, r.run_forever,
+                  r.started_at, r.finished_at, CRC32(r.error) AS err"""
     cur.execute(
-        """SELECT r.id, r.status, r.market, r.hypotheses_tried, r.strategies_passed, r.run_forever,
-                  r.started_at, r.finished_at, CRC32(r.error) AS err,
-                  (SELECT MAX(l.id) FROM app_credit_ledger l WHERE l.user_id=%s) AS ledger_top,
+        """SELECT x.*, (SELECT MAX(l.id) FROM app_credit_ledger l WHERE l.user_id=%s) AS ledger_top,
                   (SELECT CONCAT_WS('|', p.updated_at, p.score, p.base_score, CRC32(p.summary))
                      FROM app_policies p WHERE p.user_id=%s) AS policy
-           FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research' ORDER BY r.id DESC LIMIT %s""",
-        (user_id, user_id, user_id, limit),
+           FROM ((SELECT """ + cols + """ FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research' ORDER BY r.id DESC LIMIT %s)
+                 UNION (SELECT """ + cols + """ FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research'
+                        AND r.status IN """ + ACTIVE_RUN_STATUSES + """ ORDER BY r.id DESC LIMIT %s)) x ORDER BY x.id DESC""",
+        (user_id, user_id, user_id, limit, user_id, ACTIVE_RUNS_LISTED),
     )
     return cur.fetchall()
 

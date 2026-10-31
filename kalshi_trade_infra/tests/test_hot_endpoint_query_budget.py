@@ -384,6 +384,36 @@ def test_the_research_list_says_why_each_session_stopped_inside_its_budget(produ
     assert not any("out_of_credits" in r for r in out["runs"])
 
 
+def test_a_session_at_work_past_the_newest_rides_the_runs_read_and_leads_the_list(production):
+    """A run-until-stopped session the autopilot's short sessions had pushed past the newest RUNS_LISTED was in no
+    list beside "1 agent researching now" (walked 2026-10-31). The runs read carries it in the same statement (a
+    UNION with the sessions at work), and the list leads with it, unnumbered, inside the same budget."""
+    base = {"market": "btc15m", "direction": None, "prompt": "p", "hypotheses_tried": 4, "strategies_passed": 0,
+            "error": None, "created_at": None, "started_at": None, "finished_at": None, "heartbeat_at": None,
+            "run_forever": 0, "out_of_credits": 0}
+    newest = [dict(base, id=1000 - i, status="succeeded") for i in range(server.repo.RUNS_LISTED)]
+    rows = newest + [dict(base, id=3, status="running", run_forever=1)]
+
+    def poll(rs):
+        server._RUN_TOTALS.clear()
+        counts = []
+        for _ in range(2):
+            log = []
+            out = server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(r) for r in rs],
+                                                          "COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind='research' ": [{"n": 80}]}))
+            counts.append(len(log))
+        return out, log, counts
+
+    # Not one statement more than the same full page without it (a full page also counts the user's sessions).
+    out, log, counts = poll(rows)
+    assert counts == poll(newest)[2], counts
+    reads = [sql for sql, _ in log if "FROM app_agent_runs r WHERE r.user_id=%s" in sql and "UNION" in sql]
+    assert len(reads) == 2 and all("r.status IN ('running','queued','paused')" in sql for sql in reads), reads
+    assert [r["id"] for r in out["runs"]][:2] == [3, 1000]
+    assert "seq" not in out["runs"][0] and out["runs"][0]["stop_reason"] is None
+    assert len(out["runs"]) == server.repo.RUNS_LISTED + 1
+
+
 def test_an_unchanged_research_list_poll_reads_only_the_counts_and_the_version(production):
     base = {"market": "btc15m", "direction": None, "prompt": "p", "hypotheses_tried": 4, "strategies_passed": 0,
             "error": None, "created_at": None, "started_at": None, "finished_at": None, "heartbeat_at": None,

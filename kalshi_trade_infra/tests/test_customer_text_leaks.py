@@ -239,7 +239,7 @@ def test_the_agents_own_words_and_code_are_never_mistaken_for_an_error(monkeypat
 
 def test_the_research_list_never_shows_a_raw_error(monkeypatch):
     monkeypatch.setattr(repo, "get_policy", lambda *a: None)
-    monkeypatch.setattr(repo, "list_runs", lambda cur, uid: [
+    monkeypatch.setattr(repo, "list_runs", lambda cur, uid, **k: [
         {"id": 1, "status": "failed", "error": HOST, "direction": "x", "run_forever": 0},
         {"id": 2, "status": "stopped", "error": "The session was interrupted before it explored a hypothesis — start a new one.",
          "direction": "x", "run_forever": 0}])
