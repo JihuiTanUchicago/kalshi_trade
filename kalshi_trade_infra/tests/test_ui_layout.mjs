@@ -208,6 +208,8 @@ test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions ar
   assert.equal(decl(all, '.reactions .rx', 'min-width', COARSE), '44px');  // the "+" add-a-reaction was 43px wide
   assert.equal(decl(all, '.composer-post textarea', 'min-height', COARSE), '44px');
   assert.equal(decl(all, '.btn.sm', 'min-height'), '24px');
+  // A result's "Open it to deploy on paper" was a 16px-tall target at 1280px (axe target-size, walk 2026-10-31): 24px.
+  assert.ok(16 + 2 * px(decl(all, '.ri-why a', 'padding-block')) >= 24);
 });
 
 // Walk 2026-10-30 at 390px: Tau's pinned Community composer took about a quarter of the screen and covered the bottom of

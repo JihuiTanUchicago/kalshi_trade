@@ -1511,7 +1511,7 @@
   // ---------- timetable rows ----------
   // `inRun`: the table sits on its own session's page, where every row's "Ideas tested" was that session's
   // count again (a running session's counter, behind the Tested figure above it), so the column is left out.
-  const STRAT_HEAD = (pick, inRun, paper) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${paper ? `<th class="num" title="${PAPER_TIP}">Paper P&amp;L</th>` : ''}${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
+  const STRAT_HEAD = (pick, inRun, paper) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"><span class="vh pick-head">Select</span></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${paper ? `<th class="num" title="${PAPER_TIP}">Paper P&amp;L</th>` : ''}${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick, inRun, paper) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick, inRun, paper)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions. A pass a later check
@@ -2199,8 +2199,11 @@
         // the market page use. Walked 2026-10-30: a live position still held a day after its close read only "Oct 29,
         // 07:48 UTC" under Expiry, a date that read as still to come. Words only: the row, its book and figures are the server's.
         const pastClose = !closed && expiry && close.getTime() <= Date.now();
+        // The row's name reads as it shows, market then book (axe label-content-name-mismatch), then its strategy: it read
+        // "market · strategy · Demo" over a row that shows "market … Demo", whose words ran together ("minutesDemo") with
+        // nothing between them. The grid still places each where it was (a space between grid items draws nothing).
         return `<tr class="${closed ? 'settled-position' : 'open-position'}">
-        <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${esc(name)}${SEP}${esc(r.title)}${SEP}${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}">${ICON.chev}<span class="position-title vh">${esc(r.title)}</span><span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span><span class="position-market">${esc(name)}</span></summary><div class="sub-fig">${kalshiRef(r.ticker)}${SEP}${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${r.why ? `<span class="position-why">${sepLine(r.why)}</span>` : ''}${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? `<span class="position-mark-note">Unrealized: ${NOT_MARKED.toLowerCase()}</span>` : ''}</div></details></td>
+        <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${esc(name)}${SEP}${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}${SEP}${esc(r.title)}">${ICON.chev}<span class="position-market">${esc(name)}</span> <span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span> <span class="position-title vh">${esc(r.title)}</span></summary><div class="sub-fig">${kalshiRef(r.ticker)}${SEP}${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${r.why ? `<span class="position-why">${sepLine(r.why)}</span>` : ''}${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? `<span class="position-mark-note">Unrealized: ${NOT_MARKED.toLowerCase()}</span>` : ''}</div></details></td>
         <td class="position-size-cell"><span class="position-size"><span class="position-side">${esc(r.side.toUpperCase())}</span><span aria-hidden="true"> × </span><span class="position-quantity"><span class="vh">Quantity </span>${esc(r.qty)}</span></span></td>
         <td class="position-expiry-cell">${expiry ? `<time class="position-expiry" datetime="${esc(close.toISOString())}">${esc(expiry)}</time>${pastClose ? `<span class="position-expired">${MKT_STATUS.closed}</span>` : ''}` : '<span class="unavailable" title="Expiry unavailable"><span aria-hidden="true">—</span><span class="vh">Expiry unavailable</span></span>'}</td>
         <td class="num position-entry">${cents(+r.entry_price)}</td>
@@ -2931,8 +2934,9 @@
       host.className = 'apcard on';
       repaintKeep(host, () => S.apFailing ? `<div class="apcard-main">${notice(AP_CARD_UNREAD)}<button type="button" class="btn sm" data-apcard="again">Try again</button></div>` : '');
       const again = host.querySelector('[data-apcard="again"]');
-      // Back, the card (named Autopilot) takes focus: the button went with the notice.
-      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float'))).then(() => retried(document.getElementById('dash-ap')));
+      // Back, the card (named Autopilot) takes focus: the button went with the notice. The card itself, not its first
+      // heading: that is "Last 7 days", halfway down it, and a screen reader heard that with no word of the autopilot.
+      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float'))).then(() => { const card = document.getElementById('dash-ap'); retried(card, card); });
       return;
     }
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;

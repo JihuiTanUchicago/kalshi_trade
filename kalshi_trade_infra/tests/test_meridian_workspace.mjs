@@ -526,6 +526,8 @@ test('live deployment forwards the exact trimmed typed phrase and leaves rejecte
 
 const evidenceHtml = ids => ids.map(id => `<details class="dep-evidence" data-deployment="${id}"><summary>Backtest &amp; deployment</summary><div>Evidence ${id}</div></details>`).join('');
 const evidenceFor = (host, id) => host.querySelector(`.dep-evidence[data-deployment="${id}"]`);
+// An Explore link's name from what it holds (it has no aria-label): its text, spaces collapsed, as a screen reader reads it.
+const linkName = (link) => link.textContent.replace(/\s+/g, ' ').trim();
 const positionFor = (host, key) => host.querySelector(`.position-details[data-position="${key}"]`);
 
 test('deployment refresh preserves each disclosure and focused summary by ID after reordering', () => {
@@ -1640,6 +1642,11 @@ test('Overview contract identities use the catalog and expiry, keep the raw tick
     const sourceStrategy = index === 0 ? 'Strategy &lt;script&gt;unsafe&lt;/script&gt;' : `Strategy ${index + 1}`;
     assert.equal(summary.querySelector('.position-title').textContent, sourceStrategy, 'show the actual strategy independently from the full raw contract');
     assert.ok(summary.getAttribute('aria-label').includes(sourceStrategy));
+    // Named as it shows (axe label-content-name-mismatch, walk 2026-10-31): the market, then the book, each apart in the
+    // summary's text ("minutesPaper" ran together), then the strategy, which only a screen reader reads.
+    const mode = summary.querySelector('.position-mode').textContent;
+    assert.equal(summary.getAttribute('aria-label'), `${market.textContent} · ${mode} · ${sourceStrategy}`);
+    assert.ok(summary.textContent.includes(`${market.textContent} ${mode} ${sourceStrategy}`), summary.textContent);
     const sizeCell = row.querySelectorAll('td')[1];
     assert.equal(sizeCell.querySelector('.position-side').textContent, positions[index].side.toUpperCase(), 'side remains in its native Position cell');
     assert.equal(sizeCell.querySelector('.position-quantity').textContent, 'Quantity ' + positions[index].qty, 'exact size remains labelled in its native Position cell');
@@ -1715,8 +1722,9 @@ test('Overview attribution groups require adjacent known deployments and keep ti
     group.querySelectorAll('.position-details').forEach(detail => {
       assert.ok(detail.querySelector('summary').getAttribute('aria-label').includes(source.title === beta
         ? 'Beta &lt;script&gt;unsafe&lt;/script&gt;' : alpha));
+      // Market, then book, then strategy: the order the row shows them (axe label-content-name-mismatch).
       assert.ok(detail.querySelector('summary').getAttribute('aria-label')
-        .endsWith(source.mode === 'live' ? '\u00a0· LIVE' : '\u00a0· Paper'));
+        .includes(source.mode === 'live' ? '\u00a0· LIVE\u00a0· ' : '\u00a0· Paper\u00a0· '));
     });
   });
   assert.doesNotMatch(table.innerHTML, /<script>/);
@@ -2722,8 +2730,13 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
       const raw = m === hostile ? 'KX&quot;QUOTE&quot;&lt;ticker&gt;&amp;' : m.t;
       assert.equal(link.getAttribute('href'), '/explore?m=' + encodeURIComponent(m.t));
       assert.equal(link.getAttribute('title'), null, 'no raw ticker tooltip');
+      // Named by what it shows (no aria-label: axe label-content-name-mismatch), the source's words after a shortened
+      // condition for a screen reader only; then its chip and close, as shown.
       const closes = link.querySelector('.market-close');
-      assert.equal(link.getAttribute('aria-label'), closes ? `${label}\u00a0· ${closes.textContent}` : label);
+      assert.equal(link.getAttribute('aria-label'), null);
+      assert.ok(linkName(link).startsWith(sub ? `${title} ${display || sub}${display ? ` (${sub})` : ''}` : title), linkName(link));
+      if (closes) assert.ok(linkName(link).endsWith(linkName(closes)));
+      assert.ok(label.startsWith(title));
       assert.equal(link.querySelector('strong').textContent, display || sub || title);
       if (sub) assert.equal(row.querySelector('.market-contract a'), link);
       else assert.equal(row.querySelector('.market-contract'), null);
@@ -2737,7 +2750,7 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
       assert.equal(external.getAttribute('target'), '_blank'); assert.equal(external.getAttribute('rel'), 'noopener');
     });
     assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /<img|<script>|<ticker>|<series>/);
-    const names = rows.slice(0, 2).map(row => row.querySelector('a.market-name').getAttribute('aria-label'));
+    const names = rows.slice(0, 2).map(row => linkName(row.querySelector('a.market-name')));
     if (!bRenamed && duplicates.length) assert.notEqual(names[0], names[1]);
   };
   const original = JSON.stringify(markets); await f.viewExplore(); check([a.t, b.t]); assert.equal(JSON.stringify(markets), original);
@@ -2770,7 +2783,7 @@ test('Explore keeps every source event and contract independently legible when t
   assert.deepEqual(rows.map(row => row.querySelector('a.market-name').getAttribute('href')), markets.map(m => '/explore?m=' + encodeURIComponent(m.t)));
   assert.ok(rows.slice(0,5).every(row => !row.querySelector('.market-event').classList.contains('vh')));
   assert.equal(rows[1].querySelector('.market-event').textContent, 'Bitcoin 5pm');
-  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm\u00a0· Above $91,000', 'the source wording, never the raw ticker');
+  assert.ok(linkName(rows[1].querySelector('a.market-name')).startsWith('Bitcoin 5pm &gt; $91,000 (Above $91,000)'), 'what it shows, then the source wording, never the raw ticker');
   assert.equal(rows[3].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[4].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[5].querySelector('a.market-name strong').textContent, 'Bitcoin 5pm');
@@ -2797,7 +2810,7 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(contextual[1].textContent, 'Oct 19, 5pm ET\u00a0· Source context', 'retain every actual context segment without inferring expiry');
   assert.equal(hostile[1].textContent, 'City &lt;script&gt;unsafe&lt;/script&gt; &amp; forecast');
   assert.equal(rows[7].querySelector('.market-event').getAttribute('title'), markets[7].ti);
-  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + '\u00a0· ' + markets[7].su);
+  assert.ok(linkName(rows[7].querySelector('a.market-name')).startsWith('Bitcoin &gt; $94,000 (Above $94,000)'), 'the event as shown: the Context column holds the rest');
   assert.deepEqual(rows.slice(7).map(row => ['.yes-price', '.quote-bid', '.quote-ask', '.market-volume', '.market-interest'].map(selector => row.querySelector(selector).textContent)),
     [['41¢', '40¢', '42¢', '8', '2'], ['41¢', '40¢', '42¢', '8', '2']]);
   assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /<script>|<unsafe>/);
@@ -2838,7 +2851,9 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   const links = f.root.querySelectorAll('a.market-name');
   assert.deepEqual(links.map(link => link.querySelector('strong').textContent), displays);
   links.forEach((link, index) => {
-    assert.equal(link.getAttribute('aria-label'), `Bitcoin\u00a0· ${conditions[index]}`);
+    // Named by what it shows, and a shortened condition's source words after it (a screen reader's only).
+    assert.equal(link.getAttribute('aria-label'), null);
+    assert.ok(linkName(link).startsWith(`Bitcoin ${displays[index]}${displays[index] === conditions[index] ? '' : ` (${conditions[index]})`}`), linkName(link));
     assert.equal(link.getAttribute('title'), null);
     assert.equal(link.getAttribute('href'), `/explore?m=CONTRACT-${index}`);
   });

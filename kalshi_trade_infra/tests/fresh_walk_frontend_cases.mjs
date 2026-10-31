@@ -289,7 +289,10 @@ export function freshWalkCases({name, frontend, dashboard}) {
     const list = f.root.querySelector('#xrows').innerHTML;
     assert.ok(list.includes(NICE), list.slice(0, 400));
     assert.ok(!list.includes(RAW));
-    assert.ok(list.includes(`Fed decision in Dec 2026?${SEP}Hike 0bps`));  // any other title as sent
+    // Any other title as sent: Tau's row names it in one line, Meridian's sets the event over its condition (its link
+    // named by what it shows, no aria-label).
+    if (name === 'Meridian') assert.match(list, />Fed decision in Dec 2026\?<\/span> <strong>Hike 0bps<\/strong>/);
+    else assert.ok(list.includes(`Fed decision in Dec 2026?${SEP}Hike 0bps`));
     f.clearTimers();
     const g = frontend({fetchImpl: (path) => path.startsWith('/api/explore/market?')
       ? response({ticker: TICKER, series: combo.s, title: RAW, sub: '', status: 'active', yes_bid: '0', yes_ask: '0.03', last: '0',

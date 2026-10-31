@@ -1464,7 +1464,7 @@
   // "Ideas tested": how many ideas the research session that found a strategy tested, it included. The column
   // read "Tried" over "1 of 18", which said neither what was tried nor where (Meridian calls it Ideas tested).
   const TRIED_TIP = 'Every idea the research session that found it tested, this one included';
-  const STRAT_HEAD = (pick, paper) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${paper ? `<th class="num" title="${PAPER_TIP}">Paper P&amp;L</th>` : ''}<th class="num" title="${TRIED_TIP}">Ideas tested</th><th>Status</th></tr></thead>`;
+  const STRAT_HEAD = (pick, paper) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"><span class="vh pick-head">Select</span></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${paper ? `<th class="num" title="${PAPER_TIP}">Paper P&amp;L</th>` : ''}<th class="num" title="${TRIED_TIP}">Ideas tested</th><th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick, paper) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick, paper)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions. A pass a later check
@@ -2745,8 +2745,9 @@
       host.className = 'apcard on';
       repaintKeep(host, () => S.apFailing ? `<div class="apcard-main">${notice(AP_CARD_UNREAD)}<button type="button" class="btn sm" data-apcard="again">Try again</button></div>` : '');
       const again = host.querySelector('[data-apcard="again"]');
-      // Back, the card (named Autopilot) takes focus: the button went with the notice.
-      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float'))).then(() => retried(document.getElementById('dash-ap')));
+      // Back, the card (named Autopilot) takes focus: the button went with the notice. The card itself, not its first
+      // heading: that is "Last 7 days", halfway down it, and a screen reader heard that with no word of the autopilot.
+      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float'))).then(() => { const card = document.getElementById('dash-ap'); retried(card, card); });
       return;
     }
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
