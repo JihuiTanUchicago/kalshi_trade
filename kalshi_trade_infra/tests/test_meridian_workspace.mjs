@@ -277,7 +277,7 @@ perpsFrontendCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend
 deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests, source});
 stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
-bellCases({name: 'Meridian', frontend});
+bellCases({name: 'Meridian', frontend, detailStrategy});
 adminFigureCases({name: 'Meridian', frontend});
 communityCases({name: 'Meridian', frontend});
 pageFileCases({name: 'Meridian', frontend, prefix: 'app.meridian-', pagesKey: 'merPages', storageFor: m => m});

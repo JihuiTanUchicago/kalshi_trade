@@ -247,7 +247,7 @@ perpsFrontendCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, pos
 deployActionCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests, source});
 stopReasonCases({name: 'Tau', frontend});
 trustGlitchCases({name: 'Tau', frontend});
-bellCases({name: 'Tau', frontend});
+bellCases({name: 'Tau', frontend, detailStrategy});
 adminFigureCases({name: 'Tau', frontend});
 communityCases({name: 'Tau', frontend});
 researchPollCases({name: 'Tau', frontend});

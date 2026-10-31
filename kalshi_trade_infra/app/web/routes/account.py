@@ -58,11 +58,16 @@ def me(ctx: Ctx):
 
 
 def notifications(ctx: Ctx):
-    rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid, limit=bell.READ_ROWS))
-    return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": bell.grouped(rows),
+    # One row past the window says, in the same read, whether any notice is older than the bell lists (`older`).
+    read = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid, limit=bell.READ_ROWS + 1))
+    rows = read[:bell.READ_ROWS]
+    items = bell.grouped(rows)
+    return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": items,
             # unread_kinds counts the newest READ_ROWS notices only, while `unread` counts them all: the bell's
             # summary says which window its parts cover when the two differ ("131 new; the newest 100: …").
-            "unread_kinds": bell.unread_kinds(rows), "unread_kinds_of": bell.READ_ROWS}
+            "unread_kinds": bell.unread_kinds(rows), "unread_kinds_of": bell.READ_ROWS,
+            # The bell lists its newest notices only, and says so under them when there are older ones.
+            "older": bell.older(read, items)}
 
 
 def mark_notifications_read(ctx: Ctx):
