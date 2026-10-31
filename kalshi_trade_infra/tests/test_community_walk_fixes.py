@@ -42,6 +42,20 @@ def test_a_reactor_whose_name_is_their_address_reads_as_their_handle_in_the_feed
     assert got["reactions"][0]["names"] == ["danap", "Bob", "Trader"] and ADDRESS not in json.dumps(got)
 
 
+def test_reactor_names_and_handles_stay_paired_when_a_reactor_has_no_name_or_handle():
+    # The read lists names and handles position for position: dropping a missing one shifted the rest, so an address
+    # name could take another reactor's handle.
+    from app.adapters.db import community_repository as cr
+
+    class Cur:
+        def execute(self, sql, args): self.sql = sql
+        def fetchall(self):
+            return [{"post_id": 5, "emoji": "🔥", "n": 3, "mine": 0,
+                     "names": "\x1f".join(["", ADDRESS, "Bob"]), "handles": "\x1f".join(["ann", "", "bob"])}]
+    rx = cr.reactions_for(Cur(), [5], 7)[5]
+    assert community._reactions_out(rx)[0]["names"] == ["ann", "Trader", "Bob"]
+
+
 @pytest.mark.parametrize("q", ["dana.private@exa", "example.org", "private", "@example"])
 def test_the_mention_search_never_matches_on_a_name_that_is_an_address(monkeypatch, q):
     # The read matches a name anywhere in it (LIKE %q%); a hit on an address must not come back.
