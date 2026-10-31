@@ -568,7 +568,9 @@
     const a = document.activeElement, top = pageStart();
     if (!again && !moved || (a && a !== document.body && a.isConnected !== false)) return;
     const back = again && was ? root.querySelector(was) : null;
-    const to = back && back.focus && !back.disabled && !back.hidden ? back : moved ? top : null;
+    // The same page drawn again (Try again on a page that didn't load) with the control that had focus gone: the
+    // page's start, where focus fell to the top of the document before (walk 2026-10-31).
+    const to = back && back.focus && !back.disabled && !back.hidden ? back : moved || was ? top : null;
     if (to && to.focus) to.focus({ preventScroll: true });
   }
   // Where a page's content starts: the h1 that opens <main>, above the page's money figures, made
@@ -1070,14 +1072,23 @@
     if (!sw) return;
     sw.onchange = async () => {
       const off = !sw.checked;
+      // Locking the switch blurs it, and focus fell to the top of the page after every flip (walk 2026-10-31): it
+      // goes back to the switch once Tau answers, as Billing's auto-reload switch does.
+      const had = document.activeElement === sw;
       sw.disabled = true;
       try {
         const r = await api('/api/email-preferences', { email_opt_out: off });
         if (S.me && S.me.user) S.me.user.email_opt_out = !!r.email_opt_out;
         flash('#email-flash', r.email_opt_out ? 'Optional email is off. Safety alerts still come.' : 'Optional email is on.', 'good');
-      } catch (e) { flash('#email-flash', errText(e), 'bad'); }
+      } catch (e) {
+        // "Something went wrong on our side." alone didn't say whether the change took: it says the setting stands.
+        const was = !!(S.me && S.me.user && S.me.user.email_opt_out);
+        flash('#email-flash', `${errText(e)} Optional email is still ${was ? 'off' : 'on'}.`, 'bad');
+      }
       const now = !!(S.me && S.me.user && S.me.user.email_opt_out);
       sw.disabled = false; sw.checked = !now;
+      const a = document.activeElement;
+      if (had && sw.isConnected && (!a || a === document.body)) sw.focus({ preventScroll: true });
       const state = root.querySelector('#email-state');
       if (state) state.textContent = emailState(now, liveOpen());
     };
@@ -2731,6 +2742,7 @@
   function paintDashAp() {
     const host = document.getElementById('dash-ap');
     if (!S.me || !S.me.user) return;
+    apCostWatch.forEach((w) => { if (w() === false) apCostWatch.delete(w); });
     const d = S.ap, on = d ? d.autopilot : !!S.me.user.autopilot;
     syncApCopy(on); apEntryPaint(d);
     if (!host) return;
@@ -2997,6 +3009,10 @@
   // status poll, and kept 10 minutes, as long as the server keeps its typical figure; the card and the panel
   // repaint when it lands. A read that fails says nothing new. '' with payments off or no figure for the model.
   const SESSION_EST_KEEP_MS = 600000;
+  // Lines elsewhere that say the same figure (Billing's "Credits last" on a first day) repaint whenever the card
+  // would: the estimate landing, or the autopilot's status (its model) arriving. A watcher returns false once its
+  // page has gone, and is dropped.
+  const apCostWatch = new Set();
   function apSessionLine(d) {
     const me = S.me;
     if (!me || !me.billing_enabled) return '';
@@ -3590,7 +3606,7 @@
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apQueued, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
-    apWeek, apOffCost, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
+    apWeek, apOffCost, apSessionLine, apCostWatch, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE, LOG_STAMP, closeClock, liveClose,
     clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, demoCapital, demoNoClose, demoPnl, FEES_NET, inBalance, openBasis, openCost, openFig,
     demoSpan, DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,

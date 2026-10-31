@@ -1188,7 +1188,7 @@
     const n = covers(bal), k = ar ? covers(ar.amount) : 0;
     // The count is research sessions only: the autopilot's check-ins between them spend credits too, so it says so
     // rather than read as a promise of N sessions.
-    const also = ' Its check-ins between sessions use some credits too.';
+    const also = ' The autopilot\u2019s check-ins between sessions use some credits too.';
     if (ar) return s + (n >= 1 ? ` At that rate your ${usd(bal)} covers ${sessions(n)}${k >= 1 ? `, and each ${usd(ar.amount)} auto-reload about ${num(k)} more` : ''}.${also}`
       : k >= 1 ? ` At that rate each ${usd(ar.amount)} auto-reload covers ${sessions(k)}.${also}` : '');
     return s + (n >= 1 ? ` At that rate your ${usd(bal)} lasts ${sessions(n)}.${also}`

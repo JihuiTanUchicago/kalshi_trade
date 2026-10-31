@@ -4,7 +4,7 @@
 window.TauPage('billing', (T) => {
   'use strict';
   const {
-    alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
+    alert0, api, apCostWatch, apSessionLine, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
     halfUp, holdFocus, ICON, KIND_LABEL, loadFail, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
     retried, root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote, WJ,
     WEEKDAY_DAY
@@ -26,6 +26,14 @@ window.TauPage('billing', (T) => {
       return !isLow(d) ? '' : `<div class="notice" role="status">${ICON.warn}<span>${d.balance <= 0 ? 'You’re out of credits' : `You have ${usd(d.balance)} in credits`}. New research needs at least ${usd(d.min_run_balance)} to start, so none is starting${apOn ? ' and autopilot is paused' : ''}. ${
         !d.cards.length && !d.cards_unread ? 'Add a card, then add credits.' : d.auto_reload && d.reload_failed ? 'Auto-reload couldn’t charge your card (see below). Update the card first, then add credits here: they go on the same card.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
     };
+    // On a first day there is no pace to project, so the tile says what a research session usually costs and how many
+    // the balance covers: the dashboard autopilot card's own line (apSessionLine: the same estimate, model and rounding),
+    // once the estimate is there. With none (payments off, no figure for the model, a failed read) it says what it did.
+    const firstDayFig = () => {
+      const est = apSessionLine(S.ap);
+      return fig('Credits last', 'Too soon to tell', est ? { small: `Your first day of research sets the pace. ${est}`, cls: 'm-wide' }
+        : { small: 'your first day of research sets the pace' });
+    };
     // The figures, the week's split and the out-of-credits note: drawn by the page's read and again by its poll.
     const paintFigs = (d) => {
       const low = isLow(d);
@@ -46,13 +54,15 @@ window.TauPage('billing', (T) => {
           ? fig('Next auto-reload in', runwayLabel(d.reload_days), { small: `adds ${usd(Math.max(d.min_reload_amount, d.autoreload_amount))}, card charged ${usd(d.autoreload_charge)}, at ${paceWords(d.spent_7d, d.pace_days)}` })
           : d.runway_days != null
           ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
-          : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
+          : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? firstDayFig()
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' })));
       const split = spendSplit(d.spent_7d_by, d.spent_7d_under_cent);
       paint(root.querySelector('#bsplit'), split ? `Last 7 days: ${split}.` : '');
       const note = root.querySelector('#blow'); if (note) paint(note, lowNote(d));
     };
     let shown = null;  // the read the page shows; the poll keeps its figures current
+    // The estimate (or the autopilot's model) landing repaints the figures, as it does the dashboard card.
+    apCostWatch.add(() => { if (gen !== S.gen) return false; if (shown) paintFigs(shown); });
     const load = async () => {
       const d = await api('/api/billing?tz=' + new Date().getTimezoneOffset());  // the statement's days are yours
       syncMeBilling(d);
@@ -160,6 +170,9 @@ window.TauPage('billing', (T) => {
         const fail = root.querySelector('#autorel-fail'); if (fail) fail.hidden = !on;
         root.querySelector('#autorel-when').innerHTML = reloadWhen(on, amount, threshold);
       };
+      // A save that failed says what still stands: "Something went wrong on our side." alone left it unsaid whether
+      // auto-reload was now on or off, or at which amounts.
+      const arStands = () => arSaved.on ? `Auto-reload is still on: it reloads ${usd(arSaved.amount)} at ${usd(arSaved.threshold)}.` : 'Auto-reload is still off.';
       const saveAutoReload = async () => {
         const on = arBox.checked;
         const amount = Math.max(d.min_reload_amount, +arAmt.value || d.min_reload_amount);
@@ -179,7 +192,7 @@ window.TauPage('billing', (T) => {
             r && r.autoreload_charge != null ? { autoreload_charge: r.autoreload_charge } : {});
           syncMeBilling(d);
           flash('#autorel-flash', on ? `On${SEP}reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
-        } catch (err) { arPaint(arSaved.on, arSaved.amount, arSaved.threshold); flash('#autorel-flash', err.message, 'bad'); }
+        } catch (err) { arPaint(arSaved.on, arSaved.amount, arSaved.threshold); flash('#autorel-flash', `${err.message} ${arStands()}`, 'bad'); }
         finally {
           [arBox, arAmt, arThr].forEach((x) => { x.disabled = false; });
           const a = document.activeElement;
@@ -188,8 +201,10 @@ window.TauPage('billing', (T) => {
       };
       arBox.onchange = saveAutoReload;
       arAmt.onchange = arThr.onchange = () => { if (arBox.checked) saveAutoReload(); };
+      // A removed card redraws the list, and focus fell to the top of the page with no word that it went (walk
+      // 2026-10-31): the page says so and focus goes to the Payment method heading.
       root.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => armed(b, 'Confirm remove', () => busy(b, async () => {
-        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); if (!(await refreshed(load()))) flash('#flash', 'Card removed.' + BEHIND, 'good'); } catch (err) { alert0(err.message); }
+        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); const fresh = await refreshed(load()); flash('#flash', 'Card removed.' + (fresh ? '' : BEHIND), 'good'); retried(root.querySelector('#main'), '.panel h2'); } catch (err) { alert0(err.message); }
       }))));
       // Stripe Payment Element (card + Apple Pay / Google Pay, Link off) — same
       // flow as the sign-in modal, so saving actually works with the config SI.

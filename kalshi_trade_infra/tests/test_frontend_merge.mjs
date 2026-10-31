@@ -49,7 +49,8 @@ import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
-import {autopilotCostCases} from './autopilot_cost_frontend_cases.mjs';
+import {autopilotCostCases, billingCostCases} from './autopilot_cost_frontend_cases.mjs';
+import {settingsBillingCases} from './settings_billing_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {spendTrustCases} from './spend_trust_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
@@ -6245,6 +6246,8 @@ liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashbo
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 newcomerMoneyCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 autopilotCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn});
+billingCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, billingPage, cardedBilling});
+settingsBillingCases({name: 'Tau', frontend, billingPage, cardedBilling});
 unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unmarkedPositionCases({name: 'Tau', frontend});
 moneyAgreementCases({name: 'Tau', frontend});
