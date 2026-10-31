@@ -741,6 +741,28 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     runs = server.list_runs(context())['runs']
     assert [r['spent_usd'] for r in runs] == [1.84, 0.0, 0.0]  # a run with no debit cost nothing
     assert calls == [(7, [9, 4, 2])]
+    assert [r['spent_under_cent'] for r in runs] == [False, False, False]
+
+
+def test_a_run_whose_debits_round_to_nothing_says_it_spent_under_a_cent(monkeypatch):
+    # A session that failed on one short call ($0.004213 billed) came as spent_usd 0 and read "Cost: none" on its
+    # row and page while Billing listed the charge. spent_usd stays to the cent; spent_under_cent says it isn't nothing.
+    monkeypatch.setattr(server.repo, 'runs_spent', lambda cur, uid, ids: {9: 0.004213, 4: 0.005, 3: 0.0000004})
+    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 3}, {'id': 2}])
+    monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a, **kw: {})
+    monkeypatch.setattr(server.repo, 'list_runs_version', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 3}, {'id': 2}])
+    monkeypatch.setattr(research_routes, '_research_totals', lambda *a: {})
+    monkeypatch.setattr(server.repo, 'list_strategies', lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, 'get_policy', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'latest_dream_event', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'run_events', lambda *a: [])
+    runs = server.list_runs(context())['runs']
+    assert [(r['spent_usd'], r['spent_under_cent']) for r in runs] == [(0.0, True), (0.01, False), (0.0, False), (0.0, False)]
+    monkeypatch.setattr(server.repo, 'get_run', lambda cur, uid, rid: {'id': rid, 'kind': 'research', 'status': 'failed'})
+    ctx = context()
+    ctx.params = ('9',)
+    run = server.get_run(ctx)['run']
+    assert (run['spent_usd'], run['spent_under_cent']) == (0.0, True)
 
 
 def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apart(monkeypatch):

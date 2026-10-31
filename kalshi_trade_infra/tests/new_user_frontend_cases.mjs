@@ -109,6 +109,38 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     assert.match(await page(done({spent_usd: 0.83})), /Cost\s*\$0\.83\s*from your credits/);
   });
 
+  // The server sends spent_usd to the cent, so a session that failed on one short call ($0.004213 billed) came as 0
+  // and read "Cost: none" on its row and "Cost None" on its page, while Billing listed its charge (walk 2026-10-31).
+  // Its spent_under_cent says so: "under $0.01", from your credits, wherever the session's cost shows.
+  test(`${name}: a session whose debits round to $0.00 says "under $0.01", not "Cost: none"`, async () => {
+    const failed = (o) => session({id: 9, status: 'failed', stop_reason: 'error', run_forever: 0, finished_at: '2026-10-27T22:05:00Z',
+      spent_usd: 0, spent_under_cent: true, ...o});
+    const rows = async (r) => {
+      const f = await researchPage([r], false); f.clearTimers();
+      return f.root.querySelector('#runs').textContent;
+    };
+    const row = await rows(failed());
+    assert.match(row, /Cost: under \$0\.01\s*in\s*credits/);
+    assert.doesNotMatch(row, /Cost: none/);
+    // On Meridian a running session is the card above the list (checked below), not a row.
+    if (!meridian) assert.match(await rows(failed({status: 'running', stop_reason: null, finished_at: null})), /Spent so far: under \$0\.01\s*in\s*credits/);
+    assert.match(await rows(failed({spent_under_cent: false})), /Cost: none/, 'nothing billed is still none');
+    const page = async (r) => {
+      const g = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9') ? response({run: r, events: [], strategies: []}) : response({})});
+      await g.viewRun(9); await flush(); g.clearTimers();
+      return g.root.querySelector('#runfigs').textContent;
+    };
+    const figs = await page(failed());
+    assert.match(figs, /Cost\s*under \$0\.01\s*from your credits/);
+    assert.doesNotMatch(figs, /Cost\s*None/);
+    assert.match(await page(failed({status: 'running', stop_reason: null, finished_at: null})), /Spent so far\s*under \$0\.01/);
+    if (meridian) {  // the session card above the list says it too
+      const f = await researchPage([failed({status: 'running', stop_reason: null, finished_at: null})], true); f.clearTimers();
+      const card = f.root.querySelector('#active-research');
+      assert.match(card.innerHTML + card.children.map((c) => c.innerHTML).join(''), /Spent so far<\/dt><dd><span class="nobr">under \$0\.01<\/span>/);
+    }
+  });
+
   // Autopilot's first session running: Last 24 hours said "It started 1 research session" while the card's week said
   // "nothing yet ... once it starts". While a session runs (and nothing in the week has landed) it says that.
   test(`${name}: the autopilot card's empty week says a session is running instead of "once it starts"`, async () => {

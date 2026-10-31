@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import time
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app import repository as repo
@@ -20,8 +21,8 @@ from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_cl
 from app.web.routes.strategies import (HELD_BACK, _attach_no_record, _attach_session_real_records, _autopilot_puts_on_paper,
                                        _held_back_lines, _later_verdicts, _owned_strategy, _research_pass_verdicts, _strategy_card, warm_dev_curves)
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
-from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd,
-                           session_title)
+from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_exact,
+                           credit_usd, session_title)
 
 
 def _researchable_markets(cur) -> List[Dict]:
@@ -160,10 +161,15 @@ def _number_sessions(cur, uid: int, runs: List[Dict], before: Optional[int] = No
 
 def _with_spent(cur, uid: int, runs: List[Dict]) -> None:
     """Stamp each run with `spent_usd`: what its usage debits took from credits so far (the ledger
-    rows billed to that run), so a run-until-stopped session shows its running cost."""
+    rows billed to that run), so a run-until-stopped session shows its running cost. A run whose debits
+    round to $0.00 but are not nothing (a session that failed on its first short call) carries
+    `spent_under_cent`, so its row and its page say "under $0.01", as Billing's line for it does, not
+    "Cost: none" beside a charge on the statement. Display only."""
     spent = repo.runs_spent(cur, uid, [r["id"] for r in runs])
     for r in runs:
-        r["spent_usd"] = credit_usd(spent.get(r["id"], 0.0))
+        v = spent.get(r["id"], 0.0)
+        r["spent_usd"] = credit_usd(v)
+        r["spent_under_cent"] = credit_exact(v) > 0 and not r["spent_usd"]
 
 
 RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
@@ -657,6 +663,22 @@ def scoreboard_kept(uid: int, days: int) -> bool:
     return _shared_kept(_board_key(uid, days))
 
 
+def _board_ledger_spend(cur, uid: int, board: Dict) -> None:
+    """The board's "Spend" (and its per idea) as the credit ledger has it: what those same sessions took from
+    credits (repo.runs_spent, each run's usage rows, as each session's own Cost on its row and page). rsi
+    re-prices each run's stored token counts, which need not be what was billed (a screen arm's tokens, a
+    run whose counts are behind its debits), so the card could disagree with the sessions listed under it
+    and with Billing: a seeded account's read $0.00 beside five sessions costing $86.79 (walk 2026-10-31).
+    Only the figure the page shows; the autopilot's own scorecard (agent.autopilot_scorecard) reads rsi
+    as before. Display only."""
+    ids = [c["run_id"] for c in board.get("cards") or [] if c.get("run_id") is not None]
+    total = board.get("total")
+    if not ids or not isinstance(total, dict):
+        return
+    spent = repo.runs_spent(cur, uid, ids)
+    total["cost_usd"] = credit_usd(sum((Decimal(str(v)) for v in spent.values()), Decimal(0)))
+
+
 def _research_scoreboard(cur, uid: int, days: int) -> Dict:
     from app.research import rsi, rsi_playbook
     board = rsi.load_scoreboard(cur, days, uid)
@@ -664,6 +686,7 @@ def _research_scoreboard(cur, uid: int, days: int) -> Dict:
         board["autopilot"] = agent.autopilot_scorecard(board, agent.focus_tokens(repo.get_user(cur, uid)))
     except Exception:  # noqa: BLE001 - informational
         board["autopilot"] = None
+    _board_ledger_spend(cur, uid, board)
     board["cards"] = board["cards"][-50:]
     board["playbooks"] = rsi_playbook.summary(cur, uid)
     from app import rsi_scout
