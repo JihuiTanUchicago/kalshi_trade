@@ -242,6 +242,10 @@
   // rows and open positions, the dashboard's, a market page's and the strategy page's. It read "Unavailable", "—",
   // "not marked yet" and "awaiting first mark" for the same thing. Display only: how a mark is read is unchanged.
   const NOT_MARKED = 'Not marked yet';
+  // A book's unrealized P&L summed over only some of its open positions (the rest not marked yet) says how many it
+  // covers: "2 open positions at cost + fees $2.47 · unrealized +$0.30" read as both positions' figure when only one
+  // was priced. "1 of 2" when some but not all are marked, '' otherwise. Display only: no figure changes.
+  const markedOf = (marked, open) => (+marked > 0 && +marked < +open ? `${fmtCount.format(+marked)} of ${fmtCount.format(+open)}` : '');
   // What it leaves out is the price moving before a real order lands. Beside the paper headline figures (the
   // dashboard's, the strategy page's "Since deploying" and its ladder, the track record's paper tab, the
   // Strategies list's paper card, Deploy's paper Realized, the autopilot's paper figures, the dashboard strip's paper
@@ -1218,7 +1222,7 @@
     esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
     researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
-    PAPER_NET, NOT_MARKED, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
+    PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
     catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
     fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,

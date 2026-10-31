@@ -155,7 +155,7 @@ export function countFormatCases({name, frontend, detailStrategy, strategyFronte
     await s.viewStrategy(42); await settle();
     const main = s.root.querySelector('#main').innerHTML;
     assert.match(main, /<b>YES ×1,201 @/, 'the Holding right now list');
-    assert.match(main, /data-lab="Side">YES ×1,201</, 'the recent trades table');
+    assert.match(main, /data-lab="Position">YES ×1,201</, 'the recent trades table');
     assert.doesNotMatch(main, /×1201/);
     s.clearTimers();
   });

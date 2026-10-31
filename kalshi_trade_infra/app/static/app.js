@@ -10,7 +10,7 @@
     esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
     researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
-    PAPER_NET, NOT_MARKED, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
+    PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
     catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
     fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
@@ -1600,7 +1600,7 @@
       <td data-lab="Market"><span class="tick">${esc(marketFull(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
-      <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}${d.unrealized_pnl != null && d.open_positions ? `<div class="sub-fig">est.${markOld(d.oldest_mark_ts) ? ' ' + markedAt(d.oldest_mark_ts) : ''}</div>` : ''}</td>
+      <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}${d.unrealized_pnl != null && d.open_positions ? `<div class="sub-fig">est.${markOld(d.oldest_mark_ts) ? ' ' + markedAt(d.oldest_mark_ts) : ''}${markedOf(d.marked_open, d.open_positions) ? `${SEP}${markedOf(d.marked_open, d.open_positions)} marked` : ''}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${num(d.closed_trades)}${d.open_positions ? `<div class="sub-fig">+${num(d.open_positions)} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest estimate" title="${d.void_no_record ? PACE_TIP_VOID : d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? (d.backtest_only ? '\u2014' : PACE_HELD(d)) : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${num(d.closed_trades)} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig bt-per-trade"><span class="amt">${usd(pace, true)}</span> a trade, on average</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
@@ -2088,14 +2088,14 @@
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? markFig(r.mark_ts, r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : openCost({ open_cost: r.cost, open_at_cost: r.at_cost != null ? r.at_cost : r.qty * r.entry_price }))}</span>
             <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· ${liveClose(r.market_close_time, 'settles')}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}${!closed && r.unrealized != null && r.mark_ts ? `\u00a0· ${markedAt(r.mark_ts, 'worth as of')}` : ''}</small>${r.why ? `<small class="stub-why">${sepLine(r.why)}</small>` : ''}</div>`).join('')
-        : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
+        : `<p class="hint">${closed ? 'No closed trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash-wrap"><div class="dash">
           <div>
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>
           <aside aria-label="Positions">
             <section class="panel" id="dash-open"><h3>Open positions</h3>${stubs(d.open_positions.slice(0, DASH_ROWS), false)}${more(d.open_positions.length, 'open positions')}</section>
-            <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
+            <section class="panel"><h3>Closed lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
       keepApCard(() => paint(root.querySelector('#boardbody'), board));  // the 15s poll repaints only what changed
@@ -2254,8 +2254,8 @@
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell. An old mark's figure
       // is dimmed and its time says how old (markFig, markedAt).
       const posUnreal = (p) => `<div class="pos-unreal">${markFig(p.mark_ts, money(p.unrealized))}${posMarked(p)}</div>`;
-      paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num"${closeData(p.market_close_time, 'settleTime')} data-lab="Settles">${esc(closeWords(p.market_close_time, 'settleTime'))}</td></tr>`).join('')}</tbody></table>`
+      paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Position</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num"${closeData(p.market_close_time, 'settleTime')} data-lab="Settles">${esc(closeWords(p.market_close_time, 'settleTime'))}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -3088,13 +3088,16 @@
   // A deployment's Unrealized sums its open positions' marks, so it is as old as the oldest of them. Each deployment
   // gets that mark's time (oldest_mark_ts) from the open positions the answer already carries, for its row to dim the
   // figure and say how old once that mark is (markFig, markedAt). Display only: no figure changes.
+  // It also counts the deployment's marked open positions (marked_open): a sum over some of them, the rest not
+  // marked yet, says how many it covers (markedOf), as the strategy page's holdings line does.
   function withMarkAge(d) {
-    const oldest = {};
+    const oldest = {}, marked = {};
     for (const p of d.open_positions || []) {
+      if (p.unrealized != null && p.deployment_id != null) marked[p.deployment_id] = (marked[p.deployment_id] || 0) + 1;
       const ms = Date.parse(p.mark_ts || '');
       if (p.unrealized != null && p.deployment_id != null && Number.isFinite(ms) && !(Date.parse(oldest[p.deployment_id]) <= ms)) oldest[p.deployment_id] = p.mark_ts;
     }
-    return { ...d, deployments: (d.deployments || []).map((x) => (oldest[x.id] ? { ...x, oldest_mark_ts: oldest[x.id] } : x)) };
+    return { ...d, deployments: (d.deployments || []).map((x) => (oldest[x.id] || marked[x.id] ? { ...x, ...(oldest[x.id] ? { oldest_mark_ts: oldest[x.id] } : {}), marked_open: marked[x.id] || 0 } : x)) };
   }
   // The equity chart's label over its unseen-data window. `words` (longest first) names another window: a strategy
   // with no gatekeeper record has no unseen window, only the backtest's later slice, which its loose gate used to pick it.
@@ -3614,7 +3617,7 @@
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
     marketKalshiUrl, marketFull, marketKnown, marketPicker, marketShort, markQuietRows, mdLite, money,
     notice, num, olderRows, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
-    paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
+    paperAgain, PAPER_NET, NOT_MARKED, markedOf, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
     runTag, runWaitLine, runwayLabel, S, sessionEstimate, sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, theme: 'tau', tone, topupCharge, tradePrice, trDay, tzName,

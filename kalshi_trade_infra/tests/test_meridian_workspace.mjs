@@ -1516,7 +1516,7 @@ test('Overview open positions under the Paper portfolio band count each book apa
   assert.equal(heading.querySelector('.position-group-mode').textContent, 'All books');
   assert.doesNotMatch(heading.textContent, /\b3\b/, 'never one count across books');
   const summary = f.root.querySelector('#recent-settlements summary');
-  assert.match(summary.textContent, /Recent settlements 1\u00a0paper\u00a0\u00b7 2\u00a0demo All books/);
+  assert.match(summary.textContent, /Recently closed 1\u00a0paper\u00a0\u00b7 2\u00a0demo All books/);
   // No money is added up across books in the heading.
   assert.doesNotMatch(heading.innerHTML + summary.innerHTML, /\$/);
   // A single book is named, with its count.
@@ -1768,6 +1768,17 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
   assert.equal(rows[1].querySelector('.unavailable .vh').textContent, 'Not marked yet');
   assert.equal(rows[1].querySelector('.unavailable').getAttribute('title'), 'Not marked yet');
   assert.equal(rows[1].querySelector('.position-mark-note').textContent, 'Unrealized: not marked yet');
+  // On a phone card (no hover, room to spare) the words show in place of the dash, as Tau's do (walked 2026-10-31:
+  // "Unrealized P&L —" on the dashboard's card and "Unrealized —" on Deploy's stacked one).
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  for (const scope of ['\\.stack tbody td', '\\.t-positions \\.position-pnl']) {
+    const hide = css.search(new RegExp(`${scope} \\.unavailable\\[title\\] > \\[aria-hidden="true"\\] \\{ display: none; \\}`));
+    const show = css.search(new RegExp(`${scope} \\.unavailable\\[title\\] > \\.vh \\{ position: static !important;[^}]*clip: auto;`));
+    assert.ok(hide > 0 && show > 0, scope);
+    // Only in a phone layout: the desk table keeps its compact dash.
+    const before = css.slice(0, hide), open = before.lastIndexOf('@media');
+    assert.match(before.slice(open, open + 40), /@media \(max-width: 7[26]0px\)/, scope);
+  }
   assert.doesNotMatch(rows[1].innerHTML, /\$199\.00/);
   const closedRow = history.querySelector('.settled-position'), cells = closedRow.querySelectorAll('td');
   assert.equal(cells.length, 5);
@@ -4075,7 +4086,7 @@ test('Meridian phone polish: a glossary marker keeps its last word, one rule whe
   assert.doesNotMatch(source, /fig\('[^']*' \+ glo\(/, 'figure labels go through gl(), not label + glo()');
   assert.match(css, /\.nobr \{ white-space: nowrap; \}/);
   // The double dividers: the research-policy box on the progress section's top rule (run page), and
-  // a stacked position card's rule 4-9px above the next family's heading or Recent settlements (dashboard).
+  // a stacked position card's rule 4-9px above the next family's heading or Recently closed (dashboard).
   assert.match(css, /#rsibox:not\(:empty\) \+ \.rsiobs \{ border-top: 0; \}/);
   assert.match(css, /@container dashboard \(max-width: 779px\) \{\n  \.t-positions tbody > tr:last-child \{ border-bottom: 0; \}\n\}/);
   assert.match(css, /\.pipefig:not\(\[open\]\) > \.pipecap \{ border-bottom: 0; \}/);
