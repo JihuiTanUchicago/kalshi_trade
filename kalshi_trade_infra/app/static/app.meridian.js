@@ -44,16 +44,30 @@
       if (top < gut) top = r.bottom + 8;
       pop.style.left = left + 'px'; pop.style.top = top + 'px';
     };
+    // `held`: a click or tap opened the bubble, and it stays until a second one, Esc, a click elsewhere or focus moving
+    // on; one the pointer resting on its marker opened goes when the pointer leaves. A click toggles from what showed
+    // before it was pressed: the press's own hover and focus opened the bubble first, so the click shut it again. A tap
+    // on a phone showed nothing, and a click on a computer shut the bubble its hover had just opened (walk 2026-10-31).
+    let held = false, press = null;
     const show = (mark) => {
+      if (current === mark) return;
       const g = GLOSSARY[mark.dataset.glo]; if (!g) return;
-      current = mark; pop.innerHTML = `<b>${esc(g[0])}</b><span>${g[1]}</span>`;
+      if (current) current.removeAttribute('aria-describedby');
+      current = mark; held = false; pop.innerHTML = `<b>${esc(g[0])}</b><span>${g[1]}</span>`;
       pop.hidden = false; mark.setAttribute('aria-describedby', 'glossary-pop'); place(mark);
     };
-    const hide = () => { if (!current) return; current.removeAttribute('aria-describedby'); current = null; pop.hidden = true; };
+    const hide = () => { held = false; if (!current) return; current.removeAttribute('aria-describedby'); current = null; pop.hidden = true; };
     document.addEventListener('pointerover', (e) => { const m = e.target.closest('.info'); if (m) show(m); });
-    document.addEventListener('pointerout', (e) => { const m = e.target.closest('.info'); if (m && m === current && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.info') === m)) hide(); });
+    document.addEventListener('pointerout', (e) => { const m = e.target.closest('.info'); if (m && m === current && !held && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.info') === m)) hide(); });
+    document.addEventListener('pointerdown', (e) => { const m = e.target.closest && e.target.closest('.info'); press = m ? { m, open: current === m && held } : null; });
     document.addEventListener('focusin', (e) => { const m = e.target.closest && e.target.closest('.info'); if (m) show(m); else if (current && !e.target.closest('.glossary-pop')) hide(); });
-    document.addEventListener('click', (e) => { const m = e.target.closest('.info'); if (m) { e.preventDefault(); (current === m) ? hide() : show(m); } else hide(); });
+    document.addEventListener('click', (e) => {
+      const m = e.target.closest('.info'), was = press && press.m === m ? press.open : current === m;  // a key's click: what shows now
+      press = null;
+      if (!m) { hide(); return; }
+      e.preventDefault();
+      if (was) hide(); else { show(m); held = current === m; }
+    });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
     // A scroll shuts the bubble, except one whose marker has focus, which follows its marker: Tab onto a marker below
     // the fold scrolls it into view, and that scroll shut the bubble the focus had just opened.
@@ -542,9 +556,10 @@
   }
   function pageArrived(path, was) {
     const h = root.querySelector('h1'), tab = root.querySelector('.services [aria-current="page"]');
-    // The signed-out landing keeps the plain product name; its headline is not a page name.
+    // The signed-out landing keeps the plain product name; its headline is not a page name. The Terms and Privacy
+    // pages (.legal, signed in or out) are named by their heading: a tab left on either said only "Tau".
     // plain(): the tab title is read and copied as text, so it carries no word joiner (usd()).
-    const name = root.querySelector('.services') ? plain((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
+    const name = root.querySelector('.services, .legal') ? plain((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
     document.title = name ? `${clipWords(name, 59)}${SEP}Tau` : 'Tau';
     const at = path + location.search, again = shownPath === path, moved = shownAt !== null && shownAt !== at;
     shownPath = path; shownAt = at;
@@ -934,12 +949,16 @@
     // Keep the automation conversation alive when replacing the page shell.
     const autopilot = document.getElementById('autopilot-float');
     if (autopilot) document.body.appendChild(autopilot);
+    // The profile menu is a disclosure, as the bell is (no menu role, so no aria-haspopup): its button names the list it
+    // opens, and the link to the page showing says so, since these pages have no section tab to mark. Terms and Privacy
+    // are Tau's pages (boot.js serves them in Tau for everyone), so they load afresh; this menu had no way to them.
+    const menuLink = (href, label) => `<a href="${href}"${active === href ? ' aria-current="page"' : ''}>${label}</a>`;
     // <main> starts at the board, the page's h1 and its money figures, and #main is the page below them.
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <div class="brand-controls"><span class="market-control"></span><p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p></div>
         <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><p class="bell-stale" hidden></p><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false"><span class="profile-name" title="${esc(u.name || u.email)}">${esc(u.name || u.email)}</span><svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/funds">Funds</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/devlog">Dev Logs</a><a href="/system">System</a>${adminViewOn() ? '<a href="/admin">Admin</a>' : ''}<button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><p class="bell-stale" hidden></p><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-controls="profile-menu" aria-expanded="false"><span class="profile-name" title="${esc(u.name || u.email)}">${esc(u.name || u.email)}</span><svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" id="profile-menu" hidden>${menuLink('/funds', 'Funds')}${menuLink('/settings', 'Settings')}${menuLink('/billing', 'Billing')}${menuLink('/devlog', 'Dev Logs')}${menuLink('/system', 'System')}${adminViewOn() ? menuLink('/admin', 'Admin') : ''}<a href="/terms" data-native>Terms</a><a href="/privacy" data-native>Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <div class="workspace"><aside class="hotrail" id="hotrail" aria-label="Hot markets"></aside><main class="wrap">
         <div id="boardbody">${board}</div>
@@ -1116,7 +1135,13 @@
     }));
     let saved = null;
     try { saved = sessionStorage.getItem(THEME_SAVED); sessionStorage.removeItem(THEME_SAVED); } catch (e) { /* private mode */ }
-    if (saved === current) flash('#theme-flash', `Theme set to ${themeName(current)}. It’s saved to your account, so it applies wherever you sign in.`, 'good');
+    if (saved === current) {
+      flash('#theme-flash', `Theme set to ${themeName(current)}. It’s saved to your account, so it applies wherever you sign in.`, 'good');
+      // The switch reloads the page, which left keyboard focus at the top of it: it goes back to the theme just
+      // chosen, which a screen reader reads with the line saying it took.
+      const on = root.querySelector(`[data-theme="${current}"]`);
+      if (on) { on.setAttribute('aria-describedby', 'theme-flash'); on.focus({ preventScroll: true }); }
+    }
   }
   // A Kalshi cash figure a shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
   // pending: it reads Checking\u2026, never $0, and a figure the server read earlier shows only with its age.

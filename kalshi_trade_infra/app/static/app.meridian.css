@@ -283,6 +283,7 @@ th .info { vertical-align: 0; }
 .profile-menu[hidden] { display: none; }
 .profile-menu a, .profile-item { display: block; width: 100%; text-align: left; font: 400 13px var(--f-ui); color: var(--ink-2); background: none; border: 0; padding: 8px 10px; cursor: pointer; text-decoration: none; }
 .profile-menu a:hover, .profile-item:hover { background: var(--stock-sunk); color: var(--ink); }
+.profile-menu a[aria-current="page"] { color: var(--ink); box-shadow: inset 2px 0 0 var(--ink); }
 .profile-menu a + .profile-item { border-top: 1px solid var(--rule); margin-top: 2px; padding-top: 9px; }
 
 .services { min-width: 0; flex: 1; }
