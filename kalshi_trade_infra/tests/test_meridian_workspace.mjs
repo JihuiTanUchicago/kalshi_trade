@@ -6260,14 +6260,14 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
   f.S.me.user.autopilot = false;
   await f.viewStrategies(); await flush(); await flush();
   let empty = f.root.querySelector('#slips .empty');
-  assert.equal(empty.querySelector('h3').textContent, 'No strategies yet');
+  assert.equal(empty.querySelector('h2').textContent, 'No strategies yet');
   assert.match(empty.innerHTML, /<p>Every strategy a research session writes lands here, with its test on data it never saw\. Start a session to find your first\.<\/p>/);
   assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), ['/research?new=1']);
   // A filter that matches nothing says to try another, not a bare heading.
   f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
     ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
   await f.viewStrategies(); await flush(); await flush();
-  assert.match(f.root.querySelector('#slips .empty').innerHTML, /<h3>No matching strategies<\/h3><p>Try another filter\.<\/p>/);
+  assert.match(f.root.querySelector('#slips .empty').innerHTML, /<h2>No matching strategies<\/h2><p>Try another filter\.<\/p>/);
 
   // Deploy: nothing deployed. With passed strategies (or before that count is in) the board says what
   // goes on it; with none passed, that nothing has passed yet. The Realized figure points at no list.
@@ -6914,14 +6914,15 @@ test('Meridian: the Passed filter with nothing passed says so and offers a new s
   f.S.me.user.autopilot = false;
   await f.viewStrategies(); await flush(); await flush();
   const empty = f.root.querySelector('#slips .empty');
-  assert.equal(empty.querySelector('h3').textContent, 'No strategy has passed yet');
+  assert.equal(empty.querySelector('h2').textContent, 'No strategy has passed yet');
   assert.doesNotMatch(empty.innerHTML, /Try another filter/);
   assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), ['/research?new=1']);
   // Another filter that matches nothing still says to try another.
   const g = frontend({search: '?status=passed&market=nba', fetchImpl: path => (path.startsWith('/api/strategies?')
     ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
   await g.viewStrategies(); await flush(); await flush();
-  assert.match(g.root.querySelector('#slips .empty').innerHTML, /<h3>No matching strategies<\/h3><p>Try another filter\.<\/p>/);
+  // It names what the list is filtered to and clears it in one press.
+  assert.match(g.root.querySelector('#slips .empty').innerHTML, /<h2>No matching strategies<\/h2><p>Nothing matches Passed\u00a0· [^<]+\. Try another filter, or clear them\.<\/p><button class="btn" type="button" data-clear-filters>Clear filters<\/button>/);
 });
 
 test('Meridian: the autopilot says a session queued to start apart from the ones researching', async () => {

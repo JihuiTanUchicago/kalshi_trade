@@ -659,7 +659,9 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     assert.match(css, /\n\.pick-all-m, \.pick-head \{ display: none; \}/);
     const phone = phoneRules(css);
     assert.match(phone, /\.pick-all-m \{ display: flex;[^}]*min-height: 44px;/);
-    assert.match(phone, /\.pick-all-m input \{ width: 22px; height: 22px;/);
+    assert.match(phone, /\.pick-all-m input \{ width: 24px; height: 24px;/);
+    // Each row's own box is 24px on a phone too (WCAG 2.5.8): it was 22px, the stacked row's only control under 24px.
+    assert.match(phone, /\.t-strat\.stack tbody td\.pickcol input \{ width: 24px; height: 24px;/);
     assert.match(phone, /\.stack thead #pick-all \{ display: none; \}/);
     assert.match(phone, /\.stack thead \.pick-head \{ display: inline; \}/);
     const th = f.root.querySelector('th.pickcol');

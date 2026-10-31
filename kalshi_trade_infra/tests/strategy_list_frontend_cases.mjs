@@ -523,9 +523,33 @@ export function strategyListCases({name, frontend, detailStrategy}) {
         f.location.pathname = '/strategies'; f.location.search = search;
         await f.viewStrategies(); await flush();
         const empty = f.root.querySelector('#slips .empty').innerHTML;
-        assert.match(empty, /Try another filter\./, search);
+        assert.match(empty, /Try another filter, or clear them\./, search);
         assert.doesNotMatch(empty, /will land here|Start a session|New session|See its research|Go to Research/, search);
-        if (name === 'Meridian') assert.match(empty, /<h3>No matching strategies<\/h3>/);
+        assert.match(empty, /<h2>No matching strategies<\/h2>/);
+        f.clearTimers && f.clearTimers();
+      }
+    }
+    // It names what the list is filtered to, in the customer's words (the market's name, never its key; the search as
+    // typed, escaped), and Clear filters undoes every filter but keeps the sort, which narrows nothing.
+    {
+      const f = frontend({fetchImpl: () => response({counts: {total: 0, deployed: 0, examples: {}}, matched: 0, pages: 0, strategies: []})});
+      f.location.pathname = '/strategies'; f.location.search = '?status=passed&market=eth15m&q=%3Cb%3Ex&deployed=1&sort=best';
+      await f.viewStrategies(); await flush();
+      const empty = f.root.querySelector('#slips .empty');
+      const said = plain(empty.querySelector('p').innerHTML);
+      assert.match(said, /^Nothing matches Passed\u00a0· Deployed\u00a0· ETH [^·]+\u00a0· “&lt;b&gt;x”\. Try another filter, or clear them\.$/);
+      assert.doesNotMatch(empty.innerHTML, /eth15m|<b>x/);
+      empty.querySelector('[data-clear-filters]').onclick(); await flush();
+      assert.equal(f.navigations.at(-1), '/strategies?sort=best&status=');
+      f.clearTimers && f.clearTimers();
+    }
+    for (const search of ['?status=&q=zzz']) {
+      for (const autopilot of [false]) {
+        const f = frontend({fetchImpl: () => response({counts: {total: 0, deployed: 0, examples: {}}, matched: 0, pages: 0, strategies: []})});
+        f.S.me.user.autopilot = autopilot;
+        f.location.pathname = '/strategies'; f.location.search = search;
+        await f.viewStrategies(); await flush();
+        assert.match(f.root.querySelector('#slips .empty').innerHTML, /<p>Nothing matches “zzz”\. Try another filter, or clear them\.<\/p><button class="btn" type="button" data-clear-filters>Clear filters<\/button>/);
         f.clearTimers && f.clearTimers();
       }
     }
@@ -535,5 +559,95 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     g.location.pathname = '/strategies'; g.location.search = '?status=';
     await g.viewStrategies(); await flush();
     assert.match(g.root.querySelector('#slips .empty').innerHTML, /Autopilot is on\. The strategies it finds will land here\./);
+    // Every empty list's heading is an h2 under the page's h1: an h3 skipped a level (axe heading-order, walked 2026-10-31).
+    assert.equal(g.root.querySelector('#slips .empty h2').textContent, name === 'Tau' ? 'Nothing here yet' : 'No strategies yet');
+    assert.equal(g.root.querySelectorAll('#slips h3').length, 0);
+  });
+
+  // Where a keyboard user is left: the fake DOM records focus() (Tau's as `focused`, Meridian's as the document's
+  // activeElement).
+  const hasFocus = (f, el) => !!el && (el.focused === true || f.document.activeElement === el);
+
+  test(`${name}: Prev and Next hand focus to the new page's first strategy, or to Try again when its read failed`, async () => {
+    // Walked 2026-10-31: the new page was drawn over the button that was pressed, and focus fell to the top of the document.
+    let fail = false;
+    const f = frontend({fetchImpl: path => {
+      if (fail) return response({error: 'Something went wrong on our side.'}, 500);
+      const page = +new URLSearchParams(path.split('?')[1]).get('page');
+      return response({...listOf(120, 3), strategies: [detailStrategy({id: 80 + page, title: 'First on page ' + (page + 1)})]});
+    }});
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.viewStrategies(); await flush();
+    const first = f.root.querySelector('tbody td.name a');
+    assert.equal(hasFocus(f, first), false, 'a page that just opened leaves focus to the router');
+    await f.root.querySelector('[data-sp="1"]').onclick(); await flush();
+    const now = f.root.querySelector('tbody td.name a');
+    assert.equal(now.textContent, 'First on page 2');
+    assert.ok(hasFocus(f, now));
+    assert.equal(now.focusOptions && now.focusOptions.preventScroll, true);
+    fail = true;
+    await f.root.querySelector('[data-sp="2"]').onclick(); await flush();
+    assert.ok(hasFocus(f, f.root.querySelector('#slips [data-retry]')));
+  });
+
+  test(`${name}: bulk deploy's Clear leaves focus on the first box, and a deploy that partly failed still says so after the list reads again`, async () => {
+    const rows = [detailStrategy({id: 61, title: 'Lands'}), detailStrategy({id: 62, title: 'Refused'}), detailStrategy({id: 63, title: 'Third'})];
+    const f = frontend({fetchImpl: (path, options) => {
+      if (path === '/api/deployments' && options && options.method === 'POST') {
+        return JSON.parse(options.body).strategy_id === 62 ? response({error: 'This strategy can’t be deployed.'}, 400) : response({id: 900});
+      }
+      return response({counts: {total: 3, passed: 3}, matched: 3, pages: 1, strategies: rows});
+    }});
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.viewStrategies(); await flush();
+    const tick = (i) => { const p = f.root.querySelectorAll('.pick')[i]; p.checked = true; p.onchange(); };
+    tick(0); tick(1);
+    assert.match(f.root.querySelector('#bulkbar').innerHTML, /2 selected/);
+    f.root.querySelector('#bulk-clear').onclick();
+    assert.equal(f.root.querySelector('#bulkbar').hidden, true);
+    assert.ok(hasFocus(f, f.root.querySelectorAll('.pick')[0]), 'Clear hands focus to the first box, not the top of the page');
+    // Two picked, one refused: the list reads again to show the one that landed, and the bar keeps what was said.
+    tick(0); tick(1);
+    const dep = f.root.querySelector('#bulk-dep');
+    await dep.onclick({target: dep}); for (let i = 0; i < 4; i++) await flush();
+    assert.equal(f.requests.filter(({path, options}) => path === '/api/deployments' && options && options.method === 'POST').length, 2, 'one write each, never again');
+    assert.ok(f.requests.filter(({path}) => path.startsWith('/api/strategies?')).length >= 2, 'the list read again');
+    const bar = f.root.querySelector('#bulkbar');
+    assert.equal(bar.hidden, false);
+    assert.equal(plain(bar.innerHTML), '1 deployed · 1 failed: This strategy can’t be deployed.'.replace(' · ', ' · '));
+    assert.equal(bar.querySelector('#bulk-dep'), null, 'nothing is picked after the read, so no Deploy button');
+    assert.ok(hasFocus(f, bar.querySelector('#bulkflash')), 'focus goes to what it said, not the top of the page');
+    // The next pick starts a fresh bar.
+    tick(2);
+    assert.match(bar.innerHTML, /1 selected/); assert.doesNotMatch(bar.innerHTML, /failed/);
+  });
+
+  test(`${name}: emptying the search box with Escape or its clear button lists everything again at once`, async () => {
+    // Walked 2026-10-31: those fire no change event until the box loses focus, and the list stayed filtered under an empty box.
+    const f = frontend({fetchImpl: () => response(listOf(2))});
+    f.location.pathname = '/strategies'; f.location.search = '?status=&q=idea';
+    await f.viewStrategies(); await flush();
+    const box = f.root.querySelector('#strat-q');
+    box.value = ''; box.onsearch(); await flush();
+    assert.equal(f.navigations.at(-1), '/strategies?status=');
+    // The search event Enter fires beside change asks nothing twice.
+    const g = frontend({fetchImpl: () => response(listOf(2))});
+    g.location.pathname = '/strategies'; g.location.search = '?status=';
+    await g.viewStrategies(); await flush();
+    const q = g.root.querySelector('#strat-q');
+    q.value = 'fade'; q.onchange(); q.onsearch(); await flush();
+    assert.deepEqual(g.navigations, ['/strategies?q=fade&status=']);
+  });
+
+  test(`${name}: a row the search found by its thesis shows the thesis, so the match is on screen`, () => {
+    // Walked 2026-10-31 in Meridian: the search reads the name and the thesis, and a Meridian row showed only the name.
+    const f = frontend({fetchImpl: () => response({})});
+    const s = detailStrategy({id: 47, title: 'Fade the close', thesis: 'Late takers **overpay** near the close.'});
+    const shown = (q) => /<div class="sub-fig cellwrap">Late takers <b>overpay<\/b> near the close\.<\/div>/.test(f.strategySlip(s, null, {q}));
+    assert.equal(shown('overpay'), true);
+    // Tau's rows carry the thesis whatever the search; Meridian's only when the name doesn't hold the words.
+    assert.equal(shown('FADE'), name === 'Tau');
+    assert.equal(shown(''), name === 'Tau');
+    assert.equal(shown(undefined), name === 'Tau');
   });
 }

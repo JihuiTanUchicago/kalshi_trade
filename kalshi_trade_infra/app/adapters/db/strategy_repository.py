@@ -105,6 +105,9 @@ NOISE_STATUSES = ("rejected", "failed")  # the un-kept outcomes the default list
 # for the list's "Later-period P&L" order.
 _UNSEEN_PNL_JSON = "JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')"
 _UNSEEN_PNL = "CAST(JSON_UNQUOTE(%s) AS DECIMAL(16,4))" % _UNSEEN_PNL_JSON
+# No later-period figure: the key missing, or stored as JSON null ({"pnl": null}, which JSON_EXTRACT returns as a JSON
+# null, not SQL NULL, and which cast to 0). The row shows "—", and it sorted among the $0.00 rows (walked 2026-10-31).
+_UNSEEN_PNL_MISSING = "(COALESCE(JSON_UNQUOTE(%s), 'null') = 'null')" % _UNSEEN_PNL_JSON
 
 
 def _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise=False) -> tuple:
@@ -122,7 +125,9 @@ def _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_no
         params.extend(NOISE_STATUSES)
     if q:
         sql += " AND (s.title LIKE %s OR s.thesis LIKE %s)"
-        like = "%" + q + "%"
+        # The words as typed: LIKE's "%" and "_" (and its escape character) are escaped, so a search for "_" lists
+        # only titles with an underscore (it listed every strategy) and "50%" no longer any title with a 50.
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         params.extend((like, like))
     if deployed:
         sql += " AND EXISTS (SELECT 1 FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped')"
@@ -165,9 +170,10 @@ def list_strategies(
     params: List[Any] = [user_id] + fparams
     if sort == "best":
         # The sort "Later-period P&L", highest first: the backtest P&L after the split date (out_of_sample) that the
-        # list's Backtest P&L column shows, held out or not. One with no later-period result (rejected, tested only)
-        # goes last; ties and the rest newest first.
-        sql += " ORDER BY (%s IS NULL), %s DESC, s.id DESC LIMIT %%s OFFSET %%s" % (_UNSEEN_PNL_JSON, _UNSEEN_PNL)
+        # list's Backtest P&L column shows, held out or not. One with no later-period result (rejected, tested only, a
+        # P&L stored as null) goes last; ties and the rest newest first.
+        sql += " ORDER BY %s, CASE WHEN %s THEN NULL ELSE %s END DESC, s.id DESC LIMIT %%s OFFSET %%s" % (
+            _UNSEEN_PNL_MISSING, _UNSEEN_PNL_MISSING, _UNSEEN_PNL)
     else:
         # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
         # found early (oldest ids), so a plain id-DESC fetch past the limit would drop them.

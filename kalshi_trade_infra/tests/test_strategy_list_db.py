@@ -172,3 +172,36 @@ def test_the_list_flags_a_paper_book_of_instant_fills_as_the_track_record_leaves
              if not c.get("example")}
     assert {t: (c["past"]["paper"]["trades"], c["past"]["paper"].get("instant_fills", 0)) for t, c in cards.items()} == {
         "instant": (2, 2), "venue": (2, 0), "mixed": (2, 1)}
+
+
+def test_a_null_pnl_sorts_last_and_a_search_matches_its_words_literally(conn):
+    """A later-period P&L stored as JSON null ({"pnl": null}) shows "—" on its row, and the "Later-period P&L" sort
+    put it among the $0.00 rows: MySQL's JSON_EXTRACT gives a JSON null there, not SQL NULL, and it cast to 0. It goes
+    last with the rows that have no figure. And a search for "_" listed every strategy (LIKE's one-character
+    wildcard), "50%" every title with a 50 in it: the list and its counts match the words as typed."""
+    from app import repository as repo
+    from app import server
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "nullsort@example.invalid", "N", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}})
+    null_pnl = {"in_sample": {"trades": 5, "pnl": 1.0}, "out_of_sample": {"trades": 0, "pnl": None}}
+    for title, res in (("zero", _result(0.0)), ("json null", null_pnl), ("loss", _result(-0.04)), ("gain", _result(0.5)),
+                       ("no oos", _result("no-oos")), ("50% off_sale", _result(2.0)), ("plain 50 title", _result(1.0))):
+        repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", title, "t", spec, "passed", res)
+    conn.commit()
+    user = repo.get_user(cur, uid)
+
+    def page(**query):
+        return server.list_strategies(server.Ctx(conn, user, (), {k: str(v) for k, v in query.items()}, {}, None))
+
+    titles = lambda out: [c["title"] for c in out["strategies"] if not c.get("example")]  # noqa: E731
+    # Highest first, negative below zero; every row without a figure last, newest first.
+    assert titles(page(sort="best", status="")) == ["50% off_sale", "plain 50 title", "gain", "zero", "loss", "no oos", "json null"]
+    for q, want in (("_", ["50% off_sale"]), ("50%", ["50% off_sale"]), ("50", ["plain 50 title", "50% off_sale"]),
+                    ("%", ["50% off_sale"]), ("e_s", [])):
+        out = page(status="", q=q)
+        assert titles(out) == want, q
+        # The counts read the same clause, so the chips count what the search lists.
+        assert out["counts"]["total"] == len(want), q

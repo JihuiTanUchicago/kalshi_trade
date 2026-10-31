@@ -82,9 +82,9 @@ test('every helper the core gives is one a bundle takes, and both bundles take t
   const all = Object.keys(core());
   const [tau, mer] = BUNDLES.map((b) => new Set(taken(read(b))));
   assert.deepEqual(all.filter((n) => !tau.has(n) && !mer.has(n)), [], 'a helper no bundle takes');
-  // Only Tau's bundle calls mdInline itself (its strategy table's thesis line); only Meridian's draws Explore's
-  // spot distance from its parts (its rows' own markup).
-  assert.deepEqual([...tau].filter((n) => !mer.has(n)), ['mdInline']);
+  // Both call mdInline for a strategy row's thesis line (Meridian's when the search found the row by it); only
+  // Meridian's draws Explore's spot distance from its parts (its rows' own markup).
+  assert.deepEqual([...tau].filter((n) => !mer.has(n)), []);
   assert.deepEqual([...mer].filter((n) => !tau.has(n)), ['TARGET_IN', 'vsText', 'vsLab', 'rowVs']);
 });
 
