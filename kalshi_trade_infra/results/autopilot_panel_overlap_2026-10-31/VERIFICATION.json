@@ -1,0 +1,30 @@
+{
+  "status": "release authorized; awaiting PR CI and deployment",
+  "base_commit": "8c15996c9f4ae295030eeb7636e3411518f26998",
+  "browser_cases": 10,
+  "browser_passed": true,
+  "frontend": {
+    "passed": 2130,
+    "skipped": 2,
+    "failed": 0
+  },
+  "devlog_checks": {
+    "passed": 29
+  },
+  "independent_review": "no actionable finding",
+  "committed": false,
+  "deployed": false,
+  "no_external_account_calls": true,
+  "ci_frontend": {
+    "passed": 2189,
+    "skipped": 2,
+    "failed": 0
+  },
+  "python_full": {
+    "passed": 4820,
+    "skipped": 184,
+    "failed": 1,
+    "preexisting_failure": "tests/test_catalog_markets.py::test_generated_market_builds_backtest_and_settles",
+    "reproduced_on_unmodified_base": true
+  }
+}

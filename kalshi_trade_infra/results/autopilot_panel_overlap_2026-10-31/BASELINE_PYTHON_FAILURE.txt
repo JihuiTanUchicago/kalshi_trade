@@ -1,0 +1,10 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________ test_generated_market_builds_backtest_and_settles _______________
+tests/test_catalog_markets.py:238: in test_generated_market_builds_backtest_and_settles
+    assert len(trades) == 8
+E   assert 0 == 8
+E    +  where 0 = len([])
+=========================== short test summary info ============================
+FAILED tests/test_catalog_markets.py::test_generated_market_builds_backtest_and_settles
+1 failed in 0.34s

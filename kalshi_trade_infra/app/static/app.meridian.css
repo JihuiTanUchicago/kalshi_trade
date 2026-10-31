@@ -1784,7 +1784,8 @@ body.landing-body .apf { display: none; }
 /* At a laptop's height the controls took the whole panel: the feed was left one line (74px) tall and the
    composer ran off the bottom. The controls give way and scroll on their own; the feed keeps its room. */
 @media (min-width: 601px) { .apf.open .apf-top { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  .apf.open .apf-session { min-height: min(320px, 45vh); } }
+  /* History length must not take height away from the controls' scrollport. */
+  .apf.open .apf-session { flex: 1 1 0; min-height: min(320px, 45vh); } }
 .apf-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; border: 1px solid var(--rule); background: var(--rule); }
 .apf-stats[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }  /* paper-only: no live loss budget */
 .apf-stats[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }

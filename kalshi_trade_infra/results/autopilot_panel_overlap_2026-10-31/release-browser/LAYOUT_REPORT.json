@@ -1,0 +1,607 @@
+{
+  "mode": "Synthetic fixtures; actual app markup and styles; no account/provider access",
+  "checks": [
+    {
+      "theme": "tau",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 868,
+          "bottom": 884
+        },
+        "controls": {
+          "y": 66,
+          "height": 408.609375,
+          "bottom": 474.609375
+        },
+        "session": {
+          "y": 474.609375,
+          "height": 320,
+          "bottom": 794.609375
+        },
+        "composer": {
+          "y": 794.609375,
+          "height": 88.390625,
+          "bottom": 883
+        },
+        "topScroll": 0,
+        "feedClient": 244,
+        "feedContent": 244,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 868,
+          "bottom": 884
+        },
+        "controls": {
+          "y": 66,
+          "height": 408.609375,
+          "bottom": 474.609375
+        },
+        "session": {
+          "y": 474.609375,
+          "height": 320,
+          "bottom": 794.609375
+        },
+        "composer": {
+          "y": 794.609375,
+          "height": 88.390625,
+          "bottom": 883
+        },
+        "topScroll": 0,
+        "feedClient": 244,
+        "feedContent": 10581,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "tau",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 736,
+          "bottom": 752
+        },
+        "controls": {
+          "y": 66,
+          "height": 276.609375,
+          "bottom": 342.609375
+        },
+        "session": {
+          "y": 342.609375,
+          "height": 320,
+          "bottom": 662.609375
+        },
+        "composer": {
+          "y": 662.609375,
+          "height": 88.390625,
+          "bottom": 751
+        },
+        "topScroll": 0,
+        "feedClient": 244,
+        "feedContent": 244,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 736,
+          "bottom": 752
+        },
+        "controls": {
+          "y": 66,
+          "height": 276.609375,
+          "bottom": 342.609375
+        },
+        "session": {
+          "y": 342.609375,
+          "height": 320,
+          "bottom": 662.609375
+        },
+        "composer": {
+          "y": 662.609375,
+          "height": 88.390625,
+          "bottom": 751
+        },
+        "topScroll": 0,
+        "feedClient": 244,
+        "feedContent": 10581,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "tau",
+      "viewport": {
+        "width": 1280,
+        "height": 600
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 194,
+        "feedContent": 194,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 194,
+        "feedContent": 10581,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "tau",
+      "viewport": {
+        "width": 760,
+        "height": 600
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 194,
+        "feedContent": 194,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 194,
+        "feedContent": 10581,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "tau",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 0,
+          "height": 844,
+          "bottom": 844
+        },
+        "controls": {
+          "y": 49,
+          "height": 638.578125,
+          "bottom": 687.578125
+        },
+        "session": {
+          "y": 687.578125,
+          "height": 464.1875,
+          "bottom": 1151.765625
+        },
+        "composer": {
+          "y": 755.609375,
+          "height": 88.390625,
+          "bottom": 844
+        },
+        "topScroll": 0,
+        "feedClient": 388,
+        "feedContent": 388,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 0,
+          "height": 844,
+          "bottom": 844
+        },
+        "controls": {
+          "y": 49,
+          "height": 638.578125,
+          "bottom": 687.578125
+        },
+        "session": {
+          "y": 687.578125,
+          "height": 10656.796875,
+          "bottom": 11344.375
+        },
+        "composer": {
+          "y": 755.609375,
+          "height": 88.390625,
+          "bottom": 844
+        },
+        "topScroll": 0,
+        "feedClient": 10581,
+        "feedContent": 10581,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "meridian",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 868,
+          "bottom": 884
+        },
+        "controls": {
+          "y": 66,
+          "height": 408.609375,
+          "bottom": 474.609375
+        },
+        "session": {
+          "y": 474.609375,
+          "height": 320,
+          "bottom": 794.609375
+        },
+        "composer": {
+          "y": 794.609375,
+          "height": 88.390625,
+          "bottom": 883
+        },
+        "topScroll": 0,
+        "feedClient": 246,
+        "feedContent": 246,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 868,
+          "bottom": 884
+        },
+        "controls": {
+          "y": 66,
+          "height": 408.609375,
+          "bottom": 474.609375
+        },
+        "session": {
+          "y": 474.609375,
+          "height": 320,
+          "bottom": 794.609375
+        },
+        "composer": {
+          "y": 794.609375,
+          "height": 88.390625,
+          "bottom": 883
+        },
+        "topScroll": 0,
+        "feedClient": 246,
+        "feedContent": 10613,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "meridian",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 736,
+          "bottom": 752
+        },
+        "controls": {
+          "y": 66,
+          "height": 276.609375,
+          "bottom": 342.609375
+        },
+        "session": {
+          "y": 342.609375,
+          "height": 320,
+          "bottom": 662.609375
+        },
+        "composer": {
+          "y": 662.609375,
+          "height": 88.390625,
+          "bottom": 751
+        },
+        "topScroll": 0,
+        "feedClient": 246,
+        "feedContent": 246,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 736,
+          "bottom": 752
+        },
+        "controls": {
+          "y": 66,
+          "height": 276.609375,
+          "bottom": 342.609375
+        },
+        "session": {
+          "y": 342.609375,
+          "height": 320,
+          "bottom": 662.609375
+        },
+        "composer": {
+          "y": 662.609375,
+          "height": 88.390625,
+          "bottom": 751
+        },
+        "topScroll": 0,
+        "feedClient": 246,
+        "feedContent": 10613,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "meridian",
+      "viewport": {
+        "width": 1280,
+        "height": 600
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 196,
+        "feedContent": 196,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 196,
+        "feedContent": 10613,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "meridian",
+      "viewport": {
+        "width": 760,
+        "height": 600
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 196,
+        "feedContent": 196,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 16,
+          "height": 568,
+          "bottom": 584
+        },
+        "controls": {
+          "y": 66,
+          "height": 158.609375,
+          "bottom": 224.609375
+        },
+        "session": {
+          "y": 224.609375,
+          "height": 270,
+          "bottom": 494.609375
+        },
+        "composer": {
+          "y": 494.609375,
+          "height": 88.390625,
+          "bottom": 583
+        },
+        "topScroll": 0,
+        "feedClient": 196,
+        "feedContent": 10613,
+        "feedScroll": 0
+      }
+    },
+    {
+      "theme": "meridian",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "passed": true,
+      "short": {
+        "panel": {
+          "y": 0,
+          "height": 844,
+          "bottom": 844
+        },
+        "controls": {
+          "y": 49,
+          "height": 649.546875,
+          "bottom": 698.546875
+        },
+        "session": {
+          "y": 698.546875,
+          "height": 464.1875,
+          "bottom": 1162.734375
+        },
+        "composer": {
+          "y": 755.609375,
+          "height": 88.390625,
+          "bottom": 844
+        },
+        "topScroll": 0,
+        "feedClient": 390,
+        "feedContent": 390,
+        "feedScroll": 0
+      },
+      "long": {
+        "panel": {
+          "y": 0,
+          "height": 844,
+          "bottom": 844
+        },
+        "controls": {
+          "y": 49,
+          "height": 649.546875,
+          "bottom": 698.546875
+        },
+        "session": {
+          "y": 698.546875,
+          "height": 10687.34375,
+          "bottom": 11385.890625
+        },
+        "composer": {
+          "y": 755.609375,
+          "height": 88.390625,
+          "bottom": 844
+        },
+        "topScroll": 0,
+        "feedClient": 10613,
+        "feedContent": 10613,
+        "feedScroll": 0
+      }
+    }
+  ],
+  "errors": [],
+  "passed": true
+}

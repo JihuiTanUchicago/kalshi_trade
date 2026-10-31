@@ -1,5 +1,9 @@
 # PLAN
 
+## Autopilot panel overlap — October 31, 2026, Asia/Shanghai
+
+Release authorized / publication in progress (`tau-autopilot-panel-overlap-20261031`), isolated from main `8c15996c`. Both themes now allocate feed space independently of history length, preserving the controls’ usable scrollport and the phone’s existing single-sheet scroll. Ten actual-asset Chromium cases, 2,130 frontend tests (two skipped), and 29 public-changelog checks pass; independent review found no actionable regression. The public roadmap lists the repair as planned. No commit, publication, deployment, or production action occurred; the shared checkout is unchanged. Advisory reservation handed off. [Scope and evidence](results/autopilot_panel_overlap_2026-10-31/HANDOFF.md).
+
 - Stop closes only the breacher, behind APP_STOP_BREACHER_ONLY (2026-10-26; Todd chose it 05:59Z, ON on the box since 06:00Z):
   one position past position_stop_pct now force-sells and pauses the whole deployment, but the
   backtest the gates validate (backtest._stop_hit) stops each position on its own and keeps

@@ -23,6 +23,8 @@ A self-improving alpha discovery pipeline, from ideation, to similation, and fin
 
 ## TODO / Working Queue
 
+- `[verified locally: awaiting release]` Keep Autopilot settings reachable while reading a long conversation. Both themes pass desktop and phone browser checks; release is pending. [Evidence](kalshi_trade_infra/results/autopilot_panel_overlap_2026-10-31/HANDOFF.md).
+
 - [working: real-money perps release] Native Bitcoin perps orders with Kalshi's own margin/leverage limits and explicit owner confirmation for every order. No Tau financial caps or autonomous execution; binary live and research-strategy guards preserved. Encrypted source recovery passed; production fixes/header CSS being reconciled. Native client/store/service/Funds UI and hosted acceptance harness implemented;2,265 Python/10 skipped and226+8 frontend checks pass. Frozen58 security review clean; hosted proposal-width failure repaired. Hosted rerun, migration-delta review and guarded rollout pending. [Handoff](kalshi_trade_infra/results/kalshi_perps_deployment_preparation_2026-10-23/HANDOFF.md).
 
 - [in progress] Align default Tau masthead and Hot Markets black divider; preserve Meridian and installed extra CSS. [Handoff](kalshi_trade_infra/results/header_alignment_2026-10-22/HANDOFF.md).
