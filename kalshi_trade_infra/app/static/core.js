@@ -22,16 +22,25 @@
   // Each marker needs its closing partner to fire, so a half-typed `**foo` or `` `foo `` from a
   // mid-stream token stays literal until it closes — the property the streaming feed relies on.
   // Only http(s) links — never javascript:/data: — so there is no XSS surface.
+  // A bare link and an @handle are found only in text, never inside a tag this built: a post's
+  // "[x](https://a(https://b/onmouseover=…)" autolinked the inner https:// inside the first link's href, and
+  // its quote closed that href, so the rest of the post's words became an attribute (an event handler) on
+  // another reader's page; "https://x.com/@bob" put a mention's quoted class inside the href. A link's own
+  // words (its label, a bare link's text) are left as they are.
+  const MD_AUTO = /<[^>]*>|(?<=^|[\s(])https?:\/\/[^\s<)]+|(?<![\w@])@[a-zA-Z0-9_]{2,32}/g;
   const mdInline = (t) => {
     t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
     t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
     t = t.replace(/(^|[^\w])_([^_\n]+)_(?![\w])/g, '$1<i>$2</i>');   // _italic_ (never snake_case)
-    t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
-    t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener nofollow">$2</a>');
-    // @handle mentions (not inside an email: the class blocks a word char before @)
-    t = t.replace(/(^|[^\w@])@([a-z0-9_]{2,32})/gi, '$1<span class="mention">@$2</span>');
-    return t;
+    t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s<>"]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
+    // Bare links, and @handle mentions (not inside an email: a word char before @ blocks it)
+    let inLink = false;
+    return t.replace(MD_AUTO, (m) => {
+      if (m[0] === '<') { if (/^<a\s/.test(m)) inLink = true; else if (m === '</a>') inLink = false; return m; }
+      if (inLink) return m;
+      return m[0] === '@' ? `<span class="mention">${m}</span>` : `<a href="${m}" target="_blank" rel="noopener nofollow">${m}</a>`;
+    });
   };
   // One-line-ish markdown: inline subset + hard line breaks. Used for devlog detail and log lines.
   const mdLite = (s) => mdInline(esc(s)).replace(/\n/g, '<br>');
