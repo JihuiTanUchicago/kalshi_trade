@@ -1078,6 +1078,24 @@ def test_notify_mentions_excludes_author(monkeypatch):
     assert notes == [(2, "mention")]  # author (uid 1) is not notified about their own mention
 
 
+def test_mention_any_case_notifies_the_lowercase_handle_once(monkeypatch):
+    # "@Carol" is highlighted in the post (core.js matches any case), so it must reach @carol, and
+    # "@Carol ... @carol ... @CAROL" is still one notice.
+    from app import repository as r
+    assert r.MENTION_RE.findall("thanks @Carol and @BOB_2, not foo@Bar.com") == ["Carol", "BOB_2"]
+    asked, notes = [], []
+
+    def users(cur, hs):
+        asked.append(sorted(hs))
+        return [{"id": 3, "username": "carol", "name": "Carol", "email": "c@x.invalid"}] if "carol" in hs else []
+    monkeypatch.setattr(server.repo, "users_by_usernames", users)
+    monkeypatch.setattr(server.repo, "add_notification", lambda cur, uid, kind, body, link: notes.append((uid, kind, body)))
+    monkeypatch.setattr(server.notify, "mention_notice", lambda *a, **k: True)
+    emailed = server._notify_mentions(None, 1, "Me", "@Carol see this, @carol and @CAROL too", "/community")
+    assert asked == [["carol"]]
+    assert notes == [(3, "mention", "Me mentioned you in a post.")] and emailed == {3}
+
+
 def test_shared_pnl_keeps_each_book_apart_with_its_trade_count(monkeypatch):
     sums = {"paper": 120.504, "live": -0.6, "demo": 999.0}
     monkeypatch.setattr(server.repo, "realized_pnl", lambda cur, uid, mode: sums[mode])

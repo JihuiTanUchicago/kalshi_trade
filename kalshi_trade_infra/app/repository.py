@@ -180,7 +180,9 @@ def upsert_google_user(cur, sub: str, email: str, name: Optional[str], picture: 
 
 
 _USERNAME_RE = re.compile(r"[^a-z0-9]")
-MENTION_RE = re.compile(r"(?<![\w@])@([a-z0-9_]{2,32})")  # @handle tokens in a post/comment
+# @handle tokens in a post/comment, any case: "@Carol" is highlighted in the post (core.js mdInline matches
+# [a-zA-Z0-9_]), so it notifies @carol too. Handles are stored lowercase; callers lowercase what this finds.
+MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9_]{2,32})")
 
 
 def _slug_username(base: str) -> str:
