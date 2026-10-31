@@ -760,3 +760,19 @@ test('Meridian: Explore\'s Bitcoin filter and a title-only row\'s link are 44px 
   assert.equal(decl(all, '.t-explore td.name[colspan] > a.market-name', 'min-height', media), '44px');
   assert.ok(!all.some((r) => sels(r).some((s) => /market-context/.test(s)) && r.media === media), 'no touch rule reaches the Context column');
 });
+// Slow-network walk 2026-10-31: a money page's figures (Deploy, Funds, Billing, a strategy) came in 200-380px tall on a
+// phone and pushed the page down under the reader. While the page reads (#app aria-busy) the empty list holds less
+// room than the figures ever take (Billing's, the shortest, are about 207px on a phone, 115px on a desk).
+test('a money page\'s figures hold room while its first read is out, less than they take, in both themes', () => {
+  const SEL = '#app[aria-busy="true"] :is(#dfigs, #ffigs, #bfigs, #figs):empty';
+  for (const file of ['app.css', 'app.meridian.css']) {
+    const all = rules(read(file));
+    const at = (media) => all.filter((r) => r.media === media && r.sel === SEL).map((r) => (r.body.match(/min-height\s*:\s*([^;]+)/) || [])[1]).filter(Boolean).pop();
+    assert.equal(at(''), '110px', file);
+    assert.equal(at(PHONE), '200px', file);
+  }
+  for (const [files, id] of [[['app.js', 'app.meridian.js'], 'dfigs'], [['app-funds.js', 'app.meridian-funds.js'], 'ffigs'],
+    [['app-billing.js', 'app.meridian-billing.js'], 'bfigs'], [['app-strategy.js'], 'figs']]) {  // Meridian's strategy page draws its figures with the page
+    for (const f of files) assert.match(read(f), new RegExp(`id="${id}"[^>]*></dl>`), `${f}: #${id} starts empty`);
+  }
+});
