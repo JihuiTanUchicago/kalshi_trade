@@ -494,7 +494,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = await open({status: 'passed', deployments});
     const lines = [...f.root.querySelectorAll('.real-record p')].map((p) => p.textContent.replace(/\s+/g, ' '));
     const line = (mode) => lines.find((t) => t.startsWith(mode)) || '';
-    assert.match(line('Demo'), /^Demo \+\$1\.16 realized over 3 closed trades, after Kalshi fees, in Tau’s demo book: not real money · 1 open, counted once it closes/);
+    // Its window too: every closed demo trade, while the dashboard and Funds count Tau's demo book from its last reload.
+    assert.match(line('Demo'), /^Demo \+\$1\.16 realized over 3 closed trades, after Kalshi fees, in Tau’s demo book: not real money · since its first demo trade: a demo reload doesn’t reset it · 1 open, counted once it closes/);
+    assert.doesNotMatch(line('Paper') + line('Live'), /reload|first demo trade/);
     assert.match(line('Live'), /−\$2\.50 realized over 2 closed trades, real money, after Kalshi fees · 2 open, counted once they close/);
     assert.match(line('Paper'), /\+\$6\.86 realized over 6 closed trades, after Kalshi fees and the spread/);
     assert.doesNotMatch(line('Paper'), /real money|demo book/);

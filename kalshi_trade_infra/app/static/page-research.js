@@ -621,7 +621,8 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     // words short enough for one line of a card beside the hot rail ("1 more passed but not cleared" took two).
     // The "·" before it ends the item ahead (kept whole with it): when the item wrapped, its line began "· +1 passed".
     const unclear = (ahead) => fell ? `<span class="nobr">${ahead}\u00a0\u00b7</span><span class="run-fell">+${num(fell)} passed, not cleared</span>` : ahead;
-    const explored = `Explored ${num(r.hypotheses_tried)} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
+    // In the words every other page uses ("Ideas tested"): the card said "Explored 3 hypotheses".
+    const explored = `Tested ${num(r.hypotheses_tried)} idea${+r.hypotheses_tried === 1 ? '' : 's'}`;
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-hidden="true"></span>'
       : r.status === 'queued' ? 'Queued<span class="working" aria-hidden="true"></span>'
       : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
@@ -1479,8 +1480,11 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // What the autopilot does next, at the end of a session it started: the page ended on "Try another idea"
   // as if the reader had to. A finished session hands straight back to the autopilot, which starts the next
   // one itself (worker.enqueue_review_after_research, and the research floor when nothing has started for a
-  // while). Shown only while the switch is on, and syncApCopy follows a flip.
-  const apNext = (r) => +r.by_autopilot && !r.example ? ` <span data-ap-next${S.me && S.me.user && S.me.user.autopilot ? '' : ' hidden'}>The autopilot takes these results into its next ideas and starts its next session on its own.</span>` : '';
+  // while). Shown only while the switch is on, and syncApCopy follows a flip. A session that tested nothing (`tested`
+  // false: no idea listed and none counted) has no results to take: a failed one with none said "takes these results
+  // into its next ideas" all the same (walk 2026-10-31).
+  const apNext = (r, tested = true) => +r.by_autopilot && !r.example ? ` <span data-ap-next${S.me && S.me.user && S.me.user.autopilot ? '' : ' hidden'}>${tested ? 'The autopilot takes these results into its next ideas and starts its next session on its own.' : 'The autopilot starts its next session on its own.'}</span>` : '';
+  const runTested = (r, strategies) => (strategies || []).length > 0 || +r.hypotheses_tried > 0;
   function runNext(r, strategies) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
     const passed = (strategies || []).filter(cleared);
@@ -1508,13 +1512,13 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
     // The server's reason is written for the customer; one that already says the session stopped
     // stands alone ("…stopped on an error. …so the session stopped.").
-    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`}${apNext(r)} <a href="/research?new=1">Start a new session</a></p>`;
+    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`}${apNext(r, runTested(r, strategies))} <a href="/research?new=1">Start a new session</a></p>`;
     // In the status figure's and the list's words ("Stopped by you"): it said "cancelled" right under it.
     if (r.status === 'cancelled') return `<p class="run-next">You stopped this session before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
     const none = !(strategies || []).length;
     // Tau lists the ideas tested, Meridian the strategies.
     if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : `${fellLine ? fellLine + ' ' : ''}${nothing} before then; each ${tau ? 'idea' : 'strategy'} below says which check it missed.`}</p>`;
-    if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
+    if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)}${apNext(r, runTested(r, strategies))} <a href="/research?new=1">Try another idea</a></p>`;
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">${fellLine ? fellLine + ' ' : ''}${nothing} this time. Most ideas don’t. ${tau ? 'Each idea below says which check it missed; tap one for what to try next.' : 'Each strategy below says which check it missed and what to try next.'}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }

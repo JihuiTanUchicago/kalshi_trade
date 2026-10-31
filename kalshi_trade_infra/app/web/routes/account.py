@@ -56,7 +56,9 @@ def me(ctx: Ctx):
 def notifications(ctx: Ctx):
     rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid, limit=bell.READ_ROWS))
     return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": bell.grouped(rows),
-            "unread_kinds": bell.unread_kinds(rows)}
+            # unread_kinds counts the newest READ_ROWS notices only, while `unread` counts them all: the bell's
+            # summary says which window its parts cover when the two differ ("131 new; the newest 100: …").
+            "unread_kinds": bell.unread_kinds(rows), "unread_kinds_of": bell.READ_ROWS}
 
 
 def mark_notifications_read(ctx: Ctx):

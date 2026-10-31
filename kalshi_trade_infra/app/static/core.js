@@ -977,7 +977,8 @@
   const demoPnl = (dm, pnl) => demoNoClose(dm) ? DEMO_NO_CLOSE : `${usd(pnl, true)} realized ${demoSpan(dm)}, ${FEES_NET}`;
   // What the since-your-last-visit strip's book line is net of: paper's spread and fees, demo's fees in play money
   // ("Demo +$0.67 on 1 trade" said nothing beside paper's "after Kalshi fees and the spread"), live's real money.
-  const sinceNote = (m) => (m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : m === 'demo' ? ` (play money), ${FEES_NET}` : '');
+  // Live says its fees too (the engine takes every fill's Kalshi fee off a live trade's P&L), as paper and demo say theirs.
+  const sinceNote = (m) => (m === 'live' ? ` (real money), ${FEES_NET}` : m === 'paper' ? `, ${PAPER_NET}` : m === 'demo' ? ` (play money), ${FEES_NET}` : '');
   // An action as a link: the server's {label, href}. One off the site opens in a new tab and says so.
   function actionLink(h) {
     const a = h && h.action;

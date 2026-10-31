@@ -79,13 +79,34 @@ export function demoBookCases({name, frontend, fundsData, dashboard, detailStrat
     assert.doesNotMatch(strip, /\$1\.29|real money/);  // never summed with paper, never called real money
   });
 
+  // Walk 2026-10-31: paper and demo said what they were net of, live read "(real money)" with no word of its fees.
+  test(`${name}: the since-visit strip's live line says it is after Kalshi fees, as paper's and demo's say their own`, async () => {
+    const since = {at: '2026-10-30T08:00:00+00:00', first: false, books: {paper: {pnl: 0, trades: 0}, demo: {pnl: 0, trades: 0}, live: {pnl: 1.11, trades: 1}},
+      passed: {n: 0, items: []}, autopilot: {}, runs: {}};
+    const html = await dash({capital: 1000, equity: 1000, realized_pnl: 0, today_pnl: 0, closed_trades: 0, running: 1, ...book}, {since});
+    const strip = (/<section class="since" id="dash-since"[\s\S]*?<\/section>/.exec(html) || [''])[0];
+    assert.match(strip, /data-book="live"><span class="nobr"><b>Live<\/b> <span class="pos">\+⁠?\$1\.11<\/span><\/span> on 1 trade \(real money\), after Kalshi fees<\/span>/);
+  });
+
+  // Walk 2026-10-31: Meridian's dashboard showed the paper book's realized today (UTC) beside its all-time figure; Tau's had
+  // none. Both show it, the paper book's own (today_pnl), never added to the demo book's.
+  test(`${name}: the dashboard shows the paper book's realized today (UTC), the paper book's own`, async () => {
+    const base = dashboard();
+    const paper = {...base.paper, realized_pnl: 3.88, today_pnl: 0.62, closed_trades: 5, total_pnl: 3.88};
+    const text = words(await dash({capital: 1000, equity: 1000.25, realized_pnl: 0.25, today_pnl: 0.25, closed_trades: 1, running: 1, ...book}, {paper}));
+    assert.match(text, /Today \(UTC\): (?:paper realized )?\+⁠?\$0\.62/);
+    assert.doesNotMatch(text, /\$0\.87/);  // never summed with the demo book's day
+  });
+
   test(`${name}: the ladder's demo rung says its realized is after Kalshi fees, as the paper rung says its own`, async () => {
     const d = (id, mode, closed_trades, realized_pnl) => ({id, mode, status: 'running', closed_trades, realized_pnl, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'});
     const s = strategyFrontend(detailStrategy({deployments: [d(1, 'paper', 2, -0.07), d(2, 'demo', 2, -0.29)]}), () => response({}));
     await s.viewStrategy(42); await settle();
     const ladder = s.root.querySelector('#ladder-body').innerHTML;
     s.clearTimers && s.clearTimers();
-    assert.match(ladder, /<span class="mk dep">Demo<\/span> running · 2 closed trades · (?:<span[^>]*>)?−⁠?\$0\.29(?:<\/span>)? realized, after Kalshi fees<\/p>/);
+    assert.match(ladder, /<span class="mk dep">Demo<\/span> running · 2 closed trades · (?:<span[^>]*>)?−⁠?\$0\.29(?:<\/span>)? realized, after Kalshi fees, since its first demo trade<\/p>/);
+    // ...that window as its Since deploying line says it (every closed demo trade, a reload doesn't reset it); paper's has none.
+    assert.doesNotMatch(ladder.split('Demo</span>')[0], /first demo trade/);
     assert.match(ladder, /Paper<\/span> running · 2 closed trades · (?:<span[^>]*>)?−⁠?\$0\.07(?:<\/span>)? realized, after Kalshi fees and the spread/);
     // Before its first close a rung has nothing to be net of.
     const fresh = strategyFrontend(detailStrategy({deployments: [d(1, 'paper', 0, 0), d(2, 'demo', 0, 0)]}), () => response({}));

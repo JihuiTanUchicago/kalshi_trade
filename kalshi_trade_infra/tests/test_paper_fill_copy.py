@@ -102,7 +102,7 @@ def test_both_themes_carry_the_same_words(bundle):
     # The paper book of "Since your last visit" says it too, from the core's sinceNote, which both bundles take
     # (demo says its fees in play money, live that it is real money).
     assert "${sinceNote(m)}" in src
-    assert ("const sinceNote = (m) => (m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : m === 'demo' ? "
+    assert ("const sinceNote = (m) => (m === 'live' ? ` (real money), ${FEES_NET}` : m === 'paper' ? `, ${PAPER_NET}` : m === 'demo' ? "
             "` (play money), ${FEES_NET}` : '');") in (STATIC / "core.js").read_text(encoding="utf-8")
 
 
@@ -151,7 +151,7 @@ def test_the_strategy_page_says_it_beside_its_paper_record(page):
     names = re.search(r"const \{(.*?)\} = T;", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", names) and re.search(r"\bglo\b", names)
     # Since deploying: each book's line says what its P&L is net of, paper's in PAPER_NET's words with its bubble.
-    assert "paper: PAPER_NET };" in src and ", ${BOOK_NET[mode]}` : 'No closed trades yet'" in src
+    assert "paper: PAPER_NET };" in src and ", ${BOOK_NET[mode]}${mode === 'demo' ? DEMO_WINDOW : ''}` : 'No closed trades yet'" in src
     # Its bubble follows on paper, glued to the last word (gl), and to the "·" after it (gloSep) when more of the line follows.
     assert "n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills'))" in src
     assert "name: 'Net, ' + PAPER_NET" in src  # Road to live

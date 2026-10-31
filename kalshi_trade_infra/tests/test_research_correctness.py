@@ -160,7 +160,7 @@ def test_abandoned_run_message_is_informative():
     # An interrupted run is STOPPED, never failed, and says it was interrupted — not a scary error.
     assert "status='stopped'" in " ".join(captured["sql"].split())
     msg = captured["params"][0]
-    assert "interrupted before it explored" in msg and "start a new one" in msg
+    assert "interrupted before it tested an idea" in msg and "start a new one" in msg
     assert "status='stopped'" in captured["sql"]
     assert captured["params"][1:3] == (0, 0)
     assert msg != "The agent stopped responding."  # the old generic message is gone

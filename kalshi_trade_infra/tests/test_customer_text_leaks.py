@@ -250,7 +250,25 @@ def test_the_research_list_never_shows_a_raw_error(monkeypatch):
     out = server.list_runs(_ctx())
     assert [r["error"] for r in out["runs"]][0] is None
     assert [r["stop_reason"] for r in out["runs"]] == ["error", "interrupted"]
+    # An older stored line counts ideas, as the list and every page do (it said "explored a hypothesis").
+    assert out["runs"][1]["error"] == "The session was interrupted before it tested an idea — start a new one."
     _no_leak(out)
+
+
+@pytest.mark.parametrize("stored, shown", [
+    ("Explored 12 hypotheses, then the session was interrupted and stopped — start a new one to keep going.",
+     "Tested 12 ideas, then the session was interrupted and stopped — start a new one to keep going."),
+    ("Explored 1 hypothesis, then the session was interrupted and stopped — start a new one to keep going.",
+     "Tested 1 idea, then the session was interrupted and stopped — start a new one to keep going."),
+    ("The session was interrupted before it explored a hypothesis — start a new one.",
+     "The session was interrupted before it tested an idea — start a new one."),
+    ("The research model couldn't be reached just now, so the session stopped.",
+     "The research model couldn't be reached just now, so the session stopped."),
+])
+def test_an_older_interrupted_line_counts_ideas_not_hypotheses(stored, shown):
+    # Walk 2026-10-31: the research list's card read "Explored 12 hypotheses, then…" where every page says ideas.
+    assert ct.run_rows([{"id": 1, "error": stored}])[0]["error"] == shown
+    assert ct.idea_words(None) is None and ct.idea_words("") == ""
 
 
 @pytest.mark.parametrize("raw", [RAW, HOST, SECRET])

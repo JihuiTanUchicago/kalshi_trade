@@ -289,7 +289,10 @@ export function stopReasonCases({name, frontend}) {
     }
     // One that tested ideas before it stopped still counts them.
     const some = f.runRow(run({status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 3, strategies_passed: 1}));
-    assert.match(some, /Explored 3 hypotheses|run-ratio/);
+    // In ideas, as every other page counts them: Tau's card said "Explored 3 hypotheses".
+    assert.match(some, /Tested 3 ideas|run-ratio/);
+    assert.doesNotMatch(some, /hypothes/i);
+    assert.match(f.runRow(run({status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 1, strategies_passed: 0})), /Tested 1 idea\b|run-ratio/);
     assert.doesNotMatch(some, /run-state"><span class="vh">Outcome <\/span>Interrupted<|run-state">Interrupted</);
   });
 }

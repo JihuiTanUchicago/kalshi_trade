@@ -181,7 +181,7 @@ def test_resumable_vs_stopped_and_retry_cap():
     assert requeued == [10, 12]                              # research with budget comes back, progress or not
     assert "resume-check" not in stopped                       # sanity: keys are run ids
     assert stopped[11][1:3] == (1, 0)                           # out of retries -> clear reason
-    assert "before it explored" in stopped[14][0] and stopped[14][1:3] == (0, 0)   # no progress, no budget
+    assert "before it tested an idea" in stopped[14][0] and stopped[14][1:3] == (0, 0)   # no progress, no budget
     assert "interrupted" in stopped[13][0]                              # non-research never resumes
     msgs = {p[0]: p for p in cur.events}
     assert 10 in msgs and 12 in msgs                          # each reclaim is announced on its run
@@ -206,4 +206,17 @@ def test_a_stopped_run_counts_its_dropped_theses_as_explored():
     cur = _AbCur(rows)
     repo.fail_abandoned_runs(cur, timedelta(seconds=90), max_resumes=3)
     sql, params = next((s, p) for s, p in cur.status_updates if "status='stopped'" in s)
-    assert params[0].startswith("Explored 14 hypotheses") and params[1] == 14
+    # In ideas, as every page counts them (it said "Explored 14 hypotheses").
+    assert params[0].startswith("Tested 14 ideas, then the session was interrupted") and params[1] == 14
+    assert "hypothes" not in params[0]
+
+
+def test_a_stopped_run_that_tested_nothing_says_so_in_ideas():
+    rows = [{"id": 1, "kind": "research", "resume_count": 3, "checkpoint_json": json.dumps({"tried": [], "dropped_n": 0})}]
+    cur = _AbCur(rows)
+    repo.fail_abandoned_runs(cur, timedelta(seconds=90), max_resumes=3)
+    _sql, params = next((s, p) for s, p in cur.status_updates if "status='stopped'" in s)
+    assert params[0] == "The session was interrupted before it tested an idea — start a new one." and params[1] == 0
+    one = _AbCur([{"id": 1, "kind": "research", "resume_count": 3, "checkpoint_json": json.dumps({"tried": [], "dropped_n": 1})}])
+    repo.fail_abandoned_runs(one, timedelta(seconds=90), max_resumes=3)
+    assert next(p for s, p in one.status_updates if "status='stopped'" in s)[0].startswith("Tested 1 idea, then")

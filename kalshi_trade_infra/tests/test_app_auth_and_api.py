@@ -1056,6 +1056,8 @@ def test_notifications_endpoint_shape(monkeypatch):
     out = server.notifications(ctx())
     assert out["unread"] == 1 and out["items"][0]["read"] is False and out["items"][0]["link"] == "/strategies/9"
     assert out["unread_kinds"] == {"share": 1}
+    # The window unread_kinds counts (the newest READ_ROWS), so the bell can say it when more are unread.
+    assert out["unread_kinds_of"] == server.bell.READ_ROWS == 100
 
 
 def test_slug_and_mention_regex():

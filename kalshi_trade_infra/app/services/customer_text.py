@@ -127,8 +127,23 @@ def run_rows(runs: List[Dict]) -> List[Dict]:
     """A research session's stored error (an older failed run kept the provider's raw text)."""
     for r in runs:
         if r.get("error"):
-            r["error"] = ladder_words(clean(r["error"], RUN_ERROR_FALLBACK))
+            r["error"] = idea_words(ladder_words(clean(r["error"], RUN_ERROR_FALLBACK)))
     return runs
+
+
+# An interrupted session's line written before 2026-10-31 counted "hypotheses" ("Explored 3 hypotheses, then the
+# session was interrupted…"), where every page counts ideas ("Ideas tested"); it reads as new lines are written
+# (agent_run_repository.fail_abandoned_runs). The stored line is unchanged.
+_EXPLORED = re.compile(r"^Explored (\d[\d,]*) hypothes[ie]s\b")
+_EXPLORED_NONE = "The session was interrupted before it explored a hypothesis"
+
+
+def idea_words(text: Optional[str]) -> Optional[str]:
+    """``text`` with an older interrupted line's hypothesis count in ideas; None and "" as given."""
+    if not text:
+        return text
+    text = text.replace(_EXPLORED_NONE, "The session was interrupted before it tested an idea")
+    return _EXPLORED.sub(lambda m: "Tested %s idea%s" % (m.group(1), "" if m.group(1) == "1" else "s"), text)
 
 
 def named(text: Optional[str]) -> Optional[str]:
