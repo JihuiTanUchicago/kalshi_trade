@@ -6035,9 +6035,9 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.doesNotMatch(sliver, /No credits spent/);
   // The pause is read at Billing's pace (the server's pace_days), as the autopilot panel reads it: a two-day-old
   // account's $27.45 is $13.73 a day, so $6.15 above the floor lasts under a day, not "about 2 days" (over 7).
-  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 2}}}), /Research pauses within a day at this week’s pace/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 2}}}), /Research pauses within a day at the last 7 days’ pace/);
   // A first day's spend counts as one day's (the panel's warning, never later): $79 at $27.45 a day is about 3 days.
-  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 0.4}}}, {credit_balance: 80}), /Research pauses in about 3 days at this week’s pace/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 0.4}}}, {credit_balance: 80}), /Research pauses in about 3 days at the last 7 days’ pace/);
   assert.doesNotMatch(await strip({since: {...since, spent: {...since.spent, pace_days: 7}}}, {credit_balance: 80}), /Research pauses/);
   // Something else passed too: the list first, the forward test after it.
   const both = await strip({since: {...since, passed: {n: 1, items: [{id: 9, title: 'Fade'}]}}});
