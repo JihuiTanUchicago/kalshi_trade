@@ -10,7 +10,7 @@ window.TauPage('strategy', (T) => {
     depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, FEES_NET, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketFull, marketShort, mdLite,
     money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, markedOf, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
+    researchOnly, roadDays, root, rpUnderwater, curveWords, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -79,11 +79,17 @@ window.TauPage('strategy', (T) => {
     return `<div class="ladder">${rungs}</div>${terminal}`;
   }
 
+  // The research figures drawn 720 wide shrank to a phone's ~300px column, their axis labels to under 5px: they
+  // draw at the column's width there (chartWidth), as the equity curve does, and at 720 on a wide screen.
+  const rpWidth = () => Math.min(720, chartWidth());
+  const rpDay = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   // 1. equity by phase — each phase its own OOS run, colour + labelled, one axis.
-  function rpPhaseEquity(phases) {
-    phases = phases.filter((p) => p.curve && p.curve.length > 1);
+  // Its name says each phase's span, start, end, low and high in stakes (curveWords): it named only the phases.
+  function rpPhaseEquity(phases, width) {
+    phases = phases.map((p) => ({ ...p, curve: p.curve && p.curve.filter((q) => Number.isFinite(+q[0]) && Number.isFinite(+q[1])) }))
+      .filter((p) => p.curve && p.curve.length > 1);
     if (!phases.length) return `<div class="rp-empty">No phase equity curves recorded yet.</div>`;
-    const W = 720, H = 200, L = 48, R = 10, T = 16, B = 24;
+    const W = width || 720, H = 200, L = 48, R = 10, T = 16, B = 24;
     const pts = [].concat(...phases.map((p) => p.curve));
     const t0 = Math.min(...pts.map((q) => q[0])), t1 = Math.max(...pts.map((q) => q[0]));
     const vals = pts.map((q) => q[1]);
@@ -96,7 +102,7 @@ window.TauPage('strategy', (T) => {
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const bounds = phases.slice(1).map((p) => { const bx = x(p.curve[0][0]).toFixed(1); return `<line x1="${bx}" x2="${bx}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="3 4"/>`; }).join('');
     const legend = `<div class="rp-legend">${phases.map((p) => `<span><i style="background:${p.color}"></i>${esc(p.label)}</span>`).join('')}</div>`;
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Running total of net return per trade, counted in stakes, by research phase: ${esc(phases.map((p) => p.label).join(', '))}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Running total of net return per trade, counted in stakes, by research phase. ${esc(phases.map((p) => `${p.label}, ${curveWords(p.curve, rpStakes, rpDay)}`).join('. '))}">
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
       ${ticks}
       <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
@@ -134,10 +140,13 @@ window.TauPage('strategy', (T) => {
   }
 
   // 4. per-trade return distribution with the bootstrap CI band + break-even line.
-  function rpReturnDist(returns, ciLo, ciHi, mean) {
+  // Its axis says where it runs (the lowest and highest return, as % of the stake, at its ends): only "break-even"
+  // stood under it. That label stays inside the figure (with every return above zero, break-even sits on the left
+  // edge and read "eak-even"), and the name says what the bars are and where the mean and its interval sit.
+  function rpReturnDist(returns, ciLo, ciHi, mean, width) {
     returns = (returns || []).filter((v) => v != null && isFinite(v));
     if (returns.length < 3) return `<div class="rp-empty">Too few trades to plot a return distribution.</div>`;
-    const W = 720, H = 200, L = 20, R = 12, T = 16, B = 26;
+    const W = width || 720, H = 200, L = 20, R = 12, T = 16, B = 26;
     let lo = Math.min(...returns), hi = Math.max(...returns);
     lo = Math.min(lo, 0, ciLo == null ? 0 : ciLo); hi = Math.max(hi, 0, ciHi == null ? 0 : ciHi);
     if (hi - lo < 1e-6) { hi += 0.01; lo -= 0.01; }
@@ -149,19 +158,24 @@ window.TauPage('strategy', (T) => {
     const band = (ciLo != null && ciHi != null) ? `<rect x="${px(ciLo).toFixed(1)}" y="${T}" width="${Math.max(1, px(ciHi) - px(ciLo)).toFixed(1)}" height="${(base - T).toFixed(1)}" fill="var(--stock-raised)"/>` : '';
     const gap = 2, barW = Math.max(1, (W - L - R) / bins - gap);
     const bars = counts.map((c, i) => c ? `<rect x="${(px(lo + i * bwid) + gap / 2).toFixed(1)}" y="${py(c).toFixed(1)}" width="${barW.toFixed(1)}" height="${(base - py(c)).toFixed(1)}" fill="var(--ink)"/>` : '').join('');
-    const zeroLine = `<line x1="${px(0).toFixed(1)}" x2="${px(0).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--rule-2)"/><text x="${px(0).toFixed(1)}" y="${H - 8}" text-anchor="middle">break-even</text>`;
+    const BE = 'break-even', wide = (t) => t.length * 6.5, bx = Math.max(L + wide(BE) / 2, Math.min(W - R - wide(BE) / 2, px(0)));
+    const ends = [[L, 'start', rpRet(lo)], [W - R, 'end', rpRet(hi)]].filter(([x0, a, t]) => (a === 'start' ? x0 + wide(t) < bx - wide(BE) / 2 - 6 : x0 - wide(t) > bx + wide(BE) / 2 + 6))
+      .map(([x0, a, t]) => `<text x="${x0}" y="${H - 8}" text-anchor="${a}">${t}</text>`).join('');
+    const zeroLine = `<line x1="${px(0).toFixed(1)}" x2="${px(0).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--rule-2)"/><text x="${bx.toFixed(1)}" y="${H - 8}" text-anchor="middle">${BE}</text>${ends}`;
     const meanLine = mean != null ? `<line x1="${px(mean).toFixed(1)}" x2="${px(mean).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--signal)" stroke-width="1.5" stroke-dasharray="4 3"/>` : '';
     const legend = `<div class="rp-legend"><span><i style="background:var(--ink)"></i>Per-trade net return</span>${ciLo != null ? `<span><i style="background:var(--stock-raised);border:1px solid var(--rule-2)"></i>90% CI of the mean</span>` : ''}${mean != null ? `<span><i class="dash" style="color:var(--signal)"></i>Mean</span>` : ''}</span></div>`;
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of per-trade net profit and loss with the bootstrap confidence interval of the mean and the break-even line">
+    const distName = `Distribution of ${num(returns.length)} per-trade net returns, as % of the stake, from ${rpRet(Math.min(...returns))} to ${rpRet(Math.max(...returns))}${mean != null ? `; mean ${rpRet(mean)}` : ''}${ciLo != null && ciHi != null ? `, 90% confidence interval of the mean ${rpRet(ciLo)} to ${rpRet(ciHi)}` : ''}; the break-even line is at 0%`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(distName)}">
       ${band}${bars}${zeroLine}${meanLine}
     </svg>${legend}`;
   }
 
   // 5. walk-forward windows — per-fold return.
-  function rpWalkforward(folds) {
+  // On a phone it draws at the column's width when its slices fit there (about 64 wide each), else wider, to 720.
+  function rpWalkforward(folds, width) {
     folds = (folds || []).filter((f) => f && f.mean_net_return != null);
     if (!folds.length) return `<div class="rp-empty">No walk-forward folds recorded.</div>`;
-    const W = 720, H = 190, L = 40, R = 12, T = 16, B = 34;
+    const L = 40, R = 12, W = Math.min(720, Math.max(width || 720, L + R + folds.length * 64)), H = 190, T = 16, B = 34;
     const mags = folds.map((f) => f.mean_net_return);
     let lo = Math.min(0, ...mags), hi = Math.max(0, ...mags);
     if (hi - lo < 1e-6) { hi += 0.01; lo -= 0.01; }
@@ -175,7 +189,7 @@ window.TauPage('strategy', (T) => {
         <text x="${cx.toFixed(1)}" y="${H - 18}" text-anchor="middle">${esc(day(f.from_ts || f.from) || ('W' + (i + 1)))}</text>
         <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" style="fill:var(--ink-3)">${f.n_trades != null ? num(f.n_trades) + 't' : ''}</text>`;
     }).join('');
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average net return per trade in each slice of the validation window">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(`Average net return per trade, as % of the stake, in each slice of the validation window: ${folds.map((f, i) => `${day(f.from_ts || f.from) || 'slice ' + (i + 1)} ${rpRet(f.mean_net_return)}${f.n_trades != null ? ` over ${num(f.n_trades)} trades` : ''}`).join(', ')}`)}">
       <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
     </svg>`;
   }
@@ -259,11 +273,11 @@ window.TauPage('strategy', (T) => {
         <div class="rp-fig wide"><h5>Equity by phase</h5>${rpPhaseEquity([
           { key: 'validation', label: 'Validation', color: 'var(--ink)', curve: rpCum(v.equity_curve) },
           { key: 'holdout', label: 'Holdout', color: 'var(--signal)', curve: exp.holdout && rpCum(exp.holdout.equity_curve) },
-        ])}<div class="cap">Running total of each trade’s net return, counted in stakes: +2× means it made twice what one trade puts in, after fees. Each phase is its own run on data the agent never saw; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
+        ], rpWidth())}<div class="cap">Running total of each trade’s net return, counted in stakes: +2× means it made twice what one trade puts in, after fees. Each phase is its own run on data the agent never saw; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
         <div class="rp-fig"><h5>Validation vs holdout</h5>${rpShrinkage(v.mean_net_return, exp.holdout ? exp.holdout.mean_net_return : null)}</div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(rpCum(v.equity_curve), null, rpStakes)}<div class="cap">Validation, counted in stakes: the deepest drop from a running high.</div></div>
-        <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist((v.equity_curve || []).map((p) => +p[1]), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net return of each validation trade, as % of its stake. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
-        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">The validation window cut into consecutive slices, with each slice’s average net return per trade (as % of its stake) and its trade count. The same sign in most slices is robustness; one slice carrying the whole edge is a warning.</div></div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(rpCum(v.equity_curve), null, rpStakes, { words: true })}<div class="cap">Validation, counted in stakes: the deepest drop from a running high.</div></div>
+        <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist((v.equity_curve || []).map((p) => +p[1]), v.ci_lo, v.ci_hi, v.mean_net_return, rpWidth())}<div class="cap">Bars: the net return of each validation trade, as % of its stake. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
+        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds, rpWidth())}<div class="cap">The validation window cut into consecutive slices, with each slice’s average net return per trade (as % of its stake) and its trade count. The same sign in most slices is robustness; one slice carrying the whole edge is a warning.</div></div>
       </div>`;
       parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The agent searched and tuned on earlier data (in-sample). These numbers come from the validation window after it: data the agent never saw while searching.</p><div class="rp-stats">${stats}</div>${figs}`);
     }
@@ -557,7 +571,8 @@ window.TauPage('strategy', (T) => {
     const splitOnly = !hasExp && (['passed', 'backtest-only'].includes(s.status) || !!s.no_gatekeeper_record);
     // The chart's cut label says it in the heading's words too (equityChart's own default says unseen data).
     // `fit`: the y-axis gutter widens to its labels, so a backtest over $1,000 isn't cut off at the left edge.
-    const cutWords = splitOnly ? { fit: true, cutLabel: [`Later period${SEP}not held out →`, `Later${SEP}not held out →`, 'Later →'] } : { fit: true };
+    // `words`: the chart's name says its span, start, end, low and high (equityChart).
+    const cutWords = splitOnly ? { fit: true, words: true, cutLabel: [`Later period${SEP}not held out →`, `Later${SEP}not held out →`, 'Later →'] } : { fit: true, words: true };
     // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
     // held out. "Never seen (out-of-sample)" stood beside a list that called the same figure "later period · unseen data".
     const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';

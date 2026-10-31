@@ -8,7 +8,7 @@
 window.TauPage('explore', (T) => {
   'use strict';
   const {
-    announce, api, boardTitle, BTC_CONTRACT, cents, clock, closeClock, closeLeft, comboTitle, compactCondition,
+    announce, api, boardTitle, BTC_CONTRACT, cents, clock, closeClock, closeLeft, comboTitle, compactCondition, curveWords, finitePts, thinCurve,
     contractMarket, contractMkt, contractShort, errText, esc, exitWord, EXPLORE_NO_FEED, EXPLORE_WAIT, exploreEmpty,
     exploreNoBtc, exploreNoFeed, exploreShowChips, fig, hourET, ICON, kalshiRef, kalshiUrl, keepFocus, keepZone,
     liveClose, loading, markedAt, marketShort, marketSpot, markFig, markOld, midOf, MKT_GONE, MKT_STATUS, mktLabel,
@@ -22,23 +22,45 @@ window.TauPage('explore', (T) => {
 
   // ---------- explore ----------
   function priceChart(points) {
-    if (!points || points.length < 2) return tau ? '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>'
+    // [time, Yes price] pairs, oldest first; a point with no finite time or price is left out (finitePts).
+    const pts = finitePts((points || []).map((p) => p && [p.t, p.yes])).map(([t, v]) => [+t, +v]).sort((a, b) => a[0] - b[0]);
+    if (pts.length < 2) return tau ? '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>'
       : '<div class="empty"><h3>Not enough price history</h3></div>';
     // The SVG scales to its box, labels too: drawn 760 wide, a phone's ~320px chart shrank its 10.5px axis
     // labels to under 5px. On a phone it's drawn near the size it shows at, so the cents and times stay legible.
     const W = phone() ? 340 : 760, H = phone() ? 220 : 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
-    const ts = points.map((p) => p.t), t0 = Math.min(...ts), t1 = Math.max(...ts), tr = (t1 - t0) || 1;
+    const t0 = pts[0][0], t1 = pts[pts.length - 1][0], tr = (t1 - t0) || 1;
     const x = (t) => pl + (t - t0) / tr * iw, y = (v) => pt + (1 - v) * ih;
     const grid = [0, .25, .5, .75, 1].map((v) => `<line x1="${pl}" y1="${y(v).toFixed(1)}" x2="${W - pr}" y2="${y(v).toFixed(1)}" class="pc-grid"/><text x="${pl - 8}" y="${(y(v) + 3).toFixed(1)}" class="pc-ylab">${Math.round(v * 100)}¢</text>`).join('');
-    const line = points.map((p) => `${x(p.t).toFixed(1)},${y(p.yes).toFixed(1)}`).join(' ');
+    // A stretch with no price at all (over ten times the series' usual spacing) breaks the line, with a faint dashed
+    // link across it: a straight line drawn across four days without a price read as a steady climb nobody traded.
+    const steps = pts.slice(1).map((p, i) => p[0] - pts[i][0]).sort((a, b) => a - b), usual = steps[steps.length >> 1] || 0;
+    const segs = [[pts[0]]];
+    for (let i = 1; i < pts.length; i++) {
+      if (usual > 0 && pts[i][0] - pts[i - 1][0] > 10 * usual) segs.push([]);
+      segs[segs.length - 1].push(pts[i]);
+    }
+    // A long series is drawn at about two points a pixel, each run keeping its low and high (thinCurve): ten thousand
+    // minute prices drew a 114KB line.
+    const xy = (p) => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`;
+    const lines = segs.map((seg) => (seg.length > 1 ? `<polyline points="${thinCurve(seg, 2 * iw).map(xy).join(' ')}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>`
+      : `<circle cx="${x(seg[0][0]).toFixed(1)}" cy="${y(seg[0][1]).toFixed(1)}" r="1.8" fill="currentColor"/>`)).join('');
+    const links = segs.slice(1).map((seg, i) => { const a = segs[i][segs[i].length - 1], b = seg[0]; return `<line x1="${x(a[0]).toFixed(1)}" y1="${y(a[1]).toFixed(1)}" x2="${x(b[0]).toFixed(1)}" y2="${y(b[1]).toFixed(1)}" stroke="currentColor" stroke-opacity=".35" stroke-width="1" stroke-dasharray="3 4"/>`; }).join('');
     // A chart within one day gets clock times (a 15-minute market read "10/26 … 10/26"), one over a few
     // days the date and clock, and the right-hand label names the reader's zone, as every time on the
-    // market page does.
+    // market page does. The zone is the one in force at each end: across the November clock change the last
+    // time read "06:00 EDT", an hour that was EST, so the left end names its own zone when the two differ.
     const md = (t) => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; };
     const fmt = new Date(t0 * 1000).toDateString() === new Date(t1 * 1000).toDateString() ? (t) => clock(t * 1000)
       : tr < 3 * 86400 ? (t) => `${md(t)} ${clock(t * 1000)}` : md;
-    const zone = tzName();
-    return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Yes price history, ${esc(fmt(t0))} to ${esc(fmt(t1))}${zone ? ' ' + esc(zone) : ''}">${grid}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><text x="${pl}" y="${H - 6}" class="pc-xlab">${fmt(t0)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${fmt(t1)}${zone ? ' ' + esc(zone) : ''}</text></svg>`;
+    const z0 = tzName(t0 * 1000), z1 = tzName(t1 * 1000);
+    const left = `${fmt(t0)}${z0 && z0 !== z1 ? ' ' + z0 : ''}`, right = `${fmt(t1)}${z1 ? ' ' + z1 : ''}`;
+    // Its name says the span, the first and last price, and the low and high with when each came (curveWords), in
+    // the zone of each time: it said only the span.
+    const at = (t) => (tr < 3 * 86400 ? `${md(t)} ${clock(t * 1000)}${tzName(t * 1000) ? ' ' + tzName(t * 1000) : ''}` : md(t));
+    const breaks = segs.length - 1;
+    const name = `Yes price history, ${curveWords(pts, cents, at)}${breaks ? `; the line breaks where there was no price for a while (${num(breaks)} time${breaks === 1 ? '' : 's'})` : ''}`;
+    return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(name)}">${grid}${links}${lines}<text x="${pl}" y="${H - 6}" class="pc-xlab">${esc(left)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${esc(right)}</text></svg>`;
   }
   // The reader's own positions in this contract, one block per money book: paper, demo and live
   // money are never added into one figure. Each strategy links to its page.
@@ -180,8 +202,11 @@ window.TauPage('explore', (T) => {
     const renderRaw = () => {
       if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'None to show: Kalshi didn’t send this market’s price history just now. Try again under Price history.' : 'Kalshi has no price history for this market yet.'}</p></div>`; return; }
       const pages = Math.max(1, Math.ceil(pts.length / PER));
-      const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
-      rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (${esc(tzName() || 'local')})</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
+      // Its heading named one zone ("Time (EDT)") over prices from both sides of the November clock change: across
+      // one, each time says its own zone and the heading says none.
+      const zones = new Set([tzName(pts[0].t * 1000), tzName(pts[pts.length - 1].t * 1000)]), each = zones.size > 1;
+      const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}${each ? ' ' + esc(tzName(p.t * 1000)) : ''}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
+      rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>${each ? 'Time' : `Time (${esc(tzName(pts[0].t * 1000) || 'local')})`}</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
         <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)}${SEP}${num(pts.length)} point${pts.length === 1 ? '' : 's'}</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
       rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: smooth() }); });
     };

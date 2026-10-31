@@ -13,7 +13,7 @@
     PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
     catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
-    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
+    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, finitePts, thinCurve, curveWords, traceScale, registry, curveRegs, spark, rpUnderwater, mark,
     statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
     paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
     depInstant, demoRowLine, TR_MODES, trBook, trFix, trDay, trMonth, trCi, TR_STATUS, TR_EDGE, trCurve, trCurveCap,
@@ -1450,8 +1450,10 @@
   const tickGutter = (labels, fit) => (fit ? Math.max(52, Math.ceil(12 + 6.5 * Math.max(0, ...labels.map((t) => t.length)))) : 52);
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = 236, R = 10, T = 30, B = 26;
-    if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
-    const dev0 = devCurve && devCurve.length > 1 ? devCurve : null;
+    // A null, NaN or Infinity point is left out (finitePts): one drew the whole line as "NaN,NaN".
+    curve = finitePts(curve);
+    if (curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
+    const dev0 = devCurve && finitePts(devCurve).length > 1 ? finitePts(devCurve) : null;
     // Anchor the real demo-replay to the simulated line at its first timestamp, so both read as
     // cumulative P&L from the same point — the real line diverges from the sim there instead of
     // floating near $0 and looking like a disconnected stub.
@@ -1474,7 +1476,11 @@
     const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
     const cut = cutoffIso ? Date.parse(cutoffIso) / 1000 : null;
     const cx = cut && cut > t0 && cut < t1 ? x(cut) : null;
-    const line = (c) => c.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    // A 10,000-trade backtest drew every trade, a dozen points to a pixel (a 117KB line): past about two points a
+    // pixel of plot (and past the track record's 400) the drawn line keeps each run's low and high (thinCurve). The
+    // axis, the labels and the name above still come from every point.
+    const dense = Math.max(400, 2 * Math.round(W - L - R));
+    const line = (c) => thinCurve(c, dense).map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const ticks = LEVELS.map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${usd(v)}</text>`).join('');
     // The grey line across the plot is $0, break-even: unlabelled, a curve that dipped under it read against ticks
     // like −$24.72 and $26.69, with nothing saying where it had gained or lost. It gets its own label unless a
@@ -1482,11 +1488,17 @@
     const zeroTick = lo < 0 && hi > 0 && LEVELS.every((v) => Math.abs(y(v) - y(0)) >= 14) ? `<text class="chart-zero" x="${L - 8}" y="${y(0) + 4}" text-anchor="end">$0</text>` : '';
     // Each date on the axis once: a curve inside one day labels it at the start only, never "Oct 30 … Oct 30".
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    // Its name: the backtest's own end, never the demo replay's (it came last in `vals`, so a strategy page with a
+    // replay said the backtest "ends at" the replay's figure). With `options.words` (a strategy page, a backtest
+    // re-run) it says the curve's span, start, end, low and high in words (curveWords); a curve inside two days
+    // names the clock too.
+    const wordDay = t1 - t0 < 2 * 86400 ? (t) => dateFmt(new Date(t * 1000), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : day;
+    const backtestName = `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}${options.words ? `, ${curveWords(curve, (v) => usd(v, true), wordDay)}` : `; ends at ${plain(usd(curve[curve.length - 1][1], true))}`}`;
     const legend = dev ? `<g transform="translate(${L},${T - 12})">
         <line x1="0" x2="16" y1="0" y2="0" stroke="var(--ink)" stroke-width="2"/><text x="20" y="4" style="fill:var(--ink-2)">Simulated</text>
         <line x1="92" x2="108" y1="0" y2="0" stroke="var(--l-accent, #F05A28)" stroke-width="2" stroke-dasharray="5 4"/><text x="112" y="4" style="fill:var(--ink-2)">Kalshi dev (real)</text>
       </g>` : '';
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${plain(usd(vals[vals.length - 1], true))}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(backtestName)}">
       ${cx ? `<rect class="chart-later" x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--chart-later)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               ${unseenLabel(cx, W - R, T - 10, options.cutLabel, dev ? L + 112 + 'Kalshi dev (real)'.length * 7 + 8 : 0)}` : ''}
@@ -1625,7 +1637,7 @@
         <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? SEP + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d, liveOpen())}</td>
       <td data-lab="Market"><span class="tick">${esc(marketFull(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
-      <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
+      <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades, d.mode)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}${d.unrealized_pnl != null && d.open_positions ? `<div class="sub-fig">est.${markOld(d.oldest_mark_ts) ? ' ' + markedAt(d.oldest_mark_ts) : ''}${markedOf(d.marked_open, d.open_positions) ? `${SEP}${markedOf(d.marked_open, d.open_positions)} marked` : ''}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${num(d.closed_trades)}${d.open_positions ? `<div class="sub-fig">+${num(d.open_positions)} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest estimate" title="${d.void_no_record ? PACE_TIP_VOID : d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? (d.backtest_only ? '\u2014' : PACE_HELD(d)) : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${num(d.closed_trades)} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig bt-per-trade"><span class="amt">${usd(pace, true)}</span> a trade, on average</span>`}</td>
@@ -3458,9 +3470,11 @@
       });
     }
   }
+  // Drawn in a box at least 10¢ tall (traceScale): a 47¢/48¢ flicker filled it top to bottom like a 40¢ move.
   function hotChart(h) {
-    if (!h || h.length < 2) return '<div class="hot-chart none"></div>';
-    const W = 104, H = 30, p = 3, lo = Math.min(...h), hi = Math.max(...h), rng = hi - lo || 1;
+    h = (h || []).filter((v) => v != null && Number.isFinite(+v)).map(Number);
+    if (h.length < 2) return '<div class="hot-chart none"></div>';
+    const W = 104, H = 30, p = 3, { lo, hi } = traceScale(h), rng = hi - lo;
     const pts = h.map((v, i) => `${(i / (h.length - 1) * (W - p * 2) + p).toFixed(1)},${(H - p - (v - lo) / rng * (H - p * 2)).toFixed(1)}`);
     const [ex, ey] = pts[pts.length - 1].split(',');
     return `<svg class="hot-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${ex}" cy="${ey}" r="1.9" fill="currentColor"/></svg>`;
@@ -3659,7 +3673,7 @@
     marketKalshiUrl, marketFull, marketKnown, marketPicker, marketShort, markQuietRows, mdLite, money,
     notice, num, olderRows, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, NOT_MARKED, markedOf, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
-    refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
+    refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, curveWords, finitePts, thinCurve, runKind,
     runTag, runWaitLine, runwayLabel, S, sessionEstimate, sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, theme: 'tau', tone, topupCharge, tradePrice, trDay, tzName,
     usd, waitNote, waitSpan, wakers, WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
