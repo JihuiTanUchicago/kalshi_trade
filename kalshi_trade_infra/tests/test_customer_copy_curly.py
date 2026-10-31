@@ -83,6 +83,28 @@ def test_a_failed_auto_reload_reads_curly_on_billing_and_in_the_bell(monkeypatch
     assert not STRAIGHT.search(bell), bell
 
 
+def test_a_failed_auto_reload_groups_its_dollar_figure_in_the_bell_and_on_billing(monkeypatch):
+    # Walk 2026-10-31: a $1,000 auto-reload (MAX_TOPUP) read "couldn't add $1000.00 in credits" in the bell and on
+    # Billing's banner; every other figure on the page groups its thousands. The stored body is unchanged.
+    body = billing.reload_failed_body(Decimal("1000"), billing.CARD_DECLINED)
+    assert "$1000.00" in body
+    note = {"id": 3, "kind": billing.RELOAD_FAILED_KIND, "body": body, "link": "/billing", "created_at": NOW, "read_at": None}
+    monkeypatch.setattr(repo, "list_notifications", lambda cur, uid, **k: [dict(note)])
+    monkeypatch.setattr(repo, "count_unread_notifications", lambda cur, uid: 1)
+    line = server.notifications(_ctx())["items"][0]["body"]
+    assert line.startswith("Auto-reload couldn’t add $1,000.00 in credits. ") and "$1000" not in line
+    monkeypatch.setattr(repo, "latest_notification", lambda cur, uid, kind: dict(note))
+    monkeypatch.setattr(repo, "last_credit_at", lambda cur, uid, kind: None)
+    assert billing_routes._reload_failed(object(), 7)["text"].startswith("It couldn’t add $1,000.00 in credits. ")
+    # Only a dollar figure with cents and four or more digits; anything else is as given.
+    assert ct.grouped_dollars("$25.00, $999.99, $12345.60 and $1000") == "$25.00, $999.99, $12,345.60 and $1000"
+    assert ct.grouped_dollars(None) is None and ct.grouped_dollars("") == ""
+    # Other kinds keep their stored words (the engine's pause line among them).
+    monkeypatch.setattr(repo, "list_notifications", lambda cur, uid, **k: [
+        dict(note, kind="paused", body="“Edge” was paused automatically. Lost $1234.56, more than the $1000.00 guard.")])
+    assert "$1234.56" in server.notifications(_ctx())["items"][0]["body"]
+
+
 def test_the_bell_curls_only_billings_own_lines():
     assert ct.CURLY_KINDS == {billing.RELOAD_FAILED_KIND}
     # Any other kind keeps its stored words: the engine's lines are the money path's, said as written.

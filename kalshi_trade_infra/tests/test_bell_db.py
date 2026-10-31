@@ -96,3 +96,25 @@ def test_the_bell_lists_a_bounded_grouped_window_newest_first(conn):
     assert all(n["read"] for n in bell.grouped(repo.list_notifications(cur, uid, limit=bell.READ_ROWS)))
     # Times come back as stored (UTC, naive); the API adds the zone when it writes them out.
     assert rows[0]["created_at"] >= repo.now_utc() - timedelta(minutes=5)
+
+
+def test_a_notice_about_a_strategy_no_longer_the_users_reads_gone_in_the_same_read(conn):
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid, other = _user(cur), _user(cur)
+    spec = {"side": "yes", "entry": {"min_edge": 0.05}, "exit": {}, "sizing": {"stake": 10.0, "max_positions": 2}}
+    kept = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", "Kept", "t", spec, "passed", {})
+    dropped = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", "Dropped", "t", spec, "passed", {})
+    theirs = repo.insert_strategy(cur, other, None, None, "btc15m", "momentum", "Theirs", "t", spec, "passed", {})
+    repo.add_notification(cur, uid, "passed", "“Kept” passed.", "/strategies/%d" % kept)
+    repo.add_notification(cur, uid, "share", "Sam shared “Dropped” with you.", "/strategies/%d" % dropped)
+    repo.add_notification(cur, uid, "share", "Another user's row id.", "/strategies/%d" % theirs)
+    repo.add_notification(cur, uid, "comment", "Ana replied to your post.", "/community#post-4")
+    repo.add_notification(cur, uid, "reload_failed", "Auto-reload couldn't add $20.00 in credits.", "/billing")
+    repo.add_notification(cur, uid, "share", "An old notice.", None)
+    repo.delete_strategy(cur, uid, dropped)
+    rows = repo.list_notifications(cur, uid, limit=10)
+    # Newest first: no link, Billing, a post, another user's strategy, the deleted one, the kept one.
+    assert [bool(r["gone"]) for r in rows] == [False, False, False, True, True, False]
+    assert rows[-1]["body"] == "“Kept” passed."

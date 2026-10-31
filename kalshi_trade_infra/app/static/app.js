@@ -835,15 +835,18 @@
     };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
     // A notice the server grouped (the same kind about the same page, in a row) says how many more it
-    // stands for. One without a page to open is plain text, not a link to nowhere.
+    // stands for. One without a page to open is plain text, not a link to nowhere. One about a strategy
+    // that is no longer the user's (the server's `gone`: deleted since, as a shared copy can be) says so,
+    // as text: its link opened "Not found" (walk 2026-10-31).
+    const BELL_GONE = 'This strategy is no longer in your list.';
     const item = (n) => {
-      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.more ? `<span class="notif-more">and ${num(n.more)} more like this</span>` : ''}${bellTime(n.created_at)}`;
-      return /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
+      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.gone ? `<span class="notif-more">${BELL_GONE}</span>` : ''}${n.more ? `<span class="notif-more">and ${num(n.more)} more like this</span>` : ''}${bellTime(n.created_at)}`;
+      return !n.gone && /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
     };
     const paint = (d) => {
       dot.hidden = !d.unread;
-      trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
-      head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
+      trig.setAttribute('aria-label', d.unread ? `Notifications, ${num(d.unread)} unread` : 'Notifications');  // the dot alone is colour
+      head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${num(d.unread)} new</span>` : '');
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
       list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
@@ -875,7 +878,7 @@
       api('/api/notifications/read', {}).catch(() => {
         if (data !== was) return;  // a newer read already says what the server has
         data.unread = unread; fresh.forEach((n) => { n.read = false; });
-        if (menu.hidden) paint(data); else { dot.hidden = false; trig.setAttribute('aria-label', `Notifications, ${unread} unread`); }
+        if (menu.hidden) paint(data); else { dot.hidden = false; trig.setAttribute('aria-label', `Notifications, ${num(unread)} unread`); }
       });
     };
     const load = async () => {
@@ -2568,7 +2571,10 @@
     const guarded = (s.auto_paused || []).length;
     const auto = (did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`)
       + (guarded ? ` ${plural(guarded, 'strategy was', 'strategies were')} paused automatically to stop a loss.` : '');
-    const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
+    // While the server's live switch is closed a live-ready strategy stays on paper and a promote is refused: the
+    // strip said "is ready for live trading. Going live is your call." beside a bell that said it waits (walk 2026-10-31).
+    const needs = (ms.live_ready || []).slice(0, 3).map((sid) => liveOpen() ? `${named(sid)} is ready for live trading. Going live is your call.`
+      : `${named(sid)} cleared every paper-to-live check. Live trading isn\u2019t open yet, so it stays on paper and nothing trades real money.`);
     // A demo book paused for its missing demo key says the reason once: the demo line below says what it needs,
     // with "Add it on the Funds page" as its link. The row said the engine's "Add your Kalshi demo (sandbox) key on
     // the Funds page to run this on demo" and the next line said it again. Any other reason that sends someone to

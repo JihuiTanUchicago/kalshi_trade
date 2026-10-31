@@ -413,8 +413,14 @@ def add_notification_collapsed(cur, user_id: int, kind: str, body: str, link: st
 
 
 def list_notifications(cur, user_id: int, limit: int = 20) -> List[Dict]:
+    """The user's newest notices. `gone` is 1 for one about a strategy that is no longer theirs (deleted since,
+    as a shared copy can be): its strategy row, joined by primary key in the same read (one eq_ref lookup a
+    row; the owner is checked after the join, so the user's index of strategies is never walked), is missing."""
     cur.execute(
-        "SELECT id, kind, body, link, created_at, read_at FROM app_notifications WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+        "SELECT n.id, n.kind, n.body, n.link, n.created_at, n.read_at, "
+        "(n.link LIKE '/strategies/%%' AND (st.id IS NULL OR st.user_id<>n.user_id)) AS gone FROM app_notifications n "
+        "LEFT JOIN app_strategies st ON n.link LIKE '/strategies/%%' AND st.id=CAST(SUBSTRING(n.link, 13) AS UNSIGNED) "
+        "WHERE n.user_id=%s ORDER BY n.id DESC LIMIT %s",
         (user_id, limit),
     )
     return cur.fetchall()

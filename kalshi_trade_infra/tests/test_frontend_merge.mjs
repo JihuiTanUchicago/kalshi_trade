@@ -5174,12 +5174,13 @@ test('a bell that filled up while the user was away opens with what it holds, by
   }
 });
 
-test('a bell item older than a day shows its day and clock, and every item its full time on hover', async () => {
+test('a bell item older than a day shows its day, clock and zone, and every item its full time on hover', async () => {
   const f = bellFrontend(bellNotes());
   await f.viewDashboard(); await flush(); await flush();
   const [recent, older] = f.root.querySelectorAll('#bell-list time');
   assert.equal(recent.textContent, '2h ago');
-  assert.match(older.textContent, /^[A-Z][a-z]{2} \d{1,2}, \d\d:\d\d$/);  // "Oct 23, 14:05", not a bare "Oct 23"
+  // "Oct 23, 14:05 EDT": not a bare "Oct 23", nor a clock that doesn't say whose (walk 2026-10-31).
+  assert.match(older.textContent, /^[A-Z][a-z]{2} \d{1,2}, \d\d:\d\d (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)$/);
   for (const t of [recent, older]) { assert.ok(t.getAttribute('datetime')); assert.match(t.getAttribute('title'), /\d\d:\d\d/); }
   // Nothing new: no count, no marks.
   const g = bellFrontend({unread: 0, items: bellNotes().items.map((n) => ({...n, read: true}))});
@@ -5570,6 +5571,10 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.doesNotMatch(text, /Nothing new passed/);
   // Live-ready is the week's next step, first under Needs you; the runway warns before the pause.
   assert.match(text, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> is ready for live trading\. Going live is your call\./);
+  // Live trading closed on the server: it waits on paper, as the bell says, never "Going live is your call".
+  const shut = await strip({}, {live_trading_available: false});
+  assert.match(shut, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> cleared every paper-to-live check\. Live trading isn\u2019t open yet, so it stays on paper and nothing trades real money\./);
+  assert.doesNotMatch(shut, /ready for live trading|Going live is your call/);
   // Counted to the pause, not to $0: $6.15 above the $1.00 floor at $27.45 a week.
   assert.match(text, /Research pauses in about 2 days at this week’s pace, when credits fall under \$1\.00\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
   // Auto-reload on: no runway warning. A plenty balance: none either.
