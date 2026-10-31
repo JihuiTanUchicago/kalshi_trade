@@ -17,7 +17,7 @@ from app.adapters.stripe import billing
 from app.research import agent
 from app.services import book_memo, customer_text
 from app.trading import engine
-from app.trading.markets import MARKETS
+from app.trading.markets import customer_name
 from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.billing import (
@@ -248,7 +248,7 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
     if spent is None:
         spent = repo.credit_week(cur, uid, since)["research"]
     def label(r):
-        return MARKETS[r["market"]].customer_label if r.get("market") in MARKETS else (r.get("market") or "a market it’s still picking")
+        return customer_name(r["market"]) if r.get("market") else "a market it’s still picking"
 
     return {"active": [label(r) for r in active],
             # Of those, the sessions still queued to start, said apart: "Right now it's researching Ethereum, ..."
@@ -697,7 +697,7 @@ def _last_move(la: Optional[Dict], deps: List[Dict]) -> Optional[Dict]:
     if la is None:
         return None
     # A once-only line's marker ("[live-ready #12]") names a row number: the panel never gets it.
-    out = {"text": customer_text.unmarked(la["text"]), "at": la["at"]}
+    out = {"text": customer_text.ladder_words(customer_text.unmarked(la["text"])), "at": la["at"]}
     if "deployment" in la:
         out["text"] = customer_text.auto_pause_line(la["text"], la["deployment"])
     names = {(la.get("deployment") or {}).get("title") or ""} | {d.get("title") or "" for d in deps}

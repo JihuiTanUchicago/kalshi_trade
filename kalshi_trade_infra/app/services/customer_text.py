@@ -163,8 +163,41 @@ LADDER_WORDS = "a set price"
 
 
 def ladder_words(text: Optional[str]) -> Optional[str]:
-    """``text`` with an older family label's "above $X" in words ("above a set price"); None and "" as given."""
-    return _LADDER_PLACEHOLDER.sub("above " + LADDER_WORDS, text) if text else text
+    """``text`` with an older family label's "above $X" in words ("above a set price"), and a market a line
+    names by a label the catalog has since retired by its name today (former_names); None and "" as given."""
+    return former_names(_LADDER_PLACEHOLDER.sub("above " + LADDER_WORDS, text)) if text else text
+
+
+# The labels the curated markets had until 2026-10-29 (#540), each with the market's name today (its customer_label,
+# app.trading.markets; tests/test_market_names.py holds every one to it). A line written before then (a research
+# session's feed, an autopilot line, the seeded example) named a market "Bitcoin 15-minute" beside the
+# "Bitcoin up or down in 15 minutes" the pages say. Only where the label stands as a market's name: at the end of a
+# clause or before the agent's own " market data", " history" or " data", so prose such as "the Bitcoin 15-minute
+# contracts" keeps its words. Longest first, so "Bitcoin 15-minute, per-second data" is said whole.
+FORMER_LABELS = (
+    ("Bitcoin 15-minute, per-second data", "Bitcoin up or down in 15 minutes, per-second data"),
+    ("Bitcoin perpetual (research only)", "Bitcoin perpetual future, no expiry (research only)"),
+    ("Bitcoin daily close, 5pm EDT", "Bitcoin above a set price at 5pm ET"),
+    ("Ethereum daily close, 5pm EDT", "Ethereum above a set price at 5pm ET"),
+    ("Solana daily close, 5pm EDT", "Solana above a set price at 5pm ET"),
+    ("XRP daily close, 5pm EDT", "XRP above a set price at 5pm ET"),
+    ("Hyperliquid (HYPE) 15-minute", "Hyperliquid (HYPE) up or down in 15 minutes"),
+    ("Bitcoin 15-minute", "Bitcoin up or down in 15 minutes"),
+    ("Ethereum 15-minute", "Ethereum up or down in 15 minutes"),
+    ("Solana 15-minute", "Solana up or down in 15 minutes"),
+    ("XRP 15-minute", "XRP up or down in 15 minutes"),
+    ("Dogecoin 15-minute", "Dogecoin up or down in 15 minutes"),
+    ("NEAR 15-minute", "NEAR up or down in 15 minutes"),
+    ("Zcash 15-minute", "Zcash up or down in 15 minutes"),
+)
+_FORMER = dict(FORMER_LABELS)
+_FORMER_LABEL = re.compile(r"(?<![\w-])(%s)(?=$|[.…,;:!?)]| market data\b| history\b| data\b)"
+                           % "|".join(re.escape(old) for old, _ in FORMER_LABELS))
+
+
+def former_names(text: Optional[str]) -> Optional[str]:
+    """``text`` with each retired market label (FORMER_LABELS) said as that market is named today."""
+    return _FORMER_LABEL.sub(lambda m: _FORMER[m.group(1)], text) if text else text
 
 
 def event_rows(events: List[Dict]) -> List[Dict]:
@@ -205,7 +238,7 @@ def grouped_dollars(text: Optional[str]) -> Optional[str]:
 def notification_rows(items: List[Dict]) -> List[Dict]:
     """The bell's lines: a name in one is another person's, a reason the engine's or the agent's."""
     for n in items:
-        n["body"] = clean(n.get("body"), NOTICE_FALLBACK)
+        n["body"] = ladder_words(clean(n.get("body"), NOTICE_FALLBACK))
         if n.get("kind") in CURLY_KINDS:
             n["body"] = grouped_dollars(curly(n["body"]))
     return items
@@ -222,7 +255,8 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None,
     the strategy's name from ``paused`` ({deployment id: {"title", "mode"}} for the ids auto_paused_ids
     lists); the row number and the ticker never reach the page, and the stored line is unchanged. An
     older "Market focus set to btc." names the focus in words through ``focus_words`` (the research
-    agent's, which this module can't import), as new lines are written (focus_set_line)."""
+    agent's, which this module can't import), as new lines are written (focus_set_line). A market named by a
+    label since retired reads by its name today (ladder_words)."""
     for m in messages:
         if m.get("role") == "system":
             text = m.get("content")
@@ -234,7 +268,7 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None,
             dep = stop_sold_id(text)
             if dep is not None:
                 text = stop_sold_line(text, (paused or {}).get(dep))
-            m["content"] = plain_controls(clean(unknown_action_line(focus_set_line(unmarked(text), focus_words)), CHAT_FALLBACK))
+            m["content"] = ladder_words(plain_controls(clean(unknown_action_line(focus_set_line(unmarked(text), focus_words)), CHAT_FALLBACK)))
     return messages
 
 

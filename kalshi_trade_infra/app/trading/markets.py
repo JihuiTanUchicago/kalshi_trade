@@ -393,6 +393,17 @@ def load_catalog_markets() -> Dict[str, Market]:
 MARKETS: Dict[str, Market] = dict(load_catalog_markets())
 MARKETS.update(CURATED)
 
+
+# A market's long name is its customer_label, the one name every line the server writes for a customer uses
+# (feed, chat and autopilot lines, the bell, emails, Billing). Its short name, for chips and " · " lists, is the
+# front end's (core.js MKT_SHORT). Walked 2026-10-31: one market read "BTC 15-min up/down", "Bitcoin 15-minute"
+# and "Bitcoin up or down in 15 minutes" on three pages; lines that fell back to the raw key ("on btc_perp") too.
+def customer_name(key: Optional[str], unknown: str = "an unlisted market") -> str:
+    """The market's long name as a customer reads it (customer_label); ``unknown`` for a key the catalog doesn't
+    list, never the raw key."""
+    m = MARKETS.get(key or "")
+    return m.customer_label if m else unknown
+
 FEATURES: Dict[str, str] = {
     "spot": "BTC price (USD)",
     "ret_1m": "BTC log return over the last 1 minute",

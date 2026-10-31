@@ -7,7 +7,7 @@ from app.adapters.kalshi_perps import kalshi_perps_trading
 from app.adapters.ses import notify
 from app.adapters.stripe import billing
 from app.research import agent
-from app.services import bell, customer_text
+from app.services import bell, customer_text, markets as market_service
 from app.trading import engine
 from app.web.http import ApiError, Ctx
 from app.web.routes.auth import UI_THEMES, _sync_ui_cookie
@@ -20,6 +20,7 @@ from app.web.views import _auto_reload_terms, _needs_card, credit_exact
 def me(ctx: Ctx):
     _sync_ui_cookie(ctx, ctx.user.get("ui_theme") if ctx.user.get("ui_theme") in UI_THEMES else "tau")
     reads = billing.Reads(ctx.cur, ctx.uid)  # needs_card, auto_reload and credit_balance share one read each
+    listed = _researchable_markets(ctx.cur)
     return {
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
@@ -45,7 +46,10 @@ def me(ctx: Ctx):
         "credit_balance": credit_exact(reads.balance()),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
         "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
-        "markets": _researchable_markets(ctx.cur),
+        "markets": listed,
+        # The long name of each market the list leaves out (core.js mktLong reads both), so one kept on a
+        # session, strategy or deployment reads as the server's lines say it.
+        "market_names": market_service.unlisted_names(listed),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
         # The research form's model list (the same as GET /api/models), so /research doesn't wait on
         # that read before it starts its own.

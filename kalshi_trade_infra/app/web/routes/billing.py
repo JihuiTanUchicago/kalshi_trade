@@ -11,7 +11,7 @@ from app import repository as repo
 from app.adapters.llm import models_catalog as catalog
 from app.adapters.stripe import billing
 from app.services import customer_text
-from app.trading.markets import MARKETS
+from app.trading.markets import customer_name
 from app.web.http import ApiError, Ctx, _num
 from app.web.views import credit_cents, credit_exact, credit_split, credit_usd, session_title
 
@@ -474,8 +474,7 @@ def _strategy_names(rows: List[Dict]) -> Dict[int, str]:
         if len(sids) < 2:
             continue
         sids.sort(key=lambda s: (_iso_utc(first[s].get("strategy_created")), s))  # the order they were made
-        market = {s: MARKETS[first[s]["strategy_market"]].customer_label if first[s].get("strategy_market") in MARKETS
-                  else "" for s in sids}
+        market = {s: customer_name(first[s].get("strategy_market"), "") for s in sids}
         for how in ((), (False,), (True,)):
             tags = {s: ", ".join(p for p in [market[s]] + [_made(first[s].get("strategy_created"), m) for m in how] if p)
                     for s in sids}

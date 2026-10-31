@@ -8,7 +8,7 @@ window.TauPage('strategy', (T) => {
     actionLink, announce, api, ApiError, closeClock, liveClose, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, busy,
     cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, dateFmt, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, FEES_NET, fig, flash, fmt0, fold, fundsLinked,
-    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketFull, marketShort, mdLite,
     money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
     tone, tradePrice, usd, when, whyFailedHtml
@@ -655,7 +655,7 @@ window.TauPage('strategy', (T) => {
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
     const delBlock = restricted ? null : (s.delete_block || null);
     const kUrl = marketKalshiUrl(s.market);
-    const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketLabel(s.market))} ↗</a>` : esc(marketLabel(s.market));
+    const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketFull(s.market))} ↗</a>` : esc(marketFull(s.market));
     // ---- the strategy dossier, composed as a research paper (abstract → mechanism →
     // methodology → results → verdict). Each section renders only when it has content, so a
     // pre-pipeline strategy with no ledger row falls back to its rule + backtest + plain verdict.

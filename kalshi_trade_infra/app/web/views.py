@@ -14,7 +14,7 @@ from app import worker
 from app.adapters.kalshi import kalshi_account
 from app.adapters.stripe import billing
 from app.services import customer_text, gate_explain
-from app.trading.markets import MARKETS
+from app.trading.markets import customer_name
 from app.web.http import ApiError, Ctx
 from trading_core.domain.money import cents, exact
 
@@ -543,5 +543,4 @@ def session_title(prompt: Optional[str], market: Optional[str]) -> Optional[str]
     other prompt (the page shows the idea as typed). The prompt itself is unchanged: the agent reads it."""
     if (prompt or "").strip() != worker.RESEARCH_FLOOR_IDEA:
         return None
-    m = MARKETS.get(market or "")
-    return "New idea picked by the autopilot for %s" % (m.customer_label if m else "the market it picks")
+    return "New idea picked by the autopilot for %s" % customer_name(market, "the market it picks")

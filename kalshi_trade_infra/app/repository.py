@@ -1061,7 +1061,10 @@ def seed_demo_session(cur, user_id: int) -> None:
              "sharpe": None, "avg_edge": 0.0, "days": round(steps * 900 / 86400, 1), "trades_per_day": None}
         return m, curve
 
-    event("step", "Loaded 30 days of Bitcoin 15-minute history: 16,800 decision points.", at=started)
+    # The market by its one long name (markets.customer_name), as a real session's line says it: the example's
+    # feed read "Bitcoin 15-minute" beside "Bitcoin up or down in 15 minutes" on the dashboard (walk 2026-10-31).
+    from app.trading.markets import customer_name
+    event("step", "Loaded 30 days of %s history: 16,800 decision points." % customer_name("btc15m"), at=started)
     event("step", "Read the idea: a coin flip with no information. Testing it honestly anyway.", at=started)
     cands = [("Todd's random walk", 0.50,
               "Each step is +1¢ or −1¢ with equal odds — a pure coin flip with no information. "
