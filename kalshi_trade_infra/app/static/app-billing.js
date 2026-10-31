@@ -5,7 +5,7 @@ window.TauPage('billing', (T) => {
   'use strict';
   const {
     alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
-    halfUp, ICON, KIND_LABEL, loadFail, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
+    halfUp, holdFocus, ICON, KIND_LABEL, loadFail, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
     retried, root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote, WJ,
     WEEKDAY_DAY
   } = T;
@@ -129,15 +129,17 @@ window.TauPage('billing', (T) => {
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {
         if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', cardsUnread ? CARDS_UNREAD_BUY : 'Add a card first.', 'bad'); return; }
-        const waited = waitNote(e.currentTarget);
-        busy(e.currentTarget, async () => {
+        const btn = e.currentTarget, waited = waitNote(btn);
+        // The refresh redraws the panel, Buy credits with it, and focus fell to the page: a keyboard or screen-reader
+        // user started again from the top after every purchase (walk 2026-10-31). holdFocus puts it on the new one.
+        holdFocus(null, () => busy(btn, async () => {
           const credits = +amt.value;
           try {
             const r = await api('/api/billing/topup', { amount: credits }).finally(waited);
             const fresh = await refreshed(load());  // refresh balance + ledger, then confirm into the fresh panel
             flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(r.charged != null ? r.charged : topupCharge(credits, d.topup_fee_pct))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.` + (fresh ? '' : BEHIND), 'good');
           } catch (err) { flash('#topup-flash', err.message, 'bad'); }
-        }, waited);
+        }, waited));
       };
       const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
       const arEdit = root.querySelector('#autorel-edit'), arCfg = root.querySelector('#autorel-config'), arSum = root.querySelector('#autorel-sum');

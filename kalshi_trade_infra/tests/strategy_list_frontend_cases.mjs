@@ -493,6 +493,26 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.doesNotMatch(f.root.querySelector('#sfigs').innerHTML, /1,235/);
   });
 
+  test(`${name}: a new account's figures say they leave the example out, beside chips that list it`, async () => {
+    // First-hour walk 2026-10-31: "Rejected in testing 0" (Meridian: "100.0% pass rate, of the 1 strategy here") sat over a
+    // "Rejected (2)" chip, the two seeded example strategies, with nothing saying why the two disagreed.
+    const counts = {total: 1, passed: 1, failed: 0, rejected: 0, 'backtest-only': 0, deployed: 1, examples: {rejected: 2}};
+    const f = frontend({fetchImpl: () => response({counts, matched: 1, pages: 1, strategies: [detailStrategy({id: 60, title: 'One'})]})});
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.viewStrategies(); await flush();
+    assert.equal(f.root.querySelectorAll('[data-f="status"]').find((b) => b.dataset.v === 'rejected').textContent, 'Rejected (2)');
+    const figs = f.root.querySelector('#sfigs').textContent;
+    assert.match(figs, /Rejected in testing[\s\S]*0\s*not counting the example’s 2/);
+    assert.doesNotMatch(figs, /Passed[^R]*not counting|Void on unseen data[^R]*not counting/);
+    if (name === 'Meridian') assert.equal(f.root.querySelector('#strategy-passrate').textContent, '100.0% pass rate, of the 1 strategy here, not counting the example’s 2');
+    // An account with no example rows reads as before.
+    const g = frontend({fetchImpl: () => response({counts: {...counts, examples: {}}, matched: 1, pages: 1, strategies: [detailStrategy({id: 60, title: 'One'})]})});
+    g.location.pathname = '/strategies'; g.location.search = '?status=';
+    await g.viewStrategies(); await flush();
+    assert.doesNotMatch(g.root.querySelector('#sfigs').textContent, /example/);
+    if (name === 'Meridian') assert.equal(g.root.querySelector('#strategy-passrate').textContent, '100.0% pass rate, of the 1 strategy here');
+  });
+
   test(`${name}: a search, market or Deployed filter that matches nothing says so, not a new account's empty list`, async () => {
     // Walked 2026-10-31: the counts are narrowed by the search too, so a search for "zzz" read total 0 and the list said
     // "Autopilot is on. The strategies it finds will land here" over an account of 74 strategies.

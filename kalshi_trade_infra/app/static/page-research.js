@@ -461,7 +461,12 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
             ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
             // Nothing tested yet: it repeated the page's subtitle word for word ("describe an idea, it writes strategies
             // and tests each on data it never saw"), under a form that already asks for the idea.
-            : `Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.`;
+            // With autopilot on it is about to start one itself: "Describe an idea to start your first session" read as
+            // though nothing would happen until the reader wrote one, under "Autopilot is on" (walk 2026-10-31).
+            // Not while it is paused for credits (the autopilot status's billing_blocked) or with a session already queued.
+            : S.me.user && S.me.user.autopilot && !queued && !(S.ap && S.ap.billing_blocked)
+              ? `Nothing tested yet. Autopilot is picking its first idea and starts the session itself, listed with your sessions. You can also <a href="#dispatch">describe an idea</a> yourself.`
+              : `Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.`;
         paint(root.querySelector('#rstatus .said'), said);
         paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Queued', num(queued)) +
           // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:

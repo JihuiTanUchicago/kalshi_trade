@@ -1006,7 +1006,9 @@
     const parts = SINCE_RUN_STATES.filter(([k]) => n(k)).map(([k, w]) => [n(k), w]);
     if (started > known) parts.push([started - known, 'finished']);  // a status this list doesn't know has ended
     const solo = parts.length === 1 && parts[0][1];
-    const state = solo ? (started === 1 ? (['queued', 'running'].includes(solo) ? 'still ' + solo : solo) : 'all ' + solo)
+    // One session that has since ended reads "started, now finished": "1 research session started, finished" read
+    // as two verbs with no subject between them (walk 2026-10-31).
+    const state = solo ? (started === 1 ? (['queued', 'running'].includes(solo) ? 'still ' : 'now ') + solo : 'all ' + solo)
       : parts.map(([c, w]) => `${num(c)} ${w}`).join(', ');
     if (!point) return state;
     return state + (n('succeeded') ? ', <a href="/research">see what each idea missed</a>'
