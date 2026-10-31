@@ -76,6 +76,13 @@ window.TauPage('autopilot', (T) => {
     deploy: 'Asks to put on paper', adjust: 'Asks to tune a strategy', pause: 'Asks to pause', resume: 'Asks to resume',
     set_risk: 'Asks to change risk limits', set_exec: 'Asks to change execution limits',
   };
+  // Declined (or never applied), it is headed by what it asked, in the past: "Paused" over "Declined" read as if the
+  // strategy had been paused when nothing changed (walk 2026-10-31). Kinds not listed keep their AP_ACT noun.
+  const AP_ASKED = {
+    deploy: 'Asked to put on paper', deploy_live: 'Asked to promote to live', adjust: 'Asked to tune a strategy',
+    pause: 'Asked to pause', resume: 'Asked to resume', set_risk: 'Asked to change risk limits',
+    set_exec: 'Asked to change execution limits',
+  };
   const AP_BOOK = { paper: 'on paper, with practice money', demo: 'on demo, Kalshi\u2019s sandbox with no real money', live: 'LIVE, with real money in your Kalshi account' };
   function apApproveLine(m) {
     const k = m.proposal_kind, book = AP_BOOK[m.deployment_mode];
@@ -136,7 +143,8 @@ window.TauPage('autopilot', (T) => {
     // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
     const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');
     const other = !m.proposal_kind && (AP_OTHER.find(([rx]) => rx.test(m.content || '')) || [])[1];
-    const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
+    const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || (m.proposal_id && st !== 'pending' && st !== 'applied' && AP_ASKED[m.proposal_kind])
+      || AP_ACT[m.proposal_kind]
       || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off')
         : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : other || 'Reviewed'));
     const own = rule ? '<p class="apf-ask apf-rule">To stop it anyway, pause it yourself on <a href="/deploy">Deploy</a>.</p>' : '';
@@ -146,10 +154,12 @@ window.TauPage('autopilot', (T) => {
     const stage = m.stage ? `<span class="hx-tag">${esc(m.stage)}</span>` : '';
     const title = m.strategy ? `<b class="say-title">${esc(m.strategy)}</b>` : '';
     const detail = m.detail ? `<details class="hx-more"><summary>Show the detail</summary><div class="hx-body"><div class="apf-md">${feedMd(m.detail)}</div></div></details>` : '';
+    // Its Approve is described by that line: two pending asks both read "Approve" alone to a screen reader.
     const ask = st === 'pending' ? apApproveLine(m) : null;
     const ctl = (m.proposal_id && st === 'pending')
-      ? `${ask ? `<p class="apf-ask${ask.live ? ' live' : ''}">${esc(ask.text)}</p>` : ''}<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">${m.proposal_kind === 'kalshi_perps_live' ? 'Review live order' : 'Approve'}</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
+      ? `${ask ? `<p class="apf-ask${ask.live ? ' live' : ''}" id="apf-ask-${Number(m.proposal_id)}">${esc(ask.text)}</p>` : ''}<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve"${ask ? ` aria-describedby="apf-ask-${Number(m.proposal_id)}"` : ''}>${m.proposal_kind === 'kalshi_perps_live' ? 'Review live order' : 'Approve'}</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
     li.className = 'ln lane-' + lane + ' apf-act';
+    if (m.proposal_id) li.setAttribute('data-prop-line', String(m.proposal_id));  // where focus lands after a decision
     li.innerHTML = `${t}<div class="say">
       <div class="hx-head"><span class="say-kind">${esc(kind)}</span>${title}${stage}${stamp}</div>
       <div class="apf-md">${feedMd(m.content)}</div>${own}${detail}${ctl}</div>`;
@@ -369,17 +379,30 @@ window.TauPage('autopilot', (T) => {
       btns.forEach((x) => { x.disabled = true; });
       b.classList.add('busy');
       apErr(box, '');
+      let failed = false;
       try {
         const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {});
         if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; }
         // An approved pause, resume or deploy changes what is running: the figures and the card follow now.
         refreshAutopilot(box);
       } catch (err) {
+        failed = true;
         apErr(box, err.message);
         btns.forEach((x) => { x.disabled = false; });
         delete prop.dataset.deciding;
       } finally { b.classList.remove('busy'); }
       await apLoadChat(box, true, undefined, 'keep');  // the stamp, or the state it was already decided to
+      // The pressed button locked (which blurs it) and then went with the repaint, leaving focus on the page under the
+      // panel (walk 2026-10-31). Unless the reader has moved on, it lands on that proposal's line, which now says what
+      // was decided; on a failure, on the same button again, beside the reason.
+      const a = document.activeElement;
+      if (a && a !== document.body && a.isConnected !== false) return;
+      const line = msgs.querySelector(`[data-prop-line="${pid}"]`);
+      const again = failed && line && line.querySelector(`[data-decide="${b.dataset.decide}"]`);
+      const to = again || line;
+      if (!to) return;
+      if (!again) to.setAttribute('tabindex', '-1');
+      if (to.focus) to.focus({ preventScroll: true });
     });
     const cf = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg');
     // A message half typed survives a reload (or the panel closing): kept in this browser, per account,
