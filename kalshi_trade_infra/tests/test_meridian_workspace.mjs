@@ -6,6 +6,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 import {bundleSource, exposing} from './bundle_source.mjs';
 import {pageFileCases} from './page_files_frontend_cases.mjs';
+import {adminFigureCases} from './admin_figures_frontend_cases.mjs';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
@@ -269,6 +270,7 @@ deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
 stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
+adminFigureCases({name: 'Meridian', frontend});
 communityCases({name: 'Meridian', frontend});
 pageFileCases({name: 'Meridian', frontend, prefix: 'app.meridian-', pagesKey: 'merPages', storageFor: m => m});
 settingsCases({name: 'Meridian', frontend, current: 'meridian', storageFor: m => m, cardWallOpts: () => ({stripeLoader: async () => STRIPE_STUB})});

@@ -5,8 +5,8 @@
 window.TauPage('admin', (T) => {
   'use strict';
   const {
-    adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, num, phone, poll, root,
-    S, SEP, shell, theme, usd, when
+    adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, logTime, num, phone, poll, root,
+    S, SEP, settleAt, shell, theme, usd, when
   } = T;
   // Tau's pages have a line under each title, and its System map lists the database's largest tables; Meridian's
   // Admin has the waitlist.
@@ -19,8 +19,11 @@ window.TauPage('admin', (T) => {
     const modes = ['paper', 'demo', 'live'].filter((m) => o.by_mode[m]);
     return `${o.total} open position${o.total === 1 ? '' : 's'} (${modes.map((m) => `${m}: ${o.by_mode[m].positions}`).join(', ')}) `
       + `across ${o.users} user${o.users === 1 ? '' : 's'} belong to deleted strategies. The engine no longer settles or flattens them. `
-      + modes.map((m) => `${m[0].toUpperCase() + m.slice(1)}: ${usd(o.by_mode[m].cost)} at cost, oldest settles ${when(o.by_mode[m].oldest_close)}.`).join(' ');
+      + modes.map((m) => `${m[0].toUpperCase() + m.slice(1)}: ${usd(o.by_mode[m].cost)} at cost, ${oldestDue(o.by_mode[m].oldest_close)}.`).join(' ');
   };
+  // The oldest one's close, with its date and zone (settleAt). when() read a close still to come as "just now" and
+  // one long past as "settles Oct 20": a position the engine no longer settles is overdue, so it says "was due".
+  const oldestDue = (iso) => (new Date(iso).getTime() <= Date.now() ? 'oldest was due ' : 'oldest settles ') + settleAt(iso);
   // Broken pages: browser error reports from the last 24h (repo.client_error_groups), grouped by message
   // and page. Every field came from a browser, a signed-out one too, so all of it goes through esc().
   const CE_KIND = { error: 'Uncaught error', rejection: 'Unhandled rejection', api: 'API call failed', view: 'Page bug' };
@@ -65,14 +68,16 @@ window.TauPage('admin', (T) => {
     const load = async () => {
       const d = await api('/api/admin');
       if (gen !== S.gen) return;
-      root.querySelector('#ucount').textContent = `${d.users.length} shown`;
+      // The table lists the newest 100: "100 shown" said nothing of how many accounts there are in all.
+      const total = d.users_total == null ? d.users.length : d.users_total;
+      root.querySelector('#ucount').textContent = total > d.users.length ? `newest ${num(d.users.length)} of ${num(total)}` : `${num(total)} in all`;
       root.querySelector('#o-state').textContent = orphanLine(d.orphaned_open);
       const ce = d.client_errors || [];
       root.querySelector('#ce-count').textContent = ce.length ? `last 24h${SEP}${ce.reduce((a, r) => a + (+r.n || 0), 0)} reports` : 'last 24h';
       root.querySelector('#client-errors').innerHTML = clientErrorTable(ce);
-      root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
+      root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Credit balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
-        <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
+        <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Credit balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
       if (theme === 'meridian') {
         root.querySelector('#waitlist').innerHTML = d.waitlist.length
           ? `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Note</th><th>When</th><th>Status</th><th class="act"><span class="vh">Actions</span></th></tr></thead><tbody>${d.waitlist.map((w) => `<tr>
@@ -336,13 +341,19 @@ window.TauPage('admin', (T) => {
       if (id === 'agents') return metricLines(id, L).join(SEP);
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
       // No heartbeat on record (the server's age is null) reads in words: a bare "—" read "2 paper running · —".
-      const a = L.age == null ? 'not seen yet' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
+      // Past 90 minutes it says hours, then days: "stale" read the same for a feed 2 hours behind and one 3 days behind.
+      const a = L.age == null ? 'not seen yet' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago`
+        : L.age < 172800 ? `${Math.round(L.age / 3600)}h ago` : `${Math.floor(L.age / 86400)}d ago`;
       if (SYS_UNIT[id]) return [aboutRows(L.rows, SYS_UNIT[id]), a].filter(Boolean).join(SEP);
       // Running deployments per mode (the reader's own; every user's for the operator): live money and demo are named apart, never summed.
       if (id === 'sim_engine') return `${num(L.paper)} paper running${SEP}${a}`;
       if (id === 'live_engine') return `${num(L.live)} live${SEP}${num(L.demo)} demo${SEP}${a}`;
       return a;
     }
+    // A line's time: the clock for today's (its date and zone on hover, logTime), else the day or how long ago (when).
+    // Every line read as a bare clock, so a quiet feed's newest line, days old, read as today's.
+    const feedTime = (iso) => (new Date(iso).toDateString() === new Date().toDateString() ? logTime(iso)
+      : `<time datetime="${esc(iso || '')}" title="${esc(settleAt(iso))}">${esc(when(iso))}</time>`);
     // A verdict reads as the run page's plain note (server gate_explain.event_note) when it has one,
     // after the idea's title; else its own message, minus the status word the row doesn't need.
     const sysVerdict = (e) => {
@@ -375,7 +386,7 @@ window.TauPage('admin', (T) => {
       const sel = svg.querySelector('.sys-node.sel'); if (sel && !codeState) showDetail(sel.dataset.id);
       root.querySelector('#sys-stamp').textContent = 'updated ' + clock(d.now);
       const feed = root.querySelector('#sys-feed');
-      feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(sysVerdict(e)) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
+      feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}">${feedTime(e.created_at)}<span>${e.kind === 'verdict' ? esc(sysVerdict(e)) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
     };
     await load();
     if (gen === S.gen) poll(load, 4000);
