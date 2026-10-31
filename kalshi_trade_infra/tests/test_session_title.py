@@ -32,7 +32,7 @@ def test_the_list_and_the_run_page_carry_the_title_and_leave_the_prompt(monkeypa
              "prompt": worker.RESEARCH_FLOOR_IDEA, "market": "btc15m"},
             {"id": 1, "status": "succeeded", "run_forever": 0, "direction": None, "prompt": "Fade late takers", "market": "btc15m"}]
     monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [dict(r) for r in rows])
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, **k: [dict(r) for r in rows])
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)

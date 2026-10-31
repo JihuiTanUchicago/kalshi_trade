@@ -1216,7 +1216,7 @@ def test_research_totals_are_all_time_and_cached(monkeypatch):
 def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     # The example is listed, flagged so the page can say the app ran it for free, and out of the headline.
     monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [{"id": 2, "direction": "momentum"}, {"id": 1, "direction": "random_walk"}])
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, **k: [{"id": 2, "direction": "momentum"}, {"id": 1, "direction": "random_walk"}])
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, **kw: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [{"id": 2}, {"id": 1}])
@@ -1232,7 +1232,7 @@ def test_runs_list_counts_every_session_and_pages_older_ones(monkeypatch):
     full = [{"id": 400 - k, "direction": "momentum", "status": "succeeded"} for k in range(server.repo.RUNS_LISTED)]
     asked, counted = [], []
 
-    def list_runs(cur, uid, limit=server.repo.RUNS_LISTED, before=None):
+    def list_runs(cur, uid, limit=server.repo.RUNS_LISTED, before=None, with_active=False):
         asked.append((limit, before))
         if before is None:
             return [dict(r) for r in full]

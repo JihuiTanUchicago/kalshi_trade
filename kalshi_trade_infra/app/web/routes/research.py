@@ -56,21 +56,30 @@ def list_runs(ctx: Ctx):
               "base_score": round(pol["base_score"], 2) if (pol and pol.get("base_score") is not None) else None,
               "summary": pol.get("summary") if pol else None,
               "evolved_at": pol["updated_at"] if pol else None}
-    runs = repo.list_runs(ctx.cur, ctx.uid)
-    own_total = _session_rows(ctx, runs, judged or None)
+    # The newest RUNS_LISTED, and every session at work the newest have passed (a run-until-stopped session while the
+    # autopilot's short sessions pile up after it), in one read. Those lead the list, unnumbered: their number would
+    # take a count of their own, and their row says what it is doing.
+    runs = repo.list_runs(ctx.cur, ctx.uid, with_active=True)
+    at_work, runs = list(runs[repo.RUNS_LISTED:]), list(runs[:repo.RUNS_LISTED])
+    own_total = _session_rows(ctx, runs, judged or None, unnumbered=at_work)
+    runs = at_work + runs
     # own_total: every session of the user's own (the example left out), not just the newest RUNS_LISTED the list
     # holds, so a six-month account's list says "50 of 200" instead of "50 sessions". No extra read: a full page
     # is counted for its session numbers anyway.
     return {"runs": runs, "counts": counts, "policy": policy, "totals": totals, "v": v, "own_total": own_total}
 
 
-def _session_rows(ctx: Ctx, runs: List[Dict], judged: Optional[Dict] = None, before: Optional[int] = None) -> int:
+def _session_rows(ctx: Ctx, runs: List[Dict], judged: Optional[Dict] = None, before: Optional[int] = None,
+                  unnumbered: List[Dict] = ()) -> int:
     """Stamp a page of research sessions for the list (spend, example, passes not cleared, number, why it
-    stopped, wait, title, customer words); returns how many sessions of the user's own the numbering counted."""
+    stopped, wait, title, customer words); returns how many sessions of the user's own the numbering counted.
+    `unnumbered` (sessions at work older than the page, list_runs' with_active) are stamped the same, but numbered
+    never: the page's numbers count down from the newest without a gap."""
+    page, runs = list(runs), list(unnumbered) + list(runs)
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
     _with_not_cleared(ctx.cur, ctx.uid, runs, judged)
-    total = _number_sessions(ctx.cur, ctx.uid, runs, before)
+    total = _number_sessions(ctx.cur, ctx.uid, page, before)
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
         r.pop("out_of_credits", None)

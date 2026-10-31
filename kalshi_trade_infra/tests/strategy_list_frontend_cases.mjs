@@ -475,4 +475,45 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const s2 = shape(off);
     assert.ok(s2.rows.length === 2 && s2.rows.every((n) => n === s2.head), JSON.stringify(s2));
   });
+  test(`${name}: each status chip counts the rows it lists, the example's included, grouped in thousands`, async () => {
+    // Walked 2026-10-31: "Rejected (1)" opened on three rows (the two seeded example strategies are out of the
+    // figures but listed), and a big account's chips read "Kept (1234)" beside "1,234" figures.
+    const counts = {total: 1301, passed: 1234, failed: 50, rejected: 15, 'backtest-only': 2, deployed: 1002, examples: {rejected: 2, passed: 1}};
+    const f = frontend({fetchImpl: () => response({counts, matched: 1237, pages: 25, strategies: [detailStrategy({id: 60, title: 'One'})]})});
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.viewStrategies(); await flush();
+    const chip = (v) => f.root.querySelectorAll('[data-f="status"]').find((b) => b.dataset.v === v).textContent;
+    assert.equal(chip(''), 'Kept (1,237)');  // 1,236 kept of the account's own and the one example pass
+    assert.equal(chip('passed'), 'Passed (1,235)');
+    assert.equal(chip('rejected'), 'Rejected (17)');
+    assert.equal(chip('failed'), 'Void (50)');
+    assert.equal(f.root.querySelector('[data-toggle="deployed"]').textContent, 'Deployed (1,002)');
+    // The figures above still leave the example out.
+    assert.match(f.root.querySelector('#sfigs').innerHTML, /1,234/);
+    assert.doesNotMatch(f.root.querySelector('#sfigs').innerHTML, /1,235/);
+  });
+
+  test(`${name}: a search, market or Deployed filter that matches nothing says so, not a new account's empty list`, async () => {
+    // Walked 2026-10-31: the counts are narrowed by the search too, so a search for "zzz" read total 0 and the list said
+    // "Autopilot is on. The strategies it finds will land here" over an account of 74 strategies.
+    for (const search of ['?status=&q=zzz', '?status=&market=nba_game', '?status=&deployed=1']) {
+      for (const autopilot of [true, false]) {
+        const f = frontend({fetchImpl: () => response({counts: {total: 0, deployed: 0, examples: {}}, matched: 0, pages: 0, strategies: []})});
+        f.S.me.user.autopilot = autopilot;
+        f.location.pathname = '/strategies'; f.location.search = search;
+        await f.viewStrategies(); await flush();
+        const empty = f.root.querySelector('#slips .empty').innerHTML;
+        assert.match(empty, /Try another filter\./, search);
+        assert.doesNotMatch(empty, /will land here|Start a session|New session|See its research|Go to Research/, search);
+        if (name === 'Meridian') assert.match(empty, /<h3>No matching strategies<\/h3>/);
+        f.clearTimers && f.clearTimers();
+      }
+    }
+    // No filter on and nothing at all is still a new account's list.
+    const g = frontend({fetchImpl: () => response({counts: {total: 0}, matched: 0, pages: 0, strategies: []})});
+    g.S.me.user.autopilot = true;
+    g.location.pathname = '/strategies'; g.location.search = '?status=';
+    await g.viewStrategies(); await flush();
+    assert.match(g.root.querySelector('#slips .empty').innerHTML, /Autopilot is on\. The strategies it finds will land here\./);
+  });
 }

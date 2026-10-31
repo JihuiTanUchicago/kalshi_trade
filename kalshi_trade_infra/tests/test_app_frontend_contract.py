@@ -734,7 +734,7 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     assert server.get_run(ctx)['run']['spent_usd'] == 1.84  # to the cent, half up, as Billing rounds
     assert calls == [(7, [9])]
     calls.clear()
-    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
+    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid, **k: [{'id': 9}, {'id': 4}, {'id': 2}])
     monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a, **kw: {})
     monkeypatch.setattr(server.repo, 'list_runs_version', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
     monkeypatch.setattr(research_routes, '_research_totals', lambda *a: {})
@@ -748,7 +748,7 @@ def test_a_run_whose_debits_round_to_nothing_says_it_spent_under_a_cent(monkeypa
     # A session that failed on one short call ($0.004213 billed) came as spent_usd 0 and read "Cost: none" on its
     # row and page while Billing listed the charge. spent_usd stays to the cent; spent_under_cent says it isn't nothing.
     monkeypatch.setattr(server.repo, 'runs_spent', lambda cur, uid, ids: {9: 0.004213, 4: 0.005, 3: 0.0000004})
-    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 3}, {'id': 2}])
+    monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid, **k: [{'id': 9}, {'id': 4}, {'id': 3}, {'id': 2}])
     monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a, **kw: {})
     monkeypatch.setattr(server.repo, 'list_runs_version', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 3}, {'id': 2}])
     monkeypatch.setattr(research_routes, '_research_totals', lambda *a: {})

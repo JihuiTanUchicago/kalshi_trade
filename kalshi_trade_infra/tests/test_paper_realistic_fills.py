@@ -357,7 +357,7 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
              "hypotheses_tried": 50, "strategies_passed": 3}]
     from tests.autopilot_status_parts import stub_merged_reads
     stub_merged_reads(monkeypatch)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50, **k: runs)
     # The week is one aggregate per model (Todd's prod week: 277 runs, the 50-run list saw 73 ideas).
     week = [{"model": "sonnet-4-5", "runs": 250, "tried": 2400, "passed": 68, "input_tokens": 10_000_000, "output_tokens": 1_000_000},
             {"model": None, "runs": 27, "tried": 268, "passed": 0, "input_tokens": 0, "output_tokens": 0}]
@@ -394,7 +394,7 @@ def test_research_activity_names_the_newest_active_session_to_watch(monkeypatch)
     runs = [{"id": 12, "market": "btc15m", "status": "running", "created_at": now, "started_at": now, "heartbeat_at": now},
             {"id": 9, "market": "btc15m", "status": "succeeded", "created_at": now}]
     stub_merged_reads(monkeypatch)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50, **k: runs)
     monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [])
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)
     monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: 0.0)
@@ -466,7 +466,7 @@ def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
             {"market": "high_ny", "status": "queued", "created_at": stale, "heartbeat_at": None}]
     from tests.autopilot_status_parts import stub_merged_reads
     stub_merged_reads(monkeypatch)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50, **k: runs)
     monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [])
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)
     monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: 0.0)

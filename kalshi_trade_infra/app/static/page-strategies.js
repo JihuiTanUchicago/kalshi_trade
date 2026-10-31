@@ -84,22 +84,32 @@ window.TauPage('strategies', (T) => {
         fig('Pass rate', rate != null ? pct(rate, false) : f.deployed ? '—' : 'None yet', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : rate != null ? `of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : 'shows once a strategy here is tested' });
       if (!tau) root.querySelector('#strategy-passrate').textContent = rate != null ? `${pct(rate, false)} pass rate, of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : 'Research results';
       const kept = total - c('failed') - c('rejected');
-      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; if (v === 'not_cleared') b.hidden = !c(v) && f.status !== v; });
+      // Each chip counts the rows it lists. The seeded example's strategies are out of the figures above, but a chip
+      // lists them (marked Example): "Rejected (0)" opened on the two example rows (walked 2026-10-31). The server
+      // counts them per status (counts.examples) and lists the kept ones under Kept, as its matched total does.
+      // Grouped in thousands as every count is: a busy autopilot's "Kept (1234)".
+      const ex = counts.examples || {}, exN = (st) => +ex[st] || 0;
+      const exKept = Object.keys(ex).filter((st) => st !== 'failed' && st !== 'rejected').reduce((a, st) => a + exN(st), 0);
+      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${num(c(v) + exN(v))})` : `Kept (${num(kept + exKept)})`; if (v === 'not_cleared') b.hidden = !c(v) && !exN(v) && f.status !== v; });
       const depChip = root.querySelector('[data-toggle="deployed"]');
-      if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
+      if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${num(counts.deployed)})`;
       if (!d.matched) {
         // A new user's default view, not a filter miss. The Passed filter with nothing passed is that view too: the
         // dashboard's "See passed strategies" lands there after a first session where every idea failed, and
         // "Try another filter" left it with no next step.
         const noneKept = total && !f.q && !f.market && !f.deployed && (f.status ? f.status === 'passed' && !c('passed') : !kept);
+        // A search, market or Deployed filter narrows the counts too, so one that matches nothing reads total 0: it is a
+        // filter miss, never a new account's list. A search for "zzz" read "Autopilot is on. The strategies it finds will
+        // land here" over 74 strategies (walked 2026-10-31).
+        const missed = !!(total || f.q || f.market || f.deployed);
         // With autopilot on, the empty list says it is on instead of asking for a session (not "researching":
         // the autopilot panel may be reporting a stale check-in or a billing pause).
         const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
         // Each theme's own words: Tau's "Nothing here yet" over what to do next, Meridian's heading that says which
         // empty it is, with New session for a new account.
         slipsEl.innerHTML = tau
-          ? `<div class="empty"><h3>Nothing here yet</h3><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : total ? 'Try another filter.' : apOn ? 'Autopilot is on. The strategies it finds will land here.' : 'Start a research session and the strategies it finds will land here.'}${noneKept && apOn ? ' Autopilot keeps researching on its own.' : ''}</p>${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">${apOn ? 'See its research' : 'Go to Research'}</a>`}</div>`
-          : `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : total ? '<p>Try another filter.</p>' : apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : '<p>Every strategy a research session writes lands here, with its test on data it never saw. Start a session to find your first.</p>'}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
+          ? `<div class="empty"><h3>Nothing here yet</h3><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : missed ? 'Try another filter.' : apOn ? 'Autopilot is on. The strategies it finds will land here.' : 'Start a research session and the strategies it finds will land here.'}${noneKept && apOn ? ' Autopilot keeps researching on its own.' : ''}</p>${missed && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">${apOn ? 'See its research' : 'Go to Research'}</a>`}</div>`
+          : `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : missed ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : missed ? '<p>Try another filter.</p>' : apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : '<p>Every strategy a research session writes lands here, with its test on data it never saw. Start a session to find your first.</p>'}${missed && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));

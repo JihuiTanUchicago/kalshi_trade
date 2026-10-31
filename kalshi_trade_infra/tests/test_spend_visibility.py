@@ -363,7 +363,7 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
     monkeypatch.setattr(server.repo, "usage_by_source", lambda *a: dict(by_source))
     run = {"id": 42, "kind": "research", "status": "succeeded", "run_forever": 0, "direction": "momentum", "market": "btc15m"}
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {42: usd})
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: [dict(run)])
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50, **k: [dict(run)])
     monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)

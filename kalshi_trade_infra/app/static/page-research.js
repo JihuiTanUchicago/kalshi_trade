@@ -9,6 +9,7 @@ window.TauPage('research', (T) => {
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
+    dateFmt, LOG_STAMP,
     whyFailedHtml, wireMarketPicker
   } = T;
   // Each theme lays the pages out its own way. Tau's list is cards under the form, a line of words and figures over
@@ -628,7 +629,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     return `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b title="${esc(title)}">${esc(clipWords(title, RUN_TITLE_MAX))}</b>${runTag(r)}</span>
       <span class="run-meta">${meta}</span>
-      <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
+      <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${createdAt(r.created_at)}</span></span></a>`;
   }
   // Meridian's session is a row of the table under Recent sessions: its title, number, market and cost, created,
   // and outcome, each in its column.
@@ -652,10 +653,17 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     const bare = !r.title && !(r.prompt && r.prompt.trim()) && !r.direction && sessionNo(r);
     const title = bare || sessionTitle(r, false);
     return `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(title)}"><b>${esc(title)}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) && !bare ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? `<span class="run-cost"><span class="run-sep">${SEP}</span>${runSpent(r)}</span>` : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(title)}"><b>${esc(title)}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) && !bare ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? `<span class="run-cost"><span class="run-sep">${SEP}</span>${runSpent(r)}</span>` : ''}</span><span class="run-when"><span class="vh">Created </span>${createdAt(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
   }
   // `newest`: the user's newest session. When it ran out of credits its card or row offers Add credits, beside
   // the card or under the row (a link can't sit inside its own link); older ones only say so.
+  // A session row's Created: "6m ago" or "Oct 28" as before, with the day, clock and zone on hover and to a screen
+  // reader ("Oct 28, 14:05 EDT"). "Oct 28" named no zone, and a session started near midnight read a day off from
+  // its page's clock in another zone (walked 2026-10-31).
+  const createdAt = (iso) => {
+    const d = new Date(iso || NaN);
+    return Number.isFinite(d.getTime()) ? `<time datetime="${esc(iso)}" title="${esc(dateFmt(d, LOG_STAMP))}">${when(iso)}</time>` : '';
+  };
   function runRow(r, newest) {
     const { ok } = runPassed(r);
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,

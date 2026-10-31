@@ -51,7 +51,7 @@ def test_the_runs_list_carries_stop_reason_not_the_raw_flag(monkeypatch):
     rows = [{"id": 2, "status": "succeeded", "run_forever": 1, "out_of_credits": 1, "direction": "momentum"},
             {"id": 1, "status": "cancelled", "run_forever": 0, "out_of_credits": 0, "direction": "momentum"}]
     monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: rows)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, **k: rows)
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
@@ -93,7 +93,7 @@ def test_a_silent_session_is_counted_out_of_running_and_its_row_says_so(monkeypa
             {"id": 1, "status": "queued", "heartbeat_at": None, "created_at": queued, "direction": "momentum"}]
     seen = {}
     monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
-    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [dict(r) for r in rows])
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, **k: [dict(r) for r in rows])
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: seen.update(cut=silent_before) or {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
