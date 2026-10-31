@@ -397,7 +397,7 @@ def share_strategy(ctx: Ctx):
     new_id = repo.share_strategy(ctx.cur, s["id"], ctx.uid, recipient["id"])
     if new_id is None:
         return {"ok": True, "already": True}  # idempotent: they already have this one
-    sender = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "A friend"
+    sender = customer_text.display_name((repo.get_user(ctx.cur, ctx.uid) or {}).get("name"), "A friend")
     repo.add_notification(ctx.cur, recipient["id"], "share",
                           "%s shared the strategy “%s” with you." % (sender, s["title"]),
                           "/strategies/%d" % new_id)

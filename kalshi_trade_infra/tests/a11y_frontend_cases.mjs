@@ -605,7 +605,7 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     f.clearTimers();
   });
 
-  test(`${name}: Show older entries says how many came in, and past the last page focus goes to the line that says so`, async () => {
+  test(`${name}: Show older entries says how many came in, hands focus to the first entry it lists, and past the last page to the line that says so`, async () => {
     const entry = (id) => ({id, kind: 'trade', amount: -1.25, created_at: new Date(Date.UTC(2026, 4, 1) + id * 36e5).toISOString(), memo: `Bought 5 YES KXBTC15M-26OCT241200-00 @ 0.25 (#${id})`});
     const f = frontend({fetchImpl: (path) => {
       if (path.startsWith('/api/funds/ledger?before=')) {
@@ -623,6 +623,13 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     await f.root.querySelector('#ledger-older').onclick({target: btn}); await settle();
     assert.equal(f.root.querySelectorAll('.t-ledger tbody tr').length, 100);
     assert.equal(said(f), '50 older entries shown.', 'the rows came in with nothing said');
+    // More remain: focus stayed on the button, which the 50 new rows pushed below the screen. It goes to the first
+    // entry just listed (#70, under the newest 50), as Show older sessions does, and the page scrolls to it.
+    let row = f.root.querySelectorAll('.t-ledger tbody tr')[50];
+    assert.match(row.innerHTML, /#70\)/);
+    assert.equal(row.getAttribute('tabindex'), '-1');
+    assert.ok(focusedOn(f, row), 'focus is on the first older entry');
+    assert.equal(row.focusOptions, undefined, 'and the page scrolls to it');
     btn = f.root.querySelector('#ledger-older-btn');
     f.document.activeElement = btn;
     await f.root.querySelector('#ledger-older').onclick({target: btn}); await settle();
