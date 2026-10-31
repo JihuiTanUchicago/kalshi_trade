@@ -693,9 +693,15 @@
     ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
   // A paper card's book also says it after typical live slippage (the server's slippage_estimate), on a line of
   // its own under the figure; a live card shows live money and a demo line beside paper is never estimated.
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : r.mode === 'live' ? 'on live ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : r.mode === 'live' ? 'No closed live trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${realDemo(r)}` : '';
+  // Its words alone (realWords), also a finished session's "Already deployed" line for a demo or live record.
+  const realWords = (r) => (r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : r.mode === 'live' ? 'on live ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : r.mode === 'live' ? 'No closed live trades yet' : 'No closed trades yet');
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${realWords(r)}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${realDemo(r)}` : '';
   // A paper book's demo book beside it (the server's real.demo): its own line, never added in.
-  const realDemo = (r) => r && r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : '';
+  // Its words alone (demoWords), also beside a finished session's "Paper since deploying" (Tau's Ideas tested row), where
+  // Meridian's session table said the demo book and Tau's row didn't (walk 2026-10-31). A paused demo book (the server's
+  // demo.paused) says so: "On paper + demo" over a demo line with no word of its loss-guard pause read as running.
+  const demoWords = (r) => (r && r.demo ? `Demo${r.demo.paused ? ' (paused)' : ''}: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}` : '');
+  const realDemo = (r) => r && r.demo ? `<div class="sub-fig real-fig">${demoWords(r)}</div>` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
@@ -1171,6 +1177,14 @@
     const last = list[list.length - 1];
     return last && at(last) < day ? false : null;
   };
+  // The demo book's realized today (UTC), the server's demo today_pnl, on its own line under the book's all-time
+  // figure, as the paper book's day sits under its own and the live book's beside it: the server sent it and neither
+  // theme's demo card said it (walk 2026-10-31: "Last 24 hours: Demo −$5.56 on 2 trades" over a card with only
+  // "realized all time"). Demo money only, never added to paper or live; nothing before the book's first close, and a
+  // day with no demo trade closed yet says so (closedToday), never "$0.00 realized". Display only. `recent` is the
+  // dashboard's recent_closed.
+  const demoToday = (dm, recent) => (!dm || dm.today_pnl == null || demoNoClose(dm)) ? ''
+    : `<span class="fig-today">${pnlWin('today')} ${!+dm.today_pnl && closedToday(recent, 'demo', dm.closed_trades) === false ? 'no trades closed yet' :`<span class="amt">${money(dm.today_pnl)}</span> realized, ${FEES_NET}`}</span>`;
   const sinceSlip = (b) => (b && b.paper && +b.paper.trades ? slipEstGl(b.paper.slippage_estimate) : '');
   // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
   // each its own 44px, where on a line they reached into one another.
@@ -1334,13 +1348,13 @@
     catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
     fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, finitePts, thinCurve, curveWords, traceScale, registry, curveRegs, spark, rpUnderwater, mark,
     statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
-    paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
+    paperShown, paperSince, realWords, demoWords, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
     depInstant, demoRowLine, TR_MODES, trBook, trFix, trDay, trMonth, trCi, TR_STATUS, TR_EDGE, trCurve, trCurveCap,
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
     exploreNoBtc, hotWhen, hotSpotNote, hotPriceWord, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose,
-    demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
+    demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, demoToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost,
     pageLede, deploymentMode, sessionNo, olderRows

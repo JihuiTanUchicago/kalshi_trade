@@ -7,7 +7,7 @@ window.TauPage('research', (T) => {
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, liveOpen, loading, logTime, marketPicker, marketShort,
-    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, pct, phone, poll, recoverFails, retried, root, runKind, runTag,
+    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, realWords, demoWords, pct, phone, poll, recoverFails, retried, root, runKind, runTag,
     runWaitLine, S, SEP, sessionEstimate, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     dateFmt, LOG_STAMP,
     whyFailedHtml, wireMarketPicker
@@ -1617,7 +1617,16 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // A deployed pass's line, with its paper record since deploying when the session's data carries one (a card's `real`
   // in paper mode, as the Strategies list has it): "Already deployed" alone sent a reader to Deploy to learn whether it
   // made anything. Paper money only; a demo or live book is never added in. Display only.
-  const deployedNext = (s) => `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`;
+  // Its other books say theirs too, each on its own, never added in: the demo book beside a paper one (the card's
+  // real.demo), or a demo or live record on its own. Meridian's session table said them in its Status cell and this row
+  // didn't: a strategy on paper and demo read here as paper only (walk 2026-10-31).
+  const deployedNext = (s) => {
+    const r = s.real;
+    const book = !r ? '' : r.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(r)}</span>${r.demo ? `<span class="ri-demo">${SEP}${demoWords(r)}</span>` : ''}`
+      : `<span class="ri-book">${SEP}${realWords(r)}</span>`;
+    // A shown book that is paused (real.paused) says so, as Meridian's Status cell marks it Paused.
+    return `<a href="/deploy">Already deployed: see it on Deploy</a>${r && r.paused ? `<span class="ri-paused">${SEP}paused</span>` : ''}${book}`;
+  };
   function runIdeas(strategies, whyBySid, open, gap = '') {
     const list = (strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
     if (!list.length) return '';

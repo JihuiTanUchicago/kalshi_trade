@@ -912,6 +912,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .real-record .real-paused b { background: var(--neg); padding: 0 6px; border-radius: 3px; }
 /* The paper after-slippage estimate (trading_core/domain/slippage.py), beside paper realized P&L: muted, on a
    line of its own and never tinted, so it reads as an estimate and not as another P&L figure. */
+/* A book's realized today (UTC) on its own line under its all-time figure (the demo card's, core demoToday), as Tau's. */
+.fig-today { display: block; margin-top: 2px; }
 .slip-est { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--ink-3); font-style: normal; overflow-wrap: anywhere; }
 .real-record .real-slip { margin-top: 2px; }
 .real-record .real-slip .slip-est { margin-top: 0; }
