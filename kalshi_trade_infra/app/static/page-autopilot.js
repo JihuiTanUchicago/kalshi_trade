@@ -567,7 +567,10 @@ window.TauPage('autopilot', (T) => {
       `<dt>Strategies running</dt><dd>${runTotal ? runParts.join(SEP) : 'None'}</dd>`,
       // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
       // The figure says which money it is and that fees are in, as the dashboard card and Deploy say it.
-      `<dt>${liveInPlay ? 'Live realized today (UTC)' : `${pnlWin('today')} ${gl('paper realized', 'realized')}`}</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>${liveInPlay ? '' : slipEstGl(d.today_paper_slippage_estimate)}`}</dd>`,
+      // A paper book with no trade closed today (UTC) says so, as the dashboard's paper figure does: the server sends no
+      // today_paper_slippage_estimate until a paper trade closes today, and the panel read "$0.00" beside a dashboard that
+      // said "no trades closed yet", as if the day had broken even (walk 2026-10-31). A break-even day keeps its $0.00.
+      `<dt>${liveInPlay ? 'Live realized today (UTC)' : `${pnlWin('today')} ${gl('paper realized', 'realized')}`}</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : !liveInPlay && !pnl && 'today_paper_slippage_estimate' in d && d.today_paper_slippage_estimate == null ? 'No trades closed yet' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>${liveInPlay ? '' : slipEstGl(d.today_paper_slippage_estimate)}`}</dd>`,
     ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.

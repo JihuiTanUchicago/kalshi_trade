@@ -55,6 +55,7 @@ import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {statusWalkCases} from './status_walk_frontend_cases.mjs';
 import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
 import {firstWeekCases} from './first_week_frontend_cases.mjs';
+import {morningWalkCases} from './morning_walk_frontend_cases.mjs';
 import {autopilotCostCases, billingCostCases} from './autopilot_cost_frontend_cases.mjs';
 import {settingsBillingCases} from './settings_billing_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
@@ -5728,6 +5729,12 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   // Payments off (the server sends no spend): no Cost row. Nothing spent: says so.
   assert.doesNotMatch(await strip({since: {...since, spent: null}}), /<dt>Cost<\/dt>/);
   assert.match(await strip({since: {...since, spent: {since: 0, week: 0}}}), /<dt>Cost<\/dt><dd>No credits spent/);
+  // Who paid is said only beside credits spent or bought: "No credits spent · real money" read as real money spent while
+  // away (walk 2026-10-31). Spent, it says so.
+  const unspent = await strip({since: {...since, spent: {since: 0, week: 0, card_charged: true}}});
+  assert.match(unspent, /<dt>Cost<\/dt><dd>No credits spent<span class="since-sub">\u00a0· \$7\.15 left\u00a0· <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /<b>\$27\.45<\/b> of credits spent<span class="since-sub">\u00a0· real money\u00a0· \$7\.15 left/);
+  assert.match(await strip({since: {...since, spent: {since: 0, week: 0, card_charged: true, bought: 20, charges: 1, reloads: 1}}}), /No credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub">\u00a0· real money/);
   // A spend that rounds to $0.00 but isn't nothing (one short call, the server's since_under_cent) says so, as Billing's
   // line for it does, not "No credits spent" beside a charge on the statement (walk 2026-10-31).
   const sliver = await strip({since: {...since, spent: {since: 0, week: 0.004, since_under_cent: true}}});
@@ -6323,6 +6330,7 @@ freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 statusWalkCases({name: 'Tau', frontend});
 newcomerMoneyCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 firstWeekCases({name: 'Tau', frontend, dashboard: () => emptyDashboard(), detailStrategy, strategyFrontend});
+morningWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 autopilotCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn});
 billingCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, billingPage, cardedBilling});
 settingsBillingCases({name: 'Tau', frontend, billingPage, cardedBilling});
