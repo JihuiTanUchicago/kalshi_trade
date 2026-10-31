@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.trading.markets import MARKETS, Market, cross_product
+from app.trading.settlement import dataset_result
 from app.repository import _json, _loads, now_utc
 
 # -- pre-registration (app_experiments) ---------------------------------------
@@ -326,7 +327,7 @@ def partition_contracts(cur, market: Market, since: datetime) -> List[Dict]:
     close_ts, result}. Drives boundary snapping and the data fingerprint. Only
     candles_done=1 rows (same filter the backtester's load_history uses)."""
     cur.execute(
-        """SELECT ticker, open_time, close_time, result FROM hist_markets
+        """SELECT ticker, open_time, close_time, result, settle_value FROM hist_markets
            WHERE series_ticker=%s AND close_time >= %s AND candles_done=1
            ORDER BY open_time, ticker""",
         (market.series, since),
@@ -337,7 +338,7 @@ def partition_contracts(cur, market: Market, since: datetime) -> List[Dict]:
             "ticker": r["ticker"],
             "open_ts": _ts(r["open_time"]),
             "close_ts": _ts(r["close_time"]),
-            "result": r["result"],
+            "result": dataset_result(r),  # "yes"/"no", or a cancelled market's settlement price
         })
     if market.data_from_ts:   # a tick-sourced market: contracts before its archive have no data
         out = [c for c in out if c["open_ts"] >= market.data_from_ts]

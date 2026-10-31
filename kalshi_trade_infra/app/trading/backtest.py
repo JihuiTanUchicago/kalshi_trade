@@ -30,6 +30,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from app.adapters.data import freedata
 from app.trading import spec as specmod
 from app.trading.track_record import thin_min_max
+from app.trading.settlement import contract_payout, dataset_result
 from app.adapters.data import options_fair, sports_odds, weather_fcst
 from app.trading.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          cross_features, cross_product,
@@ -61,7 +62,8 @@ class Dataset:
         return int(self.start_ts + (self.end_ts - self.start_ts) * IN_SAMPLE_FRACTION)
 
     def summary(self) -> Dict:
-        yes = sum(1 for r in self.results.values() if r == "yes")
+        decided = [r for r in self.results.values() if r in ("yes", "no")]  # a cancelled market is neither
+        yes = sum(1 for r in decided if r == "yes")
         return {
             "market": self.market.key,
             "label": self.market.label,
@@ -70,7 +72,7 @@ class Dataset:
             "out_of_sample_from": _iso(self.cutoff_ts),
             "decision_points": len(self.frames),
             "contracts": self.contracts,
-            "yes_rate": round(yes / len(self.results), 3) if self.results else None,
+            "yes_rate": round(yes / len(decided), 3) if decided else None,
         }
 
 
@@ -107,7 +109,7 @@ def build_dataset(market: Market, markets: List[Dict], candles: List[Dict], btc:
         ct = m["close_time"]
         ct = ct if ct.tzinfo else ct.replace(tzinfo=timezone.utc)
         contracts[m["ticker"]] = Contract(m["ticker"], float(m["strike"]), ct, series=market.series)
-        results[m["ticker"]] = m["result"]
+        results[m["ticker"]] = dataset_result(m)  # "yes"/"no", or a cancelled market's settlement price
     by_ts: Dict[int, List[Tuple[Contract, Optional[float], Optional[float]]]] = defaultdict(list)
     for c in candles:
         if isinstance(c, dict):
@@ -307,10 +309,9 @@ def _simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Opti
         return taker_fee_dollars(qty, price) * w.fee_multiplier
 
     def settle(pos: _Open) -> None:
-        won = ds.results.get(pos.ticker) == pos.side
         trades.append(
             Trade(pos.ticker, pos.side, pos.qty, pos.entry_ts, pos.entry_price, pos.close_ts,
-                  1.0 if won else 0.0, pos.fee, "settled", pos.edge)
+                  contract_payout(ds.results.get(pos.ticker), pos.side), pos.fee, "settled", pos.edge)
         )
 
     for ts, snaps in ds.frames[_first_frame(ds, start_ts):]:
@@ -430,9 +431,8 @@ def _simulate_next_bar(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
         return taker_fee_dollars(qty, price) * w.fee_multiplier
 
     def settle(pos: _Open) -> None:
-        won = ds.results.get(pos.ticker) == pos.side
         trades.append(Trade(pos.ticker, pos.side, pos.qty, pos.entry_ts, pos.entry_price, pos.close_ts,
-                            1.0 if won else 0.0, pos.fee, "settled", pos.edge))
+                            contract_payout(ds.results.get(pos.ticker), pos.side), pos.fee, "settled", pos.edge))
 
     for ts, snaps in ds.frames[_first_frame(ds, start_ts):]:
         keep = []
@@ -560,9 +560,9 @@ def simulate_pairs(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
         return taker_fee_dollars(qty, price) * w.fee_multiplier
 
     def settle(pos: _OpenPair) -> None:
-        long_won = ds.results.get(pos.long_ticker) == "yes"
-        short_won = ds.results.get(pos.short_ticker) == "no"  # a NO buy wins when it settles "no"
-        payoff = (1.0 if long_won else 0.0) + (1.0 if short_won else 0.0)
+        # The long leg is a YES buy, the short leg a NO buy (it wins when it settles "no").
+        payoff = contract_payout(ds.results.get(pos.long_ticker), "yes") + \
+            contract_payout(ds.results.get(pos.short_ticker), "no")
         trades.append(
             Trade("%s|%s" % (pos.long_ticker, pos.short_ticker), "pair", pos.qty, pos.entry_ts,
                   pos.long_price + pos.short_price, pos.close_ts, payoff, pos.fee, "settled", pos.edge)

@@ -19,6 +19,7 @@ from app.adapters.kalshi import instruments as ki
 from app.adapters.kalshi.convert import instrument_id
 from app.adapters.kalshi.fees import KalshiBinaryFees
 from app.trading.markets import Contract, Snapshot
+from app.trading.settlement import contract_payout
 from data_pipeline.architecture.execution_kernel import reservation_price
 from trading_core.domain import ExecutionReport, Instrument, InstrumentId, OrderIntent, Portfolio, Quote, Side
 from trading_core.engine import (CrossTheTouch, QuoteFillVenue, RiskChain, TradingLoop, max_open_positions,
@@ -203,14 +204,14 @@ class _FrameFeed:
 
 
 class _ResultSettlement:
-    """A binary pays 1 if the dataset's result is its outcome, else 0 (a missing result is a loss,
-    exactly as ``backtest.simulate`` books it)."""
+    """A binary pays 1 if the dataset's result is its outcome, else 0, or its share of a cancelled
+    market's settlement price (a missing result is a loss, exactly as ``backtest.simulate`` books it)."""
 
     def __init__(self, results: Mapping[str, str]) -> None:
         self.results = results
 
     def settlement_price(self, instrument: Instrument) -> float:
-        return 1.0 if self.results.get(instrument.id.symbol) == instrument.id.outcome else 0.0
+        return contract_payout(self.results.get(instrument.id.symbol), instrument.id.outcome)
 
 
 def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[FeeModel] = None,

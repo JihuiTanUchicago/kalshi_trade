@@ -445,6 +445,7 @@ def _only_series(t, series: Sequence[str]):
 
 def fetch_results(tickers: Iterable[str], get=None) -> Dict[str, float]:
     """YES settlement value of every settled ticker, from Kalshi's public GET /markets/{ticker}."""
+    from app.trading.settlement import market_settlement
     if get is None:
         from data_pipeline.common import api_get as get
     out: Dict[str, float] = {}
@@ -454,8 +455,11 @@ def fetch_results(tickers: Iterable[str], get=None) -> Dict[str, float]:
         except Exception as e:  # noqa: BLE001 - an unsettled or unknown market falls back to its mid
             print("[maker_replay] result %s: %r" % (t, e), flush=True)
             continue
-        if m.get("result") in ("yes", "no"):
-            out[t] = 1.0 if m["result"] == "yes" else 0.0
+        settled = market_settlement(m)
+        if settled in ("yes", "no"):
+            out[t] = 1.0 if settled == "yes" else 0.0
+        elif isinstance(settled, float):  # cancelled at a fair price
+            out[t] = settled
     return out
 
 

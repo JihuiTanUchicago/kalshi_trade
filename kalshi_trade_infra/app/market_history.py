@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 import requests
 
 from app.trading.markets import CURATED, MARKETS, Market
+from app.trading.settlement import VOID, market_settlement
 from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
 
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD
@@ -180,8 +181,17 @@ def _upsert_settled(cur, market: Market, markets) -> int:
         close_time = parse_iso_to_dt(m.get("close_time"))
         open_time = parse_iso_to_dt(m.get("open_time"))
         strike = m.get("floor_strike")
-        result = (m.get("result") or "").lower()
-        if close_time is None or open_time is None or result not in ("yes", "no"):
+        # YES/NO, or a market Kalshi cancelled and settled at a fair price: stored as result 'void'
+        # with that price in settle_value (settlement.dataset_result reads it back). A void with no
+        # published price has nothing a backtest can pay, so it stays out.
+        settled = market_settlement(m)
+        if isinstance(settled, float):
+            result, settle_value = VOID, settled
+        elif settled in ("yes", "no"):
+            result, settle_value = settled, None
+        else:
+            continue
+        if close_time is None or open_time is None:
             continue
         # Underlying markets price against a strike; sports (underlying=None) settle on an
         # outcome and carry no floor_strike, so store a 0.0 sentinel (never used - snapshot
@@ -202,15 +212,18 @@ def _upsert_settled(cur, market: Market, markets) -> int:
                 _naive_utc(close_time),
                 result,
                 m.get("expiration_value"),
+                settle_value,
             )
         )
     if rows:
         cur.executemany(
             """
             INSERT INTO hist_markets
-              (ticker, series_ticker, event_ticker, strike, open_time, close_time, result, expiration_value)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-            ON DUPLICATE KEY UPDATE result=VALUES(result), expiration_value=VALUES(expiration_value)
+              (ticker, series_ticker, event_ticker, strike, open_time, close_time, result, expiration_value,
+               settle_value)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE result=VALUES(result), expiration_value=VALUES(expiration_value),
+              settle_value=VALUES(settle_value)
             """,
             rows,
         )
@@ -487,10 +500,41 @@ def sync_all_markets(cur, markets, now: datetime, deadline: float, stats: Dict[s
     return 0
 
 
+def resync_settled(cur, now: Optional[datetime] = None, series: Optional[List[str]] = None) -> Dict[str, int]:
+    """Re-read every collected series' settled markets over its whole history window, once. The
+    forward sync only reads from the newest close, so markets it skipped before (cancelled markets,
+    stored since settle_value existed) are never read again otherwise. Idempotent upserts; the new
+    rows' candles follow through the normal candles_done=0 path. Contained per series."""
+    now = now or utc_now()
+    cur.execute("SELECT DISTINCT series_ticker FROM hist_markets")
+    have = {r["series_ticker"] for r in cur.fetchall()}
+    stats: Dict[str, int] = {}
+    for market in MARKETS.values():
+        if market.series not in have or (series and market.series not in series) or market.kind != "binary":
+            continue
+        try:
+            stats[market.series] = sync_settled_markets(cur, market, now - timedelta(days=market.history_days))
+        except Exception as e:  # noqa: BLE001 - one series' API hiccup must not stop the rest
+            print("[market_history] resync %s failed: %r" % (market.series, e), flush=True)
+    return stats
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--resync-settled", action="store_true",
+                    help="re-read every collected series' settled markets over its history window, then exit")
     args = ap.parse_args()
+    if args.resync_settled:
+        conn = get_db_conn()
+        try:
+            with conn.cursor() as cur:
+                stats = resync_settled(cur)
+                print("[market_history] resync %d series, %d markets upserted" % (len(stats), sum(stats.values())),
+                      flush=True)
+        finally:
+            conn.close()
+        return
     while True:
         sleep = REFRESH_SECONDS
         try:

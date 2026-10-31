@@ -664,7 +664,7 @@ def load_history(cur, series: str, candle_minutes: int, since: datetime,
     close_time upper bound) keeps the database from scanning contracts past the window at all."""
     upto, upto_args = (" AND close_time <= %s", (until,)) if until is not None else ("", ())
     cur.execute(
-        """SELECT ticker, strike, close_time, result FROM hist_markets
+        """SELECT ticker, strike, close_time, result, settle_value FROM hist_markets
            WHERE series_ticker=%s AND close_time >= %s AND candles_done=1""" + upto,
         (series, since) + upto_args,
     )
