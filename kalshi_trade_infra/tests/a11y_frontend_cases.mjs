@@ -122,6 +122,11 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
       await explore.viewExplore(); for (let i = 0; i < 6; i++) await flush();
       assert.equal(explore.root.querySelector('#xbody h2').textContent, words);
       assert.deepEqual(headingSkips(explore.root), []);
+      // A list that failed is said aloud (failure walk 2026-10-31): the heading alone was silent.
+      if (answer.status === 500) {
+        [...explore.timeouts.values()].forEach((run) => run()); explore.timeouts.clear();
+        assert.equal(explore.document.getElementById('sr-alert').textContent, 'Markets didn’t load. Explore is busy.');
+      }
       explore.clearTimers();
     }
     // A System map whose read keeps failing says so once, with Try again, and its 4s poll backs off (failure walk

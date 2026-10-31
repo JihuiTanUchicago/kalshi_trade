@@ -264,7 +264,10 @@ window.TauPage('explore', (T) => {
       catch (e) {
         if (mine !== seq || !tau && gen !== S.gen) return;
         if (cfg) { if (shown) paintFigs(shown); throw e; }
-        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = () => load(); return;
+        // Said aloud too (failure walk 2026-10-31): the failed list was a plain heading, and a screen reader that
+        // pressed Try again, or opened the page, heard nothing at all.
+        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = () => load();
+        announce(`Markets didn’t load. ${e.message}`, true); return;
       }
       if (mine !== seq || !tau && gen !== S.gen) return;
       paintFigs(d);
