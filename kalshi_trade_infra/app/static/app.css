@@ -374,6 +374,9 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
 
 .sheet { overflow-x: auto; overflow-y: visible; }
 .t-strat .pickcol { width: 34px; text-align: center; vertical-align: middle; }
+/* Select all for a phone's stacked list (page-strategies.js): the header's own is clipped with the header there, and goes;
+   its column keeps a name (.pick-head) for a screen reader's table navigation. */
+.pick-all-m, .pick-head { display: none; }
 .bulkbar { position: sticky; bottom: 14px; z-index: 6; display: flex; align-items: center; gap: 12px; margin: 14px 0; padding: 10px 14px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.14); }
 .bulkbar .lab { font-family: var(--f-nar); color: var(--ink-2); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -1230,6 +1233,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-strat.stack tbody td.pickcol { position: absolute; top: 10px; right: 0; width: auto; flex-direction: column; align-items: center; gap: 4px; }
   .t-strat.stack tbody td.pickcol input { width: 22px; height: 22px; margin: 0; }
   .t-strat.stack tbody td.pickcol + td.name { padding-right: 60px; }
+  .pick-all-m { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; color: var(--ink-2); cursor: pointer; }
+  .pick-all-m input { width: 22px; height: 22px; margin: 0; }
+  .stack thead #pick-all { display: none; }
+  .stack thead .pick-head { display: inline; }
   .t-strat.stack tbody td.name .sub-fig { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .lhero { padding-top: 24px; }
   .lnav { padding: 16px 0; }
@@ -2176,6 +2183,8 @@ body.landing-body .apf { display: none; }
 .ri-title { background: none; border: 0; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .ri-title:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ri-why { grid-column: 2; font-size: 13px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+/* Its link ("Open it to deploy on paper") was a 16px-tall target at 1280px (axe target-size): 24px from its padding. */
+.ri-why a { padding-block: 5px; }
 .ri-rest > summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: var(--ink); }
 /* The foot of a finished session (runEnd), under the log's last line: its way on, as plain buttons. */
 .run-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0 0; }

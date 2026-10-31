@@ -131,7 +131,11 @@ window.TauPage('strategies', (T) => {
       const paperCol = list.some(paperShown);
       // Each bundle's strategyTable: Meridian's also takes whether the table is a research session's (here, never).
       const rows = list.map((s) => strategySlip(s, reg, { pick: anyPassed, paper: paperCol })).join('');
-      slipsEl.innerHTML = (tau ? strategyTable(rows, anyPassed, paperCol) : strategyTable(rows, anyPassed, false, paperCol))
+      // Select all sits in the table's header, which a phone's stacked rows clip to nothing: only a keyboard reached it
+      // there, and a tap couldn't (walked 2026-10-31 at 390px). Up to 760px it is a labelled box of its own over the rows
+      // (CSS shows one of the two), and both do the same thing.
+      slipsEl.innerHTML = (anyPassed ? '<label class="pick-all-m"><input type="checkbox" data-pickall> Select all deployable</label>' : '')
+        + (tau ? strategyTable(rows, anyPassed, paperCol) : strategyTable(rows, anyPassed, false, paperCol))
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)}${SEP}${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => {
         sp = +b.dataset.sp;
@@ -158,19 +162,19 @@ window.TauPage('strategies', (T) => {
       flash('#bulkflash', `${ok} deployed${errs.length ? `${SEP}${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
       if (ok) load();
     };
+    // The table header's Select all and the phone's own (data-pickall) move together.
+    const pickAlls = () => Array.from(slipsEl.querySelectorAll('#pick-all, [data-pickall]'));
     const syncBar = () => {
-      const pickAll = root.querySelector('#pick-all');
       const n = selected().length;
       if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
       bar.hidden = false;
       bar.innerHTML = `<span class="lab">${n} selected</span><button class="btn sm" id="bulk-dep">Deploy ${n} on paper</button><button class="btn sm ghost" id="bulk-clear">Clear</button><span id="bulkflash"></span>`;
       root.querySelector('#bulk-dep').onclick = (e) => busy(e.target, bulkDeploy);
-      root.querySelector('#bulk-clear').onclick = () => { picks().forEach((c) => c.checked = false); if (pickAll) pickAll.checked = false; syncBar(); };
+      root.querySelector('#bulk-clear').onclick = () => { picks().concat(pickAlls()).forEach((c) => c.checked = false); syncBar(); };
     };
     const wireBulk = () => {
-      const pickAll = root.querySelector('#pick-all');
-      if (pickAll) pickAll.onclick = () => { picks().forEach((c) => c.checked = pickAll.checked); syncBar(); };
-      picks().forEach((c) => c.onchange = () => { if (pickAll && !c.checked) pickAll.checked = false; syncBar(); });
+      pickAlls().forEach((all) => all.onclick = () => { picks().concat(pickAlls()).forEach((c) => c.checked = all.checked); syncBar(); });
+      picks().forEach((c) => c.onchange = () => { if (!c.checked) pickAlls().forEach((all) => all.checked = false); syncBar(); });
       syncBar();
     };
     load();

@@ -52,7 +52,17 @@
 //   the button that opens them read "Reload $25 at $8" as if it charged the card. A plain checkbox showed no focus.
 // - The open autopilot panel's story, a live region, was written again with the same words on each status read.
 // - A session's spinner carried aria-label="in process" on a <span>, a name nothing reads (axe aria-prohibited-attr).
+//
+// From a keyboard and screen-reader pass over known leftovers (axe-core 4.14 in Playwright; both themes, 390px and 1280px,
+// 2026-10-31):
+// - The Strategies list's Select all sat in the table header a phone's stacked rows clip to nothing: Tab reached it
+//   there, a tap couldn't. Up to 760px it is a labelled box of its own over the rows, doing the same thing.
+// - After the dashboard autopilot card's Try again, focus went to its first heading, "Last 7 days", halfway down it.
+// - Meridian's Explore links were named "event · source condition · market · close" over rows that show
+//   "event ≥ $113,000 …" (axe label-content-name-mismatch); its dashboard positions read market, strategy, book over a
+//   row that shows market then book, the words run together.
 import assert from './assert_text.mjs';
+import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
@@ -63,6 +73,17 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const headingSkips = (host) => {
   const levels = host.querySelectorAll('h1, h2, h3, h4, h5, h6').map((h) => [+h.tag.slice(1), h.textContent.trim()]);
   return levels.filter(([level], i) => level > (i ? levels[i - 1][0] : 0) + 1).map(([level, text]) => `h${level} ${text}`);
+};
+
+// Every `@media (max-width: 760px)` block of a stylesheet, joined (the phone's stacked tables).
+const phoneRules = (css) => {
+  const out = [];
+  for (let at = css.indexOf('@media (max-width: 760px) {'); at >= 0; at = css.indexOf('@media (max-width: 760px) {', at + 1)) {
+    let depth = 0, i = css.indexOf('{', at);
+    for (; i < css.length; i++) { if (css[i] === '{') depth++; else if (css[i] === '}' && !--depth) break; }
+    out.push(css.slice(at, i + 1));
+  }
+  return out.join('\n');
 };
 
 export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, detailStrategy, dashboard, fundsData, apStatus}) {
@@ -604,6 +625,47 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     // Its focus ring: test_ui_contrast.mjs (the stylesheets).
   });
 
+  test(`${name}: a phone's Strategies list has a Select all it can tap, labelled, that picks what the header's picks`, async () => {
+    const rows = [detailStrategy({id: 61, title: 'First pass', status: 'passed'}), detailStrategy({id: 62, title: 'Second pass', status: 'passed'})];
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/strategies') ? response({counts: {total: 2, passed: 2}, matched: 2, pages: 1, strategies: rows}) : response({}))});
+    await f.viewStrategies(); for (let i = 0; i < 6; i++) await flush();
+    const picks = f.root.querySelectorAll('.pick'), head = f.root.querySelector('#pick-all');
+    assert.equal(picks.length, 2);
+    // Its own label, the words the header's box is named by.
+    const label = f.root.querySelector('#slips label.pick-all-m'), box = label && label.querySelector('input[type="checkbox"][data-pickall]');
+    assert.ok(box, 'a Select all outside the clipped table header');
+    assert.equal(label.textContent.trim(), 'Select all deployable');
+    assert.equal(head.getAttribute('aria-label'), 'Select all deployable');
+    // Either box picks every row and the other box with it; a row taken off clears both; Clear clears both.
+    box.checked = true; box.onclick();
+    assert.deepEqual(picks.map((c) => c.checked), [true, true]);
+    assert.equal(head.checked, true);
+    assert.match(f.root.querySelector('#bulkbar').innerHTML, /2 selected/);
+    picks[0].checked = false; picks[0].onchange();
+    assert.equal(box.checked, false); assert.equal(head.checked, false);
+    head.checked = true; head.onclick();
+    assert.equal(box.checked, true); assert.deepEqual(picks.map((c) => c.checked), [true, true]);
+    f.root.querySelector('#bulk-clear').onclick();
+    assert.deepEqual([box.checked, head.checked, ...picks.map((c) => c.checked)], [false, false, false, false]);
+    // With nothing to pick, no box.
+    const g = frontend({fetchImpl: (path) => (path.startsWith('/api/strategies') ? response({counts: {total: 1, failed: 1}, matched: 1, pages: 1,
+      strategies: [detailStrategy({id: 63, title: 'Void one', status: 'failed'})]}) : response({}))});
+    await g.viewStrategies(); for (let i = 0; i < 6; i++) await flush();
+    assert.equal(g.root.querySelector('[data-pickall]'), null);
+    f.clearTimers(); g.clearTimers();
+    // The stylesheet shows one of the two: the header's box wide, the phone's own up to 760px (a 44px row), where the
+    // header's goes and its column keeps a name a screen reader says (.pick-head).
+    const css = readFileSync(new URL(`../app/static/${name === 'Tau' ? 'app.css' : 'app.meridian.css'}`, import.meta.url), 'utf8');
+    assert.match(css, /\n\.pick-all-m, \.pick-head \{ display: none; \}/);
+    const phone = phoneRules(css);
+    assert.match(phone, /\.pick-all-m \{ display: flex;[^}]*min-height: 44px;/);
+    assert.match(phone, /\.pick-all-m input \{ width: 22px; height: 22px;/);
+    assert.match(phone, /\.stack thead #pick-all \{ display: none; \}/);
+    assert.match(phone, /\.stack thead \.pick-head \{ display: inline; \}/);
+    const th = f.root.querySelector('th.pickcol');
+    assert.equal(th.querySelector('#pick-all'), head); assert.equal(th.querySelector('.vh.pick-head').textContent, 'Select');
+  });
+
   test(`${name}: Show older sessions hands focus to the first session it lists, not <body>`, async () => {
     const run = (id) => ({id, seq: id, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Idea ' + id,
       hypotheses_tried: 9, strategies_passed: 1, spent_usd: 0.5, error: null, created_at: '2026-10-25T08:00:00Z', stop_reason: 'limit'});
@@ -796,11 +858,13 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     assert.ok(focused(xHead), 'the list back: the page heading takes focus');
     x.clearTimers();
 
-    // The dashboard's autopilot card: back, the card (named Autopilot, with no heading when on) takes focus.
+    // The dashboard's autopilot card: back, the card (named Autopilot) takes focus. Not its first heading: a week with
+    // something in it draws "Last 7 days" halfway down the card, and focus landed there (keyboard walk 2026-10-31).
     let apUp = false;
+    const week = {tested: 4, passed: 1, not_cleared: 0, paper_started: 1, research_credits: 0.84, checkin_credits: 0, trades: 0, pnl: 0};
     const d = frontend({fetchImpl: (path) => {
       if (path.startsWith('/api/dashboard')) return response(dashboard());
-      if (path === '/api/autopilot/status') return apUp ? response(apStatus) : response({error: 'Something went wrong on our side.'}, 500);
+      if (path === '/api/autopilot/status') return apUp ? response({...apStatus, week}) : response({error: 'Something went wrong on our side.'}, 500);
       if (path === '/api/models') return response({models: [], default: ''});
       if (path.startsWith('/api/chat')) return response({messages: []});
       return response({});
@@ -817,7 +881,9 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     await again.onclick(); await settle();
     const card = d.root.querySelector('#dash-ap');
     assert.equal(card.querySelector('[data-apcard="again"]'), null, 'the card draws the status');
+    assert.equal(card.querySelector('.ap-week h3').textContent, 'Last 7 days');
     assert.ok(focused(card), 'the card takes focus');
+    assert.equal(focused(card.querySelector('.ap-week h3')), false, 'not the week heading halfway down it');
     assert.equal(card.getAttribute('tabindex'), '-1');
     assert.equal(card.getAttribute('aria-label'), 'Autopilot');
     d.clearTimers();

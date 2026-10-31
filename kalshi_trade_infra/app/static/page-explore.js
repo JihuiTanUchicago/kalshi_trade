@@ -8,7 +8,7 @@
 window.TauPage('explore', (T) => {
   'use strict';
   const {
-    announce, api, boardTitle, BTC_CONTRACT, cents, clock, closeClock, closeLeft, closeWords, comboTitle, compactCondition,
+    announce, api, boardTitle, BTC_CONTRACT, cents, clock, closeClock, closeLeft, comboTitle, compactCondition,
     contractMarket, contractMkt, contractShort, errText, esc, exitWord, EXPLORE_NO_FEED, EXPLORE_WAIT, exploreEmpty,
     exploreNoBtc, exploreNoFeed, exploreShowChips, fig, hourET, ICON, kalshiRef, kalshiUrl, keepFocus, keepZone,
     liveClose, loading, markedAt, marketShort, marketSpot, markFig, markOld, midOf, MKT_GONE, MKT_STATUS, mktLabel,
@@ -313,8 +313,13 @@ window.TauPage('explore', (T) => {
         // Under the name, the market as the app names it (contractShort: "BTC above set price at noon ET"), as Tau's
         // Explore chips it, then when the contract closes. The raw ticker (KXBTCD-26OCT2812-T112999.99) carries the
         // series key, so a row never prints it, as Tau's rows don't: the market page names it on its own line.
-        const chip = contractShort(m.t), closes = m.ct ? closeWords(m.ct, 'chip', 0, true) : '';
-        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(SEP))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? liveClose(m.ct, 'chip', { cap: true, cls: 'market-close' }) : ''}</a>${vsHtml(m)}`;
+        // The link is named by what it shows (axe label-content-name-mismatch): its aria-label read the source wording
+        // first ("… · $113,000 or above") where the row shows "≥ $113,000", so voice control couldn't say what it saw, and
+        // its close went stale under the ticking one. A shortened condition keeps the source's words beside it, for a
+        // screen reader only. A space parts each piece (a flex or grid item draws none), so they never run together.
+        const chip = contractShort(m.t);
+        const spoken = conditionDisplay !== separateCondition ? `<span class="vh"> (${esc(separateCondition)})</span>` : '';
+        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span> <strong>${esc(conditionDisplay)}</strong>${spoken}</span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? ` <span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${m.ct ? ' ' + liveClose(m.ct, 'chip', { cap: true, cls: 'market-close' }) : ''}</a>${vsHtml(m)}`;
         return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(SEP))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid, 'No bid')}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask, 'No ask')}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
