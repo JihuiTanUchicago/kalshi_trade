@@ -15,6 +15,7 @@ from app.web.caches import _TRACK_RECORD, _shared
 from app.web.http import Ctx
 from app.web.routes.chat import _short_title
 from app.web.routes.deployments import _paper_strategy_ids
+from app.web.routes.billing import pace_days
 from app.web.routes.funds import kalshi_cash
 from app.web.routes.strategies import _later_verdicts, _stamp_row_instant_fills, _with_marks, _with_why
 from app.web.views import (
@@ -26,6 +27,7 @@ from app.web.views import (
     _paper_equity,
     _silent_before,
     _start_of_day_utc,
+    credit_exact,
     credit_usd,
     position_out,
 )
@@ -135,7 +137,8 @@ def dashboard(ctx: Ctx):
         "deployments": rows,
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
-        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep, {d["id"] for d in deps}),
+        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep, {d["id"] for d in deps},
+                              created_at=(getattr(ctx, "user", None) or {}).get("created_at")),
         # The server's live switch (/api/me's), polled with the page as the Deploy board's is.
         "live_trading_available": engine.LIVE_TRADING_ENABLED,
     }, ctx.query.get("v"))
@@ -163,7 +166,8 @@ def _visit_since(raw) -> Tuple[datetime, bool]:
 
 
 def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
-                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None, listed: Optional[set] = None) -> Dict:
+                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None, listed: Optional[set] = None,
+                 created_at=None) -> Dict:
     """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
     since then (from the books' one pass; books are never added together), the strategies that
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
@@ -183,7 +187,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "passed": _passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
             "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": act.get("card_charged"),
-                      **_bought(act.get("bought"))}
+                      **_bought(act.get("bought")), **_spent_readout(act["spent"], created_at)}
             if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
             "names": {sid: _short_title(t) for sid, t in (act.get("titles") or {}).items() if (t or "").strip()},
@@ -217,6 +221,16 @@ def _passed_since(cur, uid: int, visit: datetime) -> Dict:
         out["not_cleared"] = [dict(name(i), verdict=later[i["id"]][0]) for i in items if i["id"] in later][:3]
         out["not_cleared_n"] = len(later)
     return out
+
+
+def _spent_readout(spent: Dict, created_at) -> Dict:
+    """Beside the strip's spend: `since_under_cent` when the spend since the visit rounds to $0.00 but isn't
+    nothing (one short call), so the row says "under $0.01" as Billing does, not "No credits spent"; and
+    `pace_days`, the days the week's spend covers (Billing's pace_days: the account's age, at most 7), so the
+    strip's "Research pauses in ..." reads the pace Billing and the autopilot panel read. Dividing a
+    two-day-old account's spend by 7 put its pause days later than theirs, or left the warning out."""
+    return {"since_under_cent": credit_exact(spent.get("since") or 0) > 0 and not credit_usd(spent.get("since") or 0),
+            "pace_days": pace_days(created_at)}
 
 
 def _bought(b: Optional[Dict]) -> Dict:

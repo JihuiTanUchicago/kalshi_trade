@@ -1585,7 +1585,7 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     out = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})
     # Without the probe's answer the row claims nothing (card_charged None): it said True, and the page called
     # the spend "real money" with no read saying a card was ever charged.
-    assert out["spent"] == {"since": 27.45, "week": 27.45, "card_charged": None}
+    assert out["spent"] == {"since": 27.45, "week": 27.45, "card_charged": None, "since_under_cent": False, "pace_days": 7.0}
     act["card_charged"] = True  # a card was charged for credits
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is True
     act["card_charged"] = False  # free credits only: no card charged yet
@@ -1595,7 +1595,8 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     # rounded half up as credits are, and nothing is said when no card was charged.
     act["bought"] = {"usd": 40.005, "charges": 2, "auto": 2}
     got = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
-    assert got == {"since": 27.45, "week": 27.45, "card_charged": False, "bought": 40.01, "charges": 2, "reloads": 2}
+    assert got == {"since": 27.45, "week": 27.45, "card_charged": False, "bought": 40.01, "charges": 2, "reloads": 2,
+                   "since_under_cent": False, "pace_days": 7.0}
     act["bought"] = {"usd": 0.0, "charges": 0, "auto": 0}
     assert "bought" not in server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
     assert out["milestones"] == {"passed": [232], "live_ready": [232]}
@@ -1607,6 +1608,27 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["names"] == {232: "ETH drift", 10: "BTC fade"}
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"] is None
+
+
+def test_since_your_last_visit_names_a_sliver_of_spend_and_billings_pace(monkeypatch):
+    # One short call since the visit ($0.004213) rounded to $0.00 and the strip said "No credits spent" beside
+    # Billing's line for it; and its "Research pauses in ..." divided a two-day-old account's spend by 7, where
+    # Billing and the autopilot panel divide by the account's age (pace_days). Both ride with the spend.
+    from datetime import datetime, timedelta
+    now = server.repo.now_utc().replace(tzinfo=None)
+    act = {"autopilot": {}, "runs": {}, "own_sessions": True, "spent": {"since": 0.004213, "week": 0.004213}}
+    monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: act)
+    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since, **k: {"n": 0, "items": []})
+    monkeypatch.setattr(server.billing, "configured", lambda: True)
+    got = server._since_visit(None, 1, now, False, {}, created_at=now - timedelta(days=2))["spent"]
+    assert got["since"] == 0.0 and got["since_under_cent"] is True
+    from app.web.routes.billing import pace_days
+    assert got["pace_days"] == pace_days(now - timedelta(days=2)) and 1.99 <= got["pace_days"] <= 2.0
+    act["spent"] = {"since": 0.005, "week": 1.0}  # half a cent is a cent: its figure says it
+    assert server._since_visit(None, 1, now, False, {})["spent"] == {
+        "since": 0.01, "week": 1.0, "card_charged": None, "since_under_cent": False, "pace_days": 7.0}
+    act["spent"] = {"since": 0.0, "week": 0.0}
+    assert server._since_visit(None, 1, now, False, {}, created_at=datetime(2020, 1, 1))["spent"]["since_under_cent"] is False
 
 
 def _capacity_ctx():
