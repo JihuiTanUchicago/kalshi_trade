@@ -23,6 +23,7 @@ from app.web.views import (
     _demo_key_back,
     _gate_lines,
     _gate_tints,
+    _open_book,
     _paper_books,
     _past_deployment_out,
     _spec_sizing,
@@ -710,6 +711,10 @@ def get_strategy(ctx: Ctx):
             "cost": cents(Decimal(int(p["qty"])) * Decimal(str(p["entry_price"])) + Decimal(str(p["entry_fee"] or 0))),
             "market_close_time": p["market_close_time"], **_mark_fields(p), "why": trade_why.trade_why(p, s["spec"]),
         } for p in held],
+        # Each book's open money as the dashboard and Funds count it (views._open_book: the exact sum, rounded once),
+        # for the holdings' per-book line: the page added the rows' rounded costs, so two positions of $1.005 read
+        # "$2.02" beside the dashboard's and Funds' "$2.01" for the same two positions. Books never added together.
+        holdings_books={m: _open_book(held, m) for m in sorted({p["mode"] for p in held})},
         # The Remove button's reason while any deployment of it still holds a position (delete_strategy's guard).
         delete_block=_delete_block(held),
         demo_health=demo_health,

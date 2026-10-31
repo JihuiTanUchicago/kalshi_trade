@@ -2236,6 +2236,9 @@
         // A signed amount keeps its sign: at 390px "· −" ended one line and "$0.30 from 1 removed deployment" began the next.
         return `\u00a0· <span class="nobr">${usd(b.removed, true)}</span> from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, <span class="nobr">${usd(b.all, true)}</span> in all` : ''}`;
       };
+      // Paper's figure inside the Live tile keeps its removed deployments' note too, as the Paper tile says it: without it
+      // "−$0.75 on paper from the deployments listed" had no way back to the dashboard's and Funds' paper figure (−$0.45,
+      // a removed deployment's +$0.30 in it) once a live deployment was listed.
       const listedLab = (lab, xs) => (xs.length ? `${lab}, listed below` : lab);
       // A book with no closed trade yet, listed or removed, has no P&L: it says "None yet", never a $0.00 that reads
       // as trading flat. Its line keeps what the figure is (paper, not real; after fees and the spread) and no more: at
@@ -2260,7 +2263,7 @@
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', num(active.length), { small: `${num(d.deployments.length - running.length)} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
+          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed${removedNote('paper')}, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
           // Beside a Demo realized figure the paper one names its book: a bare "Realized" next to "Demo realized" read
           // as the board's total, demo included. Paper alone keeps "Realized".
           : paperDeps.length || !demoDeps.length ? fig(listedLab(demoDeps.length ? 'Paper realized' : 'Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +

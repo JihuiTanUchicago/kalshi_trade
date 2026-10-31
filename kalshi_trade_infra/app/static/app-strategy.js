@@ -10,7 +10,7 @@ window.TauPage('strategy', (T) => {
     depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, FEES_NET, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketFull, marketShort, mdLite,
     money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, markedOf, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, curveWords, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
+    researchOnly, roadDays, root, rpUnderwater, curveWords, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark, sum4,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -792,8 +792,11 @@ window.TauPage('strategy', (T) => {
               // which money, its rows untagged (walked 2026-10-31), and a demo-only one's line read like real money.
               const lead = ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ';
               // Some marked, some not: the sum says how many it covers and how many wait for a price (markedOf).
+              // The book's open cost as the dashboard and Funds say it (the server's holdings_books: the exact sum, rounded
+              // once): adding the rows' rounded costs read two $1.005 positions as $2.02 beside their $2.01.
+              const bookCost = (rows) => { const b = (s.holdings_books || {})[rows[0].mode || 'paper']; return b && b.open_cost != null ? b.open_cost : sum4(rows.map((p) => p.cost)); };
               const part = markedOf(marked.length, xs.length);
-              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(unreal))}${part ? ` on ${part}` : ''} (est., mark-to-market on the current bid${markOld(oldest) ? ', ' + markedAt(oldest) : ''})${part ? `${SEP}${num(xs.length - marked.length)} ${NOT_MARKED.toLowerCase()}` : ''}` : `${SEP}${NOT_MARKED.toLowerCase()}`}.`;
+              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(bookCost(xs))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(unreal))}${part ? ` on ${part}` : ''} (est., mark-to-market on the current bid${markOld(oldest) ? ', ' + markedAt(oldest) : ''})${part ? `${SEP}${num(xs.length - marked.length)} ${NOT_MARKED.toLowerCase()}` : ''}` : `${SEP}${NOT_MARKED.toLowerCase()}`}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             // Each Unrealized figure says when its mark was read (the engine's mark_ts), as Deploy's does: a mark
