@@ -1074,7 +1074,7 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.ok(state.textContent.endsWith(d.status === 'running' ? 'Running' : d.status === 'paused' ? 'Paused' : 'Stopped'));
     assert.equal(state.querySelector('.mk').textContent, d.mode === 'live' ? 'LIVE' : d.mode === 'demo' ? 'Demo' : 'Paper');
     assert.equal(monitor.classList.contains('live-row'), d.mode === 'live');
-    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min up\/down\u00a0· \$12\.5 \/ trade/);
+    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min up\/down\u00a0· \$12\.50 \/ trade/);
     assert.ok(monitor.querySelector('.monitor-limits').textContent.includes('Max 4 open'));
     assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith('\u00a0· Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
     assert.equal(monitor.querySelector('.monitor-limits').textContent.includes('Risk &lt;cap&gt; reached'), d.status !== 'running');
@@ -6564,6 +6564,18 @@ test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / 
   assert.match(none, /<p class="monitor-setup">[^<]*\u00a0· <span class="nobr">Stake not <span class="nobr">set<button[^>]*data-glo="stake"[\s\S]*?<\/button><\/span><\/span><\/p><div class="monitor-limits"><span>\u00a0· You paused it<\/span>/);
   assert.doesNotMatch(none, /\$ \/ trade|Max\s+open|null|NaN/);
   assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/span><\/p><div class="monitor-limits"><span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
+});
+
+test('a Deploy row and a dashboard monitor write a stake to the cent unless it is whole dollars', async () => {
+  // Walk 2026-10-31: a $7.50 stake read "$7.5 / trade" on Deploy and the dashboard's monitor card.
+  const html = await deployBoard([nullStakeDep({id: 1, title: 'Half', stake: 7.5, max_positions: 4}),
+    nullStakeDep({id: 2, title: 'Whole', stake: 25, max_positions: 4}), nullStakeDep({id: 3, title: 'Odd', stake: 12.125, max_positions: 4})]);
+  assert.match(html, /Half<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">\$7\.50 \/ trade<\/span>/);
+  assert.match(html, /Whole<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">\$25 \/ trade<\/span>/);
+  assert.match(html, /Odd<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">\$12\.13 \/ trade<\/span>/);
+  assert.doesNotMatch(html, /\$7\.5 |\$12\.125|NaN/);
+  const f = frontend();
+  assert.match(f.deploymentMonitor(nullStakeDep({stake: 7.5, max_positions: 3})), /\$7\.50 \/ trade<\/span><\/p>/);
 });
 
 test('Meridian: a paper card on the dashboard says "after Kalshi fees and the spread" as the small explainer it is elsewhere', () => {
