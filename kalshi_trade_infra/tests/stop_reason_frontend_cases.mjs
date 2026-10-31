@@ -272,4 +272,24 @@ export function stopReasonCases({name, frontend}) {
     await form.onsubmit({preventDefault() {}}); await settle();
     for (const el of f.root.querySelectorAll('#paper input, #paper button')) assert.equal(el.focusOptions, undefined);
   });
+
+  // Walk 2026-10-31 (research results): an interrupted session that tested nothing read "Explored 0 hypotheses" on
+  // Tau's card and "0/0 passed" on Meridian's row, while its page's status said "Interrupted".
+  test(`${name}: a stopped session that tested nothing says why it stopped, as its page does`, () => {
+    const f = frontend();
+    for (const [over, said] of [
+      [{status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 0, strategies_passed: 0,
+        error: 'Interrupted: the research worker stopped and the session couldn\'t be resumed.'}, />Interrupted</],
+      [{status: 'stopped', stop_reason: 'no_data', hypotheses_tried: 0, strategies_passed: 0}, />Nothing to research</],
+      [{status: 'stopped', stop_reason: undefined, hypotheses_tried: null, strategies_passed: null}, />Stopped</],
+    ]) {
+      const row = f.runRow(run(over));
+      assert.match(row, said, JSON.stringify(over));
+      assert.doesNotMatch(row, /Explored 0|run-ratio|0 of 0/, JSON.stringify(over));
+    }
+    // One that tested ideas before it stopped still counts them.
+    const some = f.runRow(run({status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 3, strategies_passed: 1}));
+    assert.match(some, /Explored 3 hypotheses|run-ratio/);
+    assert.doesNotMatch(some, /run-state"><span class="vh">Outcome <\/span>Interrupted<|run-state">Interrupted</);
+  });
 }
