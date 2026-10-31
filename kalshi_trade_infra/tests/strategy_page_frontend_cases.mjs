@@ -12,6 +12,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     return f;
   };
   const main = f => f.root.querySelector('#main').innerHTML;
+  // Keyboard focus as either harness keeps it (Tau's marks the element, Meridian's moves document.activeElement).
+  const hasFocus = (f, el) => !!el && (el.focused === true || f.document.activeElement === el);
+  const focusOn = (f, el) => { el.focus(); f.document.activeElement = el; };
 
   test(`${name}: a code strategy offers no deploy button the server would refuse, and says what to do`, async () => {
     for (const status of ['passed', 'failed', 'backtest-only']) {
@@ -659,10 +662,15 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(body().innerHTML, /unavailable/);
     // It names what didn't load and says the rest of the page did (walk 2026-10-28).
     assert.match(body().textContent, /^Road to live didn’t load\. Tau is busy\. Try again in a moment\. Everything else on this page did\./);
-    await body().querySelector('[data-road-retry]').onclick(); await flush(); await flush();
+    // A keyboard user pressed it: focus sat on the button the read then replaces.
+    const again = body().querySelector('[data-road-retry]');
+    focusOn(f, again);
+    await again.onclick(); await flush(); await flush();
     assert.equal(reads, 2);
     assert.match(body().innerHTML, /Realistic paper trades/);
     assert.equal(body().querySelector('[data-road-retry]'), null);
+    // Focus went with the Try again it pressed: it goes into what came in, not to the page's top.
+    assert.ok(hasFocus(f, body().querySelector('.road-sum')));
     // Its last line says whether live trading is open in plain words: it read "Live trading on this server: …".
     assert.match(body().innerHTML, /Live trading: (open|not open yet)\. Your Kalshi key: /);
     assert.doesNotMatch(body().innerHTML, /server/i);
@@ -942,7 +950,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const html = main(f);
     assert.match(html, /<dt>Sharpe \(daily\)<\/dt><dd>−1\.82<\/dd>/); assert.match(html, /<dt>Profit factor<\/dt><dd>0\.87<\/dd>/);
     assert.doesNotMatch(html, />-1\.82</);
-    const stamp = new Date(registered).toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'});
+    const stamp = new Date(registered).toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'});
     assert.ok(html.includes(`Pre-registered <b>${stamp}</b>`), 'the stamp carries its zone');
     if (f.clearTimers) f.clearTimers();
   });
@@ -993,5 +1001,83 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       experiment: {classification: 'deployment_candidate', planned_n_tests: 3, validation: {classification: 'statistically_supported', n_trades: 132, net_pnl: 20.46}}});
     assert.match(main(three), /one of 3 ideas tested this run/); assert.match(main(three), /3 planned tests/);
     if (three.clearTimers) three.clearTimers();
+  });
+
+  // Walk 2026-10-31 (one strategy in several books): on paper and demo at once, with the demo copy paused by its loss
+  // guard, Since deploying read "Paused: Lost $12.30, more than the $10.00 guard…" on a line of its own between the Demo
+  // and Paper lines, the loss in no book's name. Each pause names its book, each book its own reason, and no figure adds
+  // the books together.
+  test(`${name}: on paper and demo at once, each pause names its book and its own reason, and no figure adds the books`, async () => {
+    const guard = 'Lost $12.30, more than the $10.00 guard (2x its worst backtest drawdown).';
+    const deployments = [
+      {id: 3, mode: 'demo', status: 'paused', status_reason: guard,
+        status_why: guard.replace(/\.$/, '') + '. Its loss is still past that guard, so Resume would pause it again at its next check',
+        realized_pnl: -12.3, closed_trades: 7, open_positions: 1, created_at: '2026-10-22T14:00:00Z'},
+      {id: 2, mode: 'paper', status: 'running', status_reason: null, status_why: null, realized_pnl: 2.13, closed_trades: 12, open_positions: 1,
+        created_at: '2026-10-19T14:00:00Z'}];
+    const book_totals = {demo: {pnl: -12.3, trades: 7, open: 1, paused: true}, paper: {pnl: 2.13, trades: 12, open: 1, paused: false}};
+    const past_deployments = [{id: 1, mode: 'paper', created_at: '2026-10-07T14:00:00Z', removed_at: '2026-10-12T14:00:00Z', realized_pnl: 1.39, closed_trades: 3}];
+    const f = await open({status: 'passed', deployments, book_totals, past_deployments});
+    const rec = f.root.querySelector('#since-deploying');
+    const paused = [...rec.querySelectorAll('.real-paused')].map((p) => p.textContent.replace(/\s+/g, ' ').trim());
+    assert.deepEqual(paused, ['Demo paused: Lost $12.30, more than the $10.00 guard (2x its worst backtest drawdown). Its loss is still past that guard, so Resume would pause it again at its next check. Resume or remove it on Deploy']);
+    assert.doesNotMatch(rec.innerHTML, /<b>Paused<\/b>/);
+    // Its line follows its own book's figure: after the Demo line, before the Paper one.
+    const html = rec.innerHTML;
+    assert.ok(html.indexOf('>Demo<') < html.indexOf('Demo paused') && html.indexOf('Demo paused') < html.indexOf('>Paper<'));
+    // Both paused, each for its own reason: one line each, in its own book's name.
+    const both = await open({status: 'passed', book_totals, past_deployments, deployments: [
+      deployments[0], {...deployments[1], status: 'paused', status_reason: 'force-closed: drawdown 33.0% >= limit 30.0%', status_why: 'It lost 33% of its money, past its 30% limit'}]});
+    const lines = [...both.root.querySelectorAll('#since-deploying .real-paused')].map((p) => p.textContent.replace(/\s+/g, ' ').trim());
+    assert.equal(lines.length, 2);
+    assert.match(lines[0], /^Demo paused: Lost \$12\.30/);
+    assert.match(lines[1], /^Paper paused: It lost 33% of its money, past its 30% limit\. Resume or remove it on Deploy$/);
+    // Never one figure across the books, listed or removed: −12.30 + 2.13, + 1.39.
+    const page = main(f).replace(/⁠/g, '');
+    for (const sum of ['10.17', '8.78', '3.52', '14.43', '13.69']) assert.doesNotMatch(page, new RegExp(`\\$${sum.replace('.', '\\.')}\\b`), sum);
+    if (f.clearTimers) f.clearTimers();
+    if (both.clearTimers) both.clearTimers();
+  });
+
+  // Same walk: a long-running strategy's Road to live read "Paper earns 1390% of the backtest’s P&L per trade" beside
+  // counts that group their thousands ("2,031h / 48h").
+  test(`${name}: Road to live's share of the backtest groups its thousands, as the page's counts do`, async () => {
+    const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
+      paper: {trades: 240, trades_needed: 30, net_pnl: 109.44, events: 240, events_needed: 20, span_hours: 2031, span_needed_hours: 48,
+        p_value: 0.0004, p_value_needed: 0.1, recent_trades: 120, recent_net_pnl: 47.17, realization: 13.9, demo_orders: 0, demo_orders_needed: 20,
+        checks: {realistic_trades: true, net_pnl: true, events: true, span: true, edge: true, recent: true, demo: false}}};
+    const f = strategyFrontend(detailStrategy({status: 'passed'}), (path) => response(path === '/api/strategies/42/live-readiness' ? road : {}));
+    await f.viewStrategy(42); await flush(); await flush();
+    const body = f.root.querySelector('#road-live-body').innerHTML;
+    assert.match(body, /Paper earns <b>1,390%<\/b> of the backtest/);
+    assert.doesNotMatch(body, /1390%/);
+    if (f.clearTimers) f.clearTimers();
+  });
+
+  // Same walk: the ladder is drawn again once Road to live is in (and once the demo cash is), so a link in it that
+  // held keyboard focus (its "Funds page") was replaced and focus fell to the top of the page.
+  test(`${name}: a ladder link keeps keyboard focus when Road to live comes in and the ladder is drawn again`, async () => {
+    const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
+      paper: {trades: 1, trades_needed: 30, net_pnl: 2.81, events: 1, events_needed: 20, span_hours: 0, span_needed_hours: 48,
+        p_value: null, p_value_needed: 0.1, recent_trades: 0, recent_net_pnl: 0, realization: null, demo_orders: 0, demo_orders_needed: 20,
+        checks: {realistic_trades: false, net_pnl: true, events: false, span: false, edge: false, recent: true, demo: false}}};
+    let release;
+    const held = new Promise((resolve) => { release = () => resolve(response(road)); });
+    const f = strategyFrontend(detailStrategy({status: 'passed', deployments: [{id: 6, mode: 'paper', status: 'running', realized_pnl: 2.81, closed_trades: 1,
+      open_positions: 0, created_at: '2026-10-29T14:00:00Z'}], book_totals: {paper: {pnl: 2.81, trades: 1, open: 0, paused: false}}}),
+    (path) => (path === '/api/strategies/42/live-readiness' ? held : response({})));
+    f.S.me.kalshi_dev_connected = false;
+    await f.viewStrategy(42); await flush();
+    const lb = f.root.querySelector('#ladder-body');
+    const fundsLink = () => lb.querySelectorAll('a').find((a) => a.getAttribute('href') === '/funds#connect-kalshi');
+    const link = fundsLink();
+    assert.ok(link, 'the ladder links the Funds page for the demo key');
+    focusOn(f, link);
+    release(); await flush(); await flush(); await flush();
+    const now = fundsLink();
+    assert.ok(now, 'the ladder still links it');
+    assert.notEqual(now, link, 'the ladder was drawn again');
+    assert.ok(hasFocus(f, now), 'focus is on the new copy of the link');
+    if (f.clearTimers) f.clearTimers();
   });
 }
