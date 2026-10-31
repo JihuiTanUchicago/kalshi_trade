@@ -1826,6 +1826,9 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .mk-book-h { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 2px; }
 /* A market page's next step: research the market, or open your strategies on it. */
 .mk-next { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 0; }
+/* Walk 2026-10-31 at 320px: Tau's "Research BTC $113,000 or above at 5pm ET" ran on one line 5px past the screen's
+   edge, so the whole page scrolled sideways. The market page's buttons wrap inside the column instead. */
+.mk-next .btn { white-space: normal; max-width: 100%; }
 .m.fig-behind .sub-fig { color: var(--loss-ink); }
 .mk-spot-note { max-width: 72ch; margin-top: 10px; }
 .mk-rules { max-width: 72ch; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -2051,6 +2054,8 @@ body.landing-body .apf { display: none; }
   .apf-composer-row textarea { min-height: 44px; }
   .btn { min-width: 44px; }
   .pick, #pick-all { width: 22px; height: 22px; }
+  /* Billing's "Reload $25 at $5" (a 23-24px text button beside the Auto-reload switch, walk 2026-10-31 at 360px). */
+  .autorel-edit { min-height: 44px; }
 }
 @media (max-width: 600px) {
   /* Open autopilot is a full-screen sheet: one scroll for controls and session, composer pinned. */

@@ -711,3 +711,33 @@ for (const [name, css, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'app.m
   // The card draws it straight inside that column.
   assert.match(read(js), /<div class="apcard-main">\$\{notice\(AP_CARD_UNREAD\)\}<button type="button" class="btn sm" data-apcard="again">Try again<\/button><\/div>/);
 });
+
+// Small-phone walk 2026-10-31 at 320x640 and 360x740, both themes, every signed-in page.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: a market page's Research button wraps inside the column at 320px instead of scrolling the page`, () => {
+    // Tau's "Research BTC $113,000 or above at 5pm ET" (a nowrap .btn) ran 5px past a 320px screen's edge: the page's
+    // scrollWidth was 325. The button wraps its words and never grows past its row.
+    const all = rules(read(file));
+    assert.equal(decl(all, '.btn', 'white-space'), 'nowrap');  // every other button keeps one line
+    assert.equal(decl(all, '.mk-next .btn', 'white-space'), 'normal');
+    assert.equal(decl(all, '.mk-next .btn', 'max-width'), '100%');
+    assert.equal(decl(all, '.mk-next', 'flex-wrap'), 'wrap');
+    assert.match(read('page-explore.js'), /<p class="mk-next"><a class="btn sm primary" href="\/research\?new=1&amp;market=\$\{k\}">Research \$\{esc\(strikeIn\(/);
+  });
+
+  test(`${bundle}: Billing's auto-reload amounts button is 44px to a thumb`, () => {
+    // "Reload $25 at $5" beside the Auto-reload switch was 23px tall at 360px (Tau), under the 24px floor.
+    const all = rules(read(file));
+    assert.equal(decl(all, '.autorel-edit', 'min-height', COARSE), '44px');
+    assert.equal(decl(all, '.autorel-edit', 'min-height'), undefined);  // a desktop keeps its line height
+  });
+}
+
+test('Meridian: a strategy page\'s four-figure P&L stays on one line in a 320px phone\'s two columns', () => {
+  // The paper sheet's figure columns are 118px at 320px: the 24px "+$1,234.56" broke as "+$1,234.5" over "6".
+  const all = rules(read('app.meridian.css'));
+  assert.equal(decl(all, '#figs .fig', 'font-size'), '24px');
+  assert.equal(decl(all, '.detail #figs .fig', 'font-size', '@media (max-width: 380px)'), '20px');
+  assert.equal(decl(all, '.detail #figs .fig', 'overflow-wrap'), 'anywhere');  // still the last resort, never overflow
+  assert.equal(decl(all, '.detail #figs.measure', 'grid-template-columns', '@media (max-width: 720px)'), 'repeat(2, minmax(0, 1fr))');
+});

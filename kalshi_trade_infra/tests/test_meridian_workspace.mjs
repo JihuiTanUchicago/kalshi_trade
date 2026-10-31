@@ -22,6 +22,7 @@ import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {strategyListParityCases} from './strategy_list_parity_frontend_cases.mjs';
+import {strategyMarketFilterCases} from './strategy_market_filter_frontend_cases.mjs';
 import {exploreParityCases} from './explore_parity_frontend_cases.mjs';
 import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {largeAccountCases} from './large_account_frontend_cases.mjs';
@@ -280,6 +281,7 @@ moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async 
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 strategyListParityCases({name: 'Meridian', frontend, detailStrategy});
+strategyMarketFilterCases({name: 'Meridian', frontend, detailStrategy});
 exploreParityCases({name: 'Meridian', frontend});
 countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
 largeAccountCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
