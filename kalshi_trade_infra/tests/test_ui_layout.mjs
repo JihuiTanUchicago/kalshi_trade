@@ -699,3 +699,15 @@ test('Tau: a 768px tablet\'s Deploy board fits its sheet, and the markets rail o
   assert.equal(decl(all, '.hot-title', '-webkit-line-clamp'), '2');
   assert.match(read('app.js'), /<span class="hot-title" title="\$\{esc\(mktLabel\(m\)\)\}">/);
 });
+
+test('Meridian: the dashboard autopilot card\'s Try again sizes to its words, at 390px and on a desk', () => {
+  // Walk 2026-10-31: the card's main column is a grid (.apcard-main), which stretched its Try again (status unread)
+  // the card's full width, at 390px and at 1280px. It starts at the left and sizes to its words, as a .btn.sm does in
+  // any other Meridian card, and no rule gives it a width.
+  const all = rules(read('app.meridian.css')), again = '.apcard-main > [data-apcard="again"]';
+  assert.equal(decl(all, '.apcard-main', 'display'), 'grid');
+  assert.equal(decl(all, again, 'justify-self'), 'start');
+  assert.deepEqual(all.filter((r) => sels(r).includes(again) && /(?:^|;|\s)(?:width|justify-self\s*:\s*stretch)/.test(r.body)).map((r) => r.media), []);
+  // The card draws it straight inside that column.
+  assert.match(read('app.meridian.js'), /<div class="apcard-main">\$\{notice\(AP_CARD_UNREAD\)\}<button type="button" class="btn sm" data-apcard="again">Try again<\/button><\/div>/);
+});
