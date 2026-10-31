@@ -176,3 +176,90 @@ export function autopilotCostCases({name, frontend, dashboard, apStatus}) {
     f.clearTimers();
   });
 }
+
+// Billing's "Credits last" on a first day (no pace yet) said only "Too soon to tell" while the dashboard's autopilot
+// card already said what a session usually costs and how many the balance covers. The tile now says the card's own
+// line (apSessionLine: the same estimate, model and rounding) once the estimate is there, and today's words without one.
+export function billingCostCases({name, frontend, dashboard, billingPage, cardedBilling}) {
+  const FIRST = {balance: 19.56, spent_7d: 0.44, runway_days: null, reload_days: null, pace_days: 0.01, auto_reload: false};
+  const LINE = /A research session usually costs.*?(?:too\.|run out\.|typical, not a quote\)\.)$/;
+  const TODAY_TILE = 'Credits last Too soon to tell your first day of research sets the pace';
+  const page = async (o, est, me = {}, ap = OFF) => {
+    const f = billingPage(cardedBilling({...FIRST, ...o}), [], {'/api/research/estimate': est});
+    f.S.me = {...f.S.me, ...ME, ...me}; f.S.me.user.autopilot = false; f.S.ap = ap;
+    await f.viewBilling(); await settle();
+    return f;
+  };
+  const tile = (f) => {
+    const m = [...f.root.querySelectorAll('#bfigs .m')].find((x) => /Credits last/.test(x.textContent));
+    return m ? m.innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  };
+  // The dashboard card's line, for the balance and auto-reload Billing synced onto the page state.
+  const cardLine = async (est, me) => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response(dashboard());
+      if (path === '/api/autopilot/status') return response(OFF);
+      if (path === '/api/research/estimate') return est();
+      if (path === '/api/models') return response(MODELS);
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, ...ME, ...me}; f.S.me.user.autopilot = false; f.S.ap = OFF;
+    await f.viewDashboard(); await settle(); f.S.ap = OFF; f.paintDashAp(); await settle();
+    const s = [...f.root.querySelectorAll('#dash-ap .apcard-cost')].map((p) => text(p.innerHTML)).find((t) => t.startsWith('A research session'));
+    f.clearTimers();
+    return s;
+  };
+
+  test(`${name}: Billing's first-day "Credits last" says the dashboard card's own line, figure for figure`, async () => {
+    for (const [o, est] of [[{}, TYPICAL], [{}, OWN], [{auto_reload: true}, TYPICAL], [{balance: 1.4}, {...TYPICAL, typical: {mdl_a: 4.05}}],
+      [{balance: 5}, {...TYPICAL, typical: {mdl_a: 4.05}}]]) {
+      const f = await page(o, () => response(est));
+      const t = tile(f), shown = (LINE.exec(t) || [])[0];
+      assert.ok(t.startsWith('Credits last Too soon to tell Your first day of research sets the pace. A research session usually costs about'), t);
+      // Billing put its balance and auto-reload on the page state; the card reads the same.
+      const same = await cardLine(() => response(est), {credit_balance: f.S.me.credit_balance, auto_reload: f.S.me.auto_reload});
+      assert.ok(same, 'the dashboard card says a cost line');
+      assert.equal(shown, same);
+      assert.doesNotMatch(t, /list price|margin|mdl_|P&L/i);
+      f.clearTimers();
+    }
+    const f = await page({}, () => response(TYPICAL));
+    assert.equal(tile(f), 'Credits last Too soon to tell Your first day of research sets the pace. A research session usually costs about $0.85 in credits '
+      + '(recent sessions on Deep Model; typical, not a quote). At that rate your $19.56 lasts about 23 sessions. Its check-ins between sessions use some credits too.');
+    // A sentence, not a figure's note: alone on its row at phone width, the tile takes the row (app.css m-wide).
+    assert.match(f.root.querySelector('#bfigs').innerHTML, /<div class="m m-wide"><dt class="lab">Credits last<\/dt>/);
+    f.clearTimers();
+    const r = await page({auto_reload: true}, () => response(TYPICAL));
+    assert.ok(tile(r).includes('At that rate your $19.56 covers about 23 sessions, and each $25.00 auto-reload about 29 more.'), tile(r));
+    r.clearTimers();
+  });
+
+  test(`${name}: with no estimate for the autopilot's model, payments off or a failed read, Billing keeps "Too soon to tell" word for word`, async () => {
+    for (const [est, me, ap] of [[() => response(TYPICAL), {}, {...OFF, model: 'mdl_b'}], [() => response({...TYPICAL, typical: {}}), {}, OFF],
+      [() => response({error: 'Something went wrong on our side.'}, 500), {}, OFF], [() => response(TYPICAL), {billing_enabled: false}, OFF]]) {
+      const f = await page({}, est, me, ap);
+      assert.equal(tile(f), TODAY_TILE);
+      f.clearTimers();
+    }
+    // A balance with a pace of its own says that pace, and reads no estimate.
+    const f = await page({runway_days: 9.8, pace_days: 2}, () => response(TYPICAL));
+    assert.doesNotMatch(text(f.root.querySelector('#bfigs').innerHTML), /usually costs|Too soon/);
+    assert.equal(f.requests.filter(({path}) => path === '/api/research/estimate').length, 0);
+    f.clearTimers();
+  });
+
+  test(`${name}: Billing's tile fills in when the estimate lands, and follows the autopilot's model once its status is read`, async () => {
+    let land;
+    const f = await page({}, () => new Promise((resolve) => { land = () => resolve(response(TYPICAL)); }), {}, null);
+    assert.equal(tile(f), TODAY_TILE);
+    land(); await settle();
+    assert.match(tile(f), /At that rate your \$19\.56 lasts about 23 sessions\./);
+    // The status arrives: its model has no figure, so the tile goes back to today's words, as the card does.
+    f.S.ap = {...OFF, model: 'mdl_b'}; f.paintDashAp(); await settle();
+    assert.equal(tile(f), TODAY_TILE);
+    // One estimate read for all of it: kept 10 minutes, as the card keeps it.
+    assert.equal(f.requests.filter(({path}) => path === '/api/research/estimate').length, 1);
+    f.clearTimers();
+  });
+}

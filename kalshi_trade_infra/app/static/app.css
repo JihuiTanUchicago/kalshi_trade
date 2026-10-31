@@ -1164,6 +1164,8 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .measure { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .measure > .m { border-left: 0; padding: 12px 0 11px; }
   .measure > .m:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--rule); }
+  /* A last tile that carries a sentence (Billing's first-day "Credits last") takes the row it is alone on. */
+  .measure > .m.m-wide:last-child:nth-child(odd) { grid-column: 1 / -1; }
   /* Funds tiles stack into one clean list rather than a 2 + 1 orphan. */
   .funds-page .measure { grid-template-columns: minmax(0, 1fr); }
   .funds-page .measure > .m, .funds-page .measure > .m:nth-child(even) { border-left: 0; padding: 13px 0 12px; }
