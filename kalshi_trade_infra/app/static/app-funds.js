@@ -239,7 +239,8 @@ window.TauPage('funds', (T) => {
         older = kept; olderMore = !!page.more; paged = true;
         const fl = root.querySelector('#lflash'); if (fl) fl.innerHTML = '';
         await load(null, shown);
-        if (olderMore && added > 0) announce(`${num(added)} older ${added === 1 ? 'entry' : 'entries'} shown.`);
+        // The last page too: its rows came in with the previous page's count still in the live region.
+        if (added > 0) announce(`${num(added)} older ${added === 1 ? 'entry' : 'entries'} shown.`);
         // Brought into view as it takes focus: the line sits under the rows just added, off the screen; while more remain,
         // the first entry just listed (focusable for it, tabindex -1), and Tab goes on down the older ones to the button.
         const end = !olderMore && root.querySelector('.ledger-end'), a = document.activeElement;
