@@ -123,9 +123,7 @@ window.TauPage('funds', (T) => {
   // the stored memo and the amount are unchanged.
   const ledgerWhat = (r) => {
     const memo = String(r.memo || r.kind || '').replace(/ (@|->) (\d*\.\d+)/g, (m, w, p) => ` ${w === '@' ? 'at' : '\u2192'} ${Math.round(+p * 100)}\u00a2`)
-      .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '))
-      .replace(LEDGER_PAIR, (m, n, a, b) => `Bought ${n} pair${+n === 1 ? '' : 's'}: ${a} and ${b}`).replace(LEDGER_UNWOUND, 'Closed $1 unmatched')
-      .replace(LEDGER_NAKED, '(one side of a pair; the other side didn\u2019t fill)');
+      .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '));
     const settled = r.kind === 'settlement' ? (+r.amount > 0 ? `${SEP}won, paid $1 a contract` : `${SEP}lost, paid $0`) : '';
     // Each contract goes by its plain name, as an open position does (contractName: "Bitcoin up or down in 15
     // minutes"); its ticker carries the raw series key, so it moves to the small line under it (kalshiRef). A pair
@@ -144,11 +142,6 @@ window.TauPage('funds', (T) => {
   };
   // A Kalshi contract ticker in a memo: its series, then the event's date (KXBTCD-26OCT2617-T114999.99).
   const LEDGER_TICKER = /\b[A-Z][A-Z0-9]*-\d{2}[A-Z]{3}\d{2}(?:[A-Z0-9.-]*[A-Z0-9])?/g;
-  // The engine's pair-trade memos, in plain words (display only: the stored memo is unchanged). "Bought 3 pair A/B
-  // (pair)", "Unwound 1 unhedged YES A (pair)" and "Bought 1 YES A (pair leg left naked)" read as trading jargon.
-  const LEDGER_PAIR = /^Bought (\d+) pair (\S+)\/(\S+) \(pair\)/;
-  const LEDGER_UNWOUND = /^Unwound (\d+) unhedged\b/;
-  const LEDGER_NAKED = /\(pair leg left naked\)/;
   // When cash moved: the clock and its zone, with the date on any day but today (settleAt), never a bare "Oct 24".
   const ledgerAt = (iso) => `<time datetime="${esc(iso || '')}">${esc(settleAt(iso))}</time>`;
   // Fees and settlement, once, in plain words, where the cash moves.
