@@ -176,4 +176,89 @@ export function researchPollCases({name, frontend}) {
     assert.doesNotMatch(html, /Invalid Date|NaN/);
     f.clearTimers();
   });
+
+  // Walk 2026-10-31: a session row whose "Queued 30 min" or "40m ago" moved on a minute was rewritten by the poll, and
+  // keyboard focus on it fell to the page's body once a minute. It goes back to the same row's new markup.
+  test(`${name}: a poll that rewrites the focused session row puts focus back on that row`, async () => {
+    const runs = [run({id: 9, status: 'queued', stop_reason: null, spent_usd: 0, created_at: '2026-10-26T08:00:00Z'}),
+      run({id: 8, spent_usd: 1.25}), run({id: 7, spent_usd: 2})];
+    let answer = {runs, counts, policy: null, totals: {tried: 27, passed: 3}, v: 'v1'};
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/runs')) return response(answer);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    const list = f.root.querySelector('#runs');
+    const row = (id) => list.querySelector(`a[href="/research/${id}"]`);
+    const poll = [...f.intervals.values()].at(-1);
+    // Tau's harness marks the element a script focused; Meridian's moves document.activeElement to it.
+    const isFocused = (el) => el.focused === true || f.document.activeElement === el;
+    // The row itself holds focus, and its markup moves: the new row takes the focus, without a scroll.
+    let had = row(8);
+    f.document.activeElement = had;
+    answer = {runs: [runs[0], {...runs[1], spent_usd: 1.5}, runs[2]], counts, policy: null, totals: {tried: 27, passed: 3}, v: 'v2'};
+    await poll(); await settle();
+    assert.notEqual(row(8), had, 'the row was rewritten');
+    assert.ok(isFocused(row(8)), 'focus went back to the same session');
+    assert.equal(row(8).focusOptions.preventScroll, true);
+    assert.ok(!isFocused(row(7)) && !(row(9) && isFocused(row(9))));
+    // A new session rewrites the whole list: focus still goes back to the same session's row, now one place down.
+    had = row(8);
+    f.document.activeElement = had;
+    answer = {runs: [run({id: 10, status: 'queued', stop_reason: null, spent_usd: 0, created_at: '2026-10-26T09:00:00Z'}), ...answer.runs.map((r) => (r.id === 8 ? {...r, spent_usd: 1.75} : r))],
+      counts, policy: null, totals: {tried: 27, passed: 3}, v: 'v3'};
+    await poll(); await settle();
+    assert.notEqual(row(8), had);
+    assert.ok(isFocused(row(8)));
+    assert.ok(!(row(10) && isFocused(row(10))));
+    f.clearTimers();
+  });
+
+  // Walk 2026-10-31: "Passed every gate 0 · 0.0% of ideas tested" under three tested ideas read as if none had been
+  // tested. The share names what it is a share of, says "none of" for nothing passed and "under 0.1%" for a sliver.
+  test(`${name}: the headline's pass share names how many ideas it is a share of, and never reads 0.0%`, async () => {
+    const words = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    for (const [totals, tau, mer] of [
+      [{tried: 3, passed: 0}, /all time · none of 3 ideas/, 'None of 3 ideas passed, all time'],
+      [{tried: 5000, passed: 1}, /all time · under 0\.1% of 5,000 ideas/, 'Under 0.1% of 5,000 ideas passed, all time'],
+      [{tried: 1, passed: 1}, /all time · 100\.0% of 1 idea\b/, '100.0% of 1 idea passed, all time'],
+      [{tried: 551, passed: 13}, /all time · 2\.4% of 551 ideas/, '2.4% of 551 ideas passed, all time'],
+    ]) {
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/runs')) return response({runs: [run({hypotheses_tried: totals.tried, strategies_passed: totals.passed})], counts: {...counts, research_running: 0}, policy: null, totals});
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path === '/api/research/context') return response({markets: []});
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        return response({});
+      }});
+      f.S.me.user.autopilot = false;
+      f.location.pathname = '/research';
+      await f.viewResearch(); await settle();
+      const figs = f.root.querySelector('#rfigs');
+      const said = words(figs.innerHTML) + ' ' + (figs.getAttribute('title') || '');
+      assert.doesNotMatch(said, /(^|[^\d])0\.0%|of ideas tested/, JSON.stringify(totals));
+      if (f.root.querySelector('#rstatus .said')) assert.match(words(figs.innerHTML), tau, JSON.stringify(totals));
+      else assert.equal(figs.getAttribute('title'), mer, JSON.stringify(totals));
+      f.clearTimers();
+    }
+  });
+
+  // Walk 2026-10-31: a finished session that tested no idea read "Finished · 0 of 0 passed" (Tau) and "0/0 passed" (Meridian).
+  test(`${name}: a finished session that tested no idea says so, not "0 of 0 passed"`, () => {
+    const f = frontend();
+    const empty = f.runRow(run({hypotheses_tried: 0, strategies_passed: 0}));
+    const words = empty.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    assert.match(words, /Finished/);
+    assert.match(words, /no ideas tested/i);
+    assert.doesNotMatch(words, /0 of 0|0 \/ 0|0\/0|passed/);
+    // One that ran out of credits before its first idea names that, and one with an idea keeps its count.
+    const credits = f.runRow(run({hypotheses_tried: 0, strategies_passed: 0, stop_reason: 'credits', run_forever: 1})).replace(/<[^>]+>/g, ' ');
+    assert.match(credits, /Out of credits/); assert.match(credits, /no ideas tested/i);
+    assert.match(f.runRow(run({hypotheses_tried: 3, strategies_passed: 0})).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), /0 of 3 passed|0 \/ 3 passed/);
+  });
 }

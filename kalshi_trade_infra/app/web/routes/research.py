@@ -258,10 +258,13 @@ def _run_tally(rows: List[Dict], before_id: int) -> Dict:
     proposed (Tested), the ones dropped before testing, each failed strategy's missed checks (its row in the
     ideas list), the pauses (Time leaves them out), whether it ran out of credits, and the loop stages it has
     been through. The checks are worked out as the log's own lines are (_with_gate_lines,
-    customer_text.event_rows); each strategy's first goes whole and the rest by name, all its row shows."""
+    customer_text.event_rows); each strategy's first goes whole and the rest by name, all its row shows.
+    `judged` lists each strategy those lines judged, [id, status, title], so the page can tell one the user
+    deleted since (no longer among the session's strategies) from an idea dropped before testing."""
     rows = customer_text.event_rows(_with_gate_lines([r for r in rows if r["id"] < before_id]))
     hypotheses = dropped = 0
     why: Dict[int, List[Dict]] = {}
+    judged: Dict[int, List] = {}
     pauses: List[Dict] = []
     kinds: set = set()
     out_of_credits = dreamed = False
@@ -273,6 +276,8 @@ def _run_tally(rows: List[Dict], before_id: int) -> Dict:
         elif kind == "verdict":
             if data.get("status") == "abandoned":
                 dropped += 1
+            elif data.get("strategy_id") is not None and data.get("status") and data["strategy_id"] not in judged:
+                judged[data["strategy_id"]] = [data["strategy_id"], data["status"], data.get("title") or msg]
             lines = [w for w in data.get("why_failed") or [] if isinstance(w, dict)]
             if data.get("strategy_id") is not None and lines:
                 # The pages show a strategy's first missed check in full and count the rest by name.
@@ -286,7 +291,7 @@ def _run_tally(rows: List[Dict], before_id: int) -> Dict:
             dreamed = dreamed or msg.startswith(("Dreaming:", "Research policy evolved:"))
         kinds.add(kind)
     return {"before": before_id, "hypotheses": hypotheses, "dropped": dropped,
-            "why_failed": [[sid, w] for sid, w in why.items()], "pauses": pauses,
+            "why_failed": [[sid, w] for sid, w in why.items()], "judged": list(judged.values()), "pauses": pauses,
             "out_of_credits": out_of_credits, "dreamed": dreamed, "kinds": sorted(kinds)}
 
 

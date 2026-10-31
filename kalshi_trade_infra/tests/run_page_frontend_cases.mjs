@@ -664,4 +664,65 @@ export function runPageCases({name, frontend}) {
     await f.viewRun(9); f.clearTimers();
     assert.match(figs(f), /Out of credits/); assert.equal(badge(f), 'Out of credits');
   });
+
+  // Walk 2026-10-31: a finished session whose pass the user then deleted read "Passed 1" over "Nothing passed this
+  // time", counted it "1 more dropped before testing", and its log's "View strategy →" opened "Strategy not found".
+  test(`${name}: a pass the user deleted since says so, links nowhere, and isn't counted as dropped`, async () => {
+    const verdict = (id, t, status, sid) => ev(id, 'verdict', `${status.toUpperCase()} - ${t}: done`, {title: t, status, strategy_id: sid});
+    // Each session read gets lines of its own, as each server answer does.
+    const lines = () => [ev(1, 'hypothesis', 'Gone pass'), verdict(2, 'Gone pass', 'passed', 7), ev(3, 'hypothesis', 'Kept void'), verdict(4, 'Kept void', 'failed', 8)];
+    const kept = [{id: 8, title: 'Kept void', status: 'failed', market: 'btc15m', direction: 'custom'}];
+    const logHtml = (f) => f.root.querySelectorAll('#log li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
+    const done = {status: 'succeeded', hypotheses_tried: 2, strategies_passed: 1, stop_reason: 'limit'};
+    let f = await open(done, lines(), kept);
+    const next = f.root.querySelector('#runnext').innerHTML;
+    assert.match(next, /<b>Gone pass<\/b> passed, but you deleted it since\./);
+    assert.doesNotMatch(next, /Nothing passed/);
+    assert.match(figs(f), /Passed\s*1/);
+    assert.match(list(f), /1 (you )?deleted since/);
+    assert.doesNotMatch(list(f), /dropped before testing/);
+    assert.doesNotMatch(logHtml(f), /href="\/strategies\/7"/);
+    assert.match(logHtml(f), /You deleted this strategy since, so it has no page now\./);
+    assert.match(logHtml(f) + list(f), /strategies\/8|data-goto="8"/);  // the one still there keeps its way in
+    // Beside a pass that is still there, that one leads and the deleted one is said after it.
+    const ok = {id: 9, title: 'Kept pass', status: 'passed', market: 'btc15m', direction: 'custom'};
+    f = await open({...done, hypotheses_tried: 3, strategies_passed: 2}, [...lines(), ev(5, 'hypothesis', 'Kept pass'), verdict(6, 'Kept pass', 'passed', 9)], [...kept, ok]);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">Passed: <a href="\/strategies\/9">Kept pass<\/a>\.[^<]*<b>Gone pass<\/b> passed, but you deleted it since\.<\/p>$/);
+    // A running session's newest strategy can land between the server's two reads: nothing is called deleted while it runs.
+    f = await open({status: 'running', hypotheses_tried: 2, strategies_passed: 1}, lines(), kept);
+    assert.doesNotMatch(list(f) + logHtml(f), /deleted/);
+    // A long session's older lines: the server's `earlier.judged` names the pass its first page doesn't send.
+    const earlier = {before: 3, hypotheses: 1, dropped: 0, why_failed: [], judged: [[7, 'passed', 'Gone pass']], pauses: [], out_of_credits: false, dreamed: false, kinds: []};
+    f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+      ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, ...done}, events: lines().slice(2), strategies: kept, earlier})
+      : response({})});
+    await f.viewRun(9); f.clearTimers();
+    assert.match(f.root.querySelector('#runnext').innerHTML, /<b>Gone pass<\/b> passed, but you deleted it since\./);
+    assert.doesNotMatch(list(f), /dropped before testing/);
+  });
+
+  // Walk 2026-10-31: on a live session a new idea or verdict rewrote Tau's "Ideas tested", and focus on an idea's
+  // title fell to the page's body. It goes back to the same idea's title.
+  test(`${name}: a poll that rewrites the ideas list keeps focus on the same idea`, async () => {
+    let status = 'running', strategies = [{id: 8, title: 'First', status: 'pending', market: 'btc15m', direction: 'custom'}];
+    let events = [ev(1, 'hypothesis', 'First')];
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+      ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, status, run_forever: 1}, events: events.filter((e) => e.id > +(path.match(/after=(\d+)/) || [0, 0])[1]), strategies})
+      : response({})});
+    await f.viewRun(9);
+    const host = f.root.querySelector('#runideas');
+    if (!host) { f.clearTimers(); return; }  // Meridian lists strategies in a table it keeps focus in already
+    const had = host.querySelector('[data-goto="8"]');
+    assert.ok(had, 'the idea is listed');
+    f.document.activeElement = had;
+    strategies = [...strategies.map((x) => ({...x, status: 'failed'})), {id: 9, title: 'Second', status: 'pending', market: 'btc15m', direction: 'custom'}];
+    events = [...events, ev(2, 'verdict', 'FAILED - First: done', {title: 'First', status: 'failed', strategy_id: 8}), ev(3, 'hypothesis', 'Second')];
+    await f.intervals.get(f.S.timers.at(-1))();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r));
+    const now = host.querySelector('[data-goto="8"]');
+    assert.notEqual(now, had, 'the list was rewritten');
+    assert.ok(now.focused === true || f.document.activeElement === now, 'focus is back on the same idea');
+    assert.equal(now.focusOptions.preventScroll, true);
+    f.clearTimers();
+  });
 }

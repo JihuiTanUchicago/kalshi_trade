@@ -732,7 +732,8 @@ test('Tau: a new user\'s first idea reads "1 idea tested", not "1 ideas"', async
   f = at({research_running: 0, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> idea and kept <em>0<\/em>/);
+  // Nothing kept reads "kept none", not "kept 0" (walk 2026-10-31).
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> idea and kept none that beat every gate/);
   f.clearTimers();
 });
 
@@ -3581,7 +3582,8 @@ test('a hypothesis in the log says its search-data result and verdict in plain w
     {id: 1, kind: 'hypothesis', message: 'Fade the spike', created_at: '2026-10-17T10:00:00Z', data: {in_sample: {pnl: 4.5, trades: 8}}},
     {id: 2, kind: 'verdict', message: 'PASSED - Fade the spike: cleared every gate', created_at: '2026-10-17T10:01:00Z', data: {status: 'passed', title: 'Fade the spike', strategy_id: 42}},
   ];
-  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: []}) : response({})});
+  const strategies = [{id: 42, title: 'Fade the spike', status: 'passed', market: 'btc15m', direction: 'momentum'}];
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies}) : response({})});
   await f.viewRun(9); await flush();
   const log = f.root.querySelectorAll('li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
   assert.doesNotMatch(log, /Gatekeeper/);
