@@ -17,6 +17,13 @@ after the maker fee Kalshi would charge if the series started charging makers (f
 GATE_ALPHA divided by the number of finalists already judged on overlapping held-out hours (the
 ledger), so rerunning the lab on the same window cannot buy a pass. The break-even pool is reported
 either way: once Bitcoin pools post, a policy that loses a little and earns a big share can pay.
+
+Forward test (Todd 2026-10-31: "produce profitable strategies as soon as possible"). One held-out pass
+in ~10 judged finalists is about what chance gives, so a finalist whose held-out p is at most
+FORWARD_MAX_P with a positive fee-stressed mean is judged ONCE more, frozen, on the FORWARD_HOURS that
+follow its holdout window (hours no lab run had when it was picked), by the same judge() at GATE_ALPHA.
+The rule is fixed before any forward hour is scored; a policy (series + levers) is judged forward at
+most once, and forward verdicts live in their own ledger so they never split a holdout's alpha.
 """
 from __future__ import annotations
 
@@ -33,6 +40,8 @@ from trading_core.engine import maker_policy as mr
 GATE_ALPHA = 0.05
 MIN_HOURS = 12
 MIN_FILLS = 200
+FORWARD_HOURS = 24
+FORWARD_MAX_P = 0.20
 ROUND0 = ("join_touch", "spot_fair_2c", "spot_fair_2c_pull")
 
 SYSTEM = """You are a quantitative researcher designing PASSIVE market-making policies for Kalshi Bitcoin
@@ -178,6 +187,70 @@ class S3Ledger(MemoryLedger):
     def record(self, entry: Dict) -> None:
         super().record(entry)
         self.s3.put_object(Bucket=self.bucket, Key=self.KEY, Body=json.dumps({"entries": self.entries}).encode())
+
+
+class ForwardBook:
+    """Forward verdicts, one per (series, policy hash); the S3 one persists them (S3ForwardBook)."""
+
+    def __init__(self, entries: Optional[List[Dict]] = None) -> None:
+        self.entries = list(entries or [])
+
+    def judged(self, series: str, h: str) -> bool:
+        return any(e["series"] == series and e["hash"] == h for e in self.entries)
+
+    def record(self, entry: Dict) -> None:
+        self.entries.append(entry)
+
+
+class S3ForwardBook(ForwardBook):
+    KEY = "research-watch/maker/forward.json"
+
+    def __init__(self, s3, bucket: str) -> None:
+        self.s3, self.bucket = s3, bucket
+        try:
+            entries = json.loads(s3.get_object(Bucket=bucket, Key=self.KEY)["Body"].read()).get("entries") or []
+        except Exception:  # noqa: BLE001 - first run: nothing judged forward yet
+            entries = []
+        super().__init__(entries)
+
+    def record(self, entry: Dict) -> None:
+        super().record(entry)
+        self.s3.put_object(Bucket=self.bucket, Key=self.KEY, Body=json.dumps({"entries": self.entries}).encode())
+
+
+def forward_candidate(run: Dict) -> Optional[Dict]:
+    """A finished lab run's finalist, frozen, with its forward window, when it qualifies; else None."""
+    fin, v = run.get("finalist"), run.get("verdict") or {}
+    if not fin or v.get("p_value") is None or v["p_value"] > FORWARD_MAX_P or (v.get("fee_stressed_mean") or 0) <= 0:
+        return None
+    start = int(run["holdout_hours"][-1]) + 3600
+    r = run["results"][fin]
+    return {"series": run["series"], "name": fin, "hash": r["hash"], "policy": r["policy"], "holdout_p": v["p_value"],
+            "start": start, "end": start + FORWARD_HOURS * 3600}
+
+
+def forward_due(runs: Sequence[Dict], book: ForwardBook, archived_to: datetime, limit: int) -> List[Dict]:
+    """Candidates whose forward window has fully archived (hours before ``archived_to``) and that were
+    never judged forward, oldest window first, at most ``limit``."""
+    out: List[Dict] = []
+    for c in sorted(filter(None, map(forward_candidate, runs)), key=lambda c: c["start"]):
+        if c["end"] <= archived_to.timestamp() and not book.judged(c["series"], c["hash"]) and \
+                not any(o["series"] == c["series"] and o["hash"] == c["hash"] for o in out):
+            out.append(c)
+    return out[:limit]
+
+
+def judge_forward(c: Dict, book: ForwardBook, evaluate: Callable[..., List[Dict]], workers: int = 1,
+                  log: Callable[[str], None] = print) -> Dict:
+    hours = [datetime.fromtimestamp(t, timezone.utc) for t in range(c["start"], c["end"], 3600)]
+    v = judge(evaluate(c["policy"], hours, workers=workers), GATE_ALPHA)
+    entry = {k: c[k] for k in ("series", "name", "hash", "holdout_p", "start", "end")}
+    entry.update({"passed": v["passed"], "reason": v["reason"], "p_value": v.get("p_value"), "mean": v.get("mean"),
+                  "fee_stressed_mean": v.get("fee_stressed_mean"), "hours": v["hours"], "fills": v["fills"],
+                  "markout_per_contract": v["stats"].get("markout_per_contract"), "at": int(time.time())})
+    book.record(entry)
+    log("forward %s %s on %d hours after its holdout: %s" % (c["series"], c["name"], len(hours), v["reason"]))
+    return entry
 
 
 def run_lab(series: str, research: Sequence[datetime], holdout: Sequence[datetime], model: ModelFn, usage: Usage,

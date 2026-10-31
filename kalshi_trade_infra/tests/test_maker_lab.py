@@ -130,3 +130,49 @@ def test_the_fast_series_search_wider_inside_the_slot():
     assert search_size("KXBTCD") == (3, 4)                        # ~2h20m already; stays
     assert search_size("KXBTC") == (5, 6) and search_size("KXBTC15M") == (4, 5)
     assert search_size("KXBTC", rounds=1, per_round=2) == (1, 2)   # the CLI still overrides
+
+
+def _run(series, name, p, stressed, hold_end, h="abc"):
+    return {"series": series, "finalist": name, "holdout_hours": [hold_end - 3600 * 11, hold_end],
+            "results": {name: {"hash": h, "policy": {"series": series, "min_edge": 0.02}}},
+            "verdict": {"p_value": p, "fee_stressed_mean": stressed}}
+
+
+def test_near_miss_finalists_are_judged_once_on_the_24_hours_after_their_holdout():
+    """Todd 2026-10-31: one holdout pass in ~10 judged finalists is about chance, so qualifying
+    finalists get ONE frozen judgment on the hours after their holdout, in their own ledger."""
+    end = int((H0 + timedelta(hours=11)).timestamp())
+    runs = [_run("KXBTC15M", "r4.3", 0.0165, 24.7, end, "p1"),
+            _run("KXBTC15M", "r4.2", 0.195, 14.8, end + 12 * 3600, "p2"),   # window not archived yet
+            _run("KXBTC", "r3.3", 0.56, -4.8, end, "p3"),                  # not a near miss
+            _run("KXBTC", "r2.2", 0.10, -1.0, end, "p4"),                  # loses under the fee stress
+            {"series": "KXBTCD", "finalist": None, "verdict": None}]
+    book = lab.ForwardBook()
+    archived_to = H0 + timedelta(hours=12 + 24)                            # 24 hours after r4.3's holdout
+    due = lab.forward_due(runs, book, archived_to, limit=5)
+    assert [c["name"] for c in due] == ["r4.3"]
+    c = due[0]
+    assert c["start"] == end + 3600 and c["end"] - c["start"] == 24 * 3600 and c["policy"]["min_edge"] == 0.02
+
+    seen = []
+
+    def evaluate(policy, hours, workers=1):
+        seen.append(list(hours))
+        return _rows(hours, lambda i: 6.0 + (i % 4))
+
+    e = lab.judge_forward(c, book, evaluate, log=lambda m: None)
+    assert e["passed"] and e["holdout_p"] == 0.0165 and e["hours"] == 24
+    assert seen[0][0].timestamp() == end + 3600 and len(seen[0]) == 24
+    assert lab.forward_due(runs, book, archived_to + timedelta(hours=48), limit=5) == [
+        lab.forward_candidate(runs[1])]                                     # r4.3 never again; r4.2 now due
+    ledger = lab.MemoryLedger()
+    assert ledger.overlapping("KXBTC15M", c["start"], c["end"]) == 0        # holdout alpha untouched
+
+
+def test_a_clone_of_a_policy_already_judged_forward_is_not_judged_again():
+    end = int((H0 + timedelta(hours=11)).timestamp())
+    runs = [_run("KXBTC", "a", 0.05, 3.0, end, "same"), _run("KXBTC", "b", 0.08, 2.0, end + 3600, "same")]
+    book = lab.ForwardBook()
+    assert [c["name"] for c in lab.forward_due(runs, book, H0 + timedelta(days=5), limit=5)] == ["a"]
+    book.record({"series": "KXBTC", "hash": "same"})
+    assert lab.forward_due(runs, book, H0 + timedelta(days=5), limit=5) == []
