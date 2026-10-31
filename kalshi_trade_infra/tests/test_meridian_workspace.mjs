@@ -40,6 +40,7 @@ import {firstTenMinutesCases} from './first_ten_minutes_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {demoBookCases} from './demo_book_frontend_cases.mjs';
 import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
+import {fundsDisplayCases} from './funds_display_frontend_cases.mjs';
 import {fundsHistoryCases} from './funds_history_frontend_cases.mjs';
 import {moneyPagesWalkCases} from './money_pages_walk_frontend_cases.mjs';
 import {moneyAuditCases} from './money_audit_frontend_cases.mjs';
@@ -6778,6 +6779,7 @@ firstTenMinutesCases({name: 'Meridian', frontend, dashboard: dashboardData, apSt
 fundsTrustCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 demoBookCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 fundsWalkCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
+fundsDisplayCases({name: 'Meridian', frontend, fundsData: funds});
 fundsHistoryCases({name: 'Meridian', frontend, fundsData: funds});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,

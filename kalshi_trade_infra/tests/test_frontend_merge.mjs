@@ -39,6 +39,7 @@ import {firstTenMinutesCases} from './first_ten_minutes_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {demoBookCases} from './demo_book_frontend_cases.mjs';
 import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
+import {fundsDisplayCases} from './funds_display_frontend_cases.mjs';
 import {fundsHistoryCases} from './funds_history_frontend_cases.mjs';
 import {moneyPagesWalkCases} from './money_pages_walk_frontend_cases.mjs';
 import {moneyAuditCases} from './money_audit_frontend_cases.mjs';
@@ -6299,6 +6300,7 @@ firstTenMinutesCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus
 fundsTrustCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 demoBookCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 fundsWalkCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
+fundsDisplayCases({name: 'Tau', frontend, fundsData: funds});
 fundsHistoryCases({name: 'Tau', frontend, fundsData: funds});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
