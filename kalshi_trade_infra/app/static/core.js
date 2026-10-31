@@ -507,7 +507,11 @@
   // A section whose own read failed on a page that otherwise loaded names itself and says the rest is there
   // (`what`): the dashboard's track record said only "Something went wrong on our side." (walk 2026-10-28).
   const loadFail = (msg, what) => `<div class="load-fail">${notice(what ? `${what} didn\u2019t load. ${msg} Everything else on this page did.` : msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
-  const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
+  // A placeholder while a read is out says so in words, shown and read (a status): the bare shimmer's
+  // aria-label="Loading" sat on a plain div, which a screen reader doesn't read, and on slow 3G a phone showed
+  // grey boxes with no word for up to 30s (walk 2026-10-31). Past 8s it adds that this is slower than usual
+  // (.skel-late, revealed by CSS), so a hung read doesn't look like a page still on its way.
+  const loading = (h = 160) => `<div class="skeleton" role="status" style="height:${h}px"><span class="skel-say">Loading…<span class="skel-late"> This is taking longer than usual.</span></span></div>`;
   // Boot screens: shown only while /api/me is in flight (splash) or after it timed out or failed for a
   // reason other than being signed out (fail). Reuses the landing wordmark + spinner so it's on-world with zero new look.
   const bootSplash = () => `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div><div class="lspin" aria-label="Loading Tau"></div></div>`;
