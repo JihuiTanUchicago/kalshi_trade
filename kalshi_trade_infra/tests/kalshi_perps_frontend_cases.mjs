@@ -280,10 +280,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(hint, /Paper: 2 open positions at cost \+ fees \$6\.00\u00a0· unrealized (?:<span[^>]*>)?\+\$1\.00/);
     assert.doesNotMatch(hint, /4 open positions|\$14\.80|−\$1\.80/);  // the cross-book totals it used to print
     f.clearTimers && f.clearTimers();
-    // One book alone reads as before, with no label.
+    // One book alone says its book too (walk 2026-10-31: a paper-only summary named no money).
     const g = strategyFrontend(detailStrategy({holdings: [h('paper', 4, 1)], deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'}]}));
     await g.viewStrategy(42); await flush();
-    assert.match(g.root.querySelector('#main').innerHTML, />1 open position at cost \+ fees \$4\.00\u00a0· unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
+    assert.match(g.root.querySelector('#main').innerHTML, />Paper: 1 open position at cost \+ fees \$4\.00\u00a0· unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
     g.clearTimers && g.clearTimers();
   });
 
