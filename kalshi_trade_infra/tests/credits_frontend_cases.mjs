@@ -176,7 +176,7 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
   test(`${name}: the autopilot card says when auto-reload next charges the card and what the card pays`, async () => {
     const f = await apPage({...apStatus, week}, {auto_reload: {amount: 25, charge: 26.38, threshold: 5}});
     const line = f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
-    assert.match(line, /^Credits left: <b>\$25\.71<\/b>; at this week’s pace auto-reload adds \$25\.00 in about 1 day \(card charged \$26\.38\)\./);
+    assert.match(line, /^Credits left: <b>\$25\.71<\/b>; at the last 7 days’ pace auto-reload adds \$25\.00 in about 1 day \(card charged \$26\.38\)\./);
     assert.doesNotMatch(line, /about 2 days at/);
     // With auto-reload on research never pauses at the floor: the card is charged each time instead.
     assert.match(line, /It has no daily spending cap: each time your balance falls to \$5\.00, auto-reload charges your card and research carries on\. With auto-reload off, it pauses when your balance is under \$1\.00\. <a href="\/billing">Billing<\/a> lists every charge\./);

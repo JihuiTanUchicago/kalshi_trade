@@ -83,8 +83,13 @@ def test_panel_names_a_paused_strategy_and_what_the_stop_did():
     assert server._paused_lines(paused) == [
         "Sol 15m fade was paused after 2 paper trades (down $5.66 net of fees and spread): its safety stop sold a position that had lost 64% of its cost."]
     assert server._plain_pause_reason("force-closed: drawdown 30.0% >= limit 25.0%") == "it lost 30% of its money, past its 25% limit"
+    # A pause by the user, or by a proposal the user approved, says who paused it, as the idle line does.
+    mine = server._paused_recent([dict(deps[0], status_reason="By you"), dict(deps[0], id=75, status_reason="Approved agent proposal")])
+    assert server._paused_lines(mine) == [
+        "Sol 15m fade was paused after 2 paper trades (down $5.66 net of fees and spread): you paused it.",
+        "Sol 15m fade was paused after 2 paper trades (down $5.66 net of fees and spread): you approved the agent’s proposal to pause it."]
     exits = {"stop": {"exits": 2, "scored": 2, "pnl": -5.66, "scored_pnl": -5.66, "hold_pnl": -7.19, "saved": 1.53}}
-    assert server._stop_line(exits) == ("This week the safety stop sold 2 positions on paper. Holding them to the end "
+    assert server._stop_line(exits) == ("In the last 7 days the safety stop sold 2 positions on paper. Holding them to the end "
                                         "would have lost $7.19, so the stop saved $1.53.")
     exits["stop"].update(scored=1, hold_pnl=2.0, saved=-7.66)
     assert server._stop_line(exits).endswith("Holding the 1 that has settled to the end would have made $2.00, so the stop cost $7.66.")
@@ -108,4 +113,4 @@ def test_review_context_line_flags_exits_that_cost_money():
 
 def test_story_counts_read_with_thousands_separators():
     story = server._autopilot_story({"autopilot": True, "research": {"tested_7d": 1708, "passed_7d": 0}})
-    assert "This week your sessions and the autopilot’s tested 1,708 ideas" in story[1]
+    assert "In the last 7 days your sessions and the autopilot’s tested 1,708 ideas" in story[1]

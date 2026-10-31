@@ -54,12 +54,12 @@ export function trustGlitchCases({name, frontend}) {
     box.innerHTML = '<dl id="apf-stats"></dl>';
     f.apUpdate(box, {autopilot: false, research: {active: [], tested_7d: 3, passed_7d: 0, cost_7d: 0.105}, story: []});
     const stats = box.querySelector('#apf-stats').innerHTML;
-    assert.match(stats, /3 ideas tested this week, 0 passed, \$0\.11 spent/);
+    assert.match(stats, /3 ideas tested in the last 7 days, 0 passed, \$0\.11 spent/);
     assert.doesNotMatch(stats, /\$0\.10/);
     assert.doesNotMatch(stats, /not cleared/);
     // passed_7d counts only passes cleared to trade; the ones a later check left uncleared are said apart.
     f.apUpdate(box, {autopilot: false, research: {active: [], tested_7d: 3, passed_7d: 1, not_cleared_7d: 2, cost_7d: 0.105}, story: []});
-    assert.match(box.querySelector('#apf-stats').innerHTML, /3 ideas tested this week, 1 passed, 2 not cleared, \$0\.11 spent/);
+    assert.match(box.querySelector('#apf-stats').innerHTML, /3 ideas tested in the last 7 days, 1 passed, 2 not cleared, \$0\.11 spent/);
     // The panel's last 7 days says the same.
     box.innerHTML = '<dl id="apf-stats"></dl><div id="apf-week"></div>';
     const week = {research_credits: 0.11, tested: 3, passed: 1, not_cleared: 2, paper_started: 0, paper_pnl: 0, paper_trades: 0};

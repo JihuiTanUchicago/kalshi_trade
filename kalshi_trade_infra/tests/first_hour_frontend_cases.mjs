@@ -81,11 +81,11 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     f.S.ap = {...apStatus, week}; f.paintDashAp();
     const line = () => f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
     assert.match(line(), /^Credits left: <b>\$19\.56<\/b>, too soon to say how long they last: its first day sets the pace\. It has no daily spending cap/);
-    assert.doesNotMatch(line(), /3 months|this week’s pace/);
+    assert.doesNotMatch(line(), /3 months|the last 7 days’ pace/);
     f.S.ap = {...apStatus, week: {...week, runway_days: 9.8, pace_days: 2}}; f.paintDashAp();
     assert.match(line(), /^Credits left: <b>\$19\.56<\/b>, about 10 days at its pace so far\./);
     f.S.ap = {...apStatus, week: {...week, runway_days: 9.8, pace_days: 7}}; f.paintDashAp();
-    assert.match(line(), /about 10 days at this week’s pace\./);
+    assert.match(line(), /about 10 days at the last 7 days’ pace\./);
     f.clearTimers();
   });
 

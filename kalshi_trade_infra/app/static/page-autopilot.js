@@ -6,7 +6,7 @@ window.TauPage('autopilot', (T) => {
   'use strict';
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
-    apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
+    apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apQueued, apReloadFailed, apShowFocus,
     apEvery, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, pnlWin, refreshAutopilot, repaintKeep, S, SEP, settleAt, sinceMin, slipEstGl, theme, usd, waitNote, waitSpan,
     wakers
@@ -249,6 +249,8 @@ window.TauPage('autopilot', (T) => {
     if (d.billing_blocked) return 'Paused until it can pay for research';
     const names = apMarketNames(d), picked = names.filter((n) => n !== AP_PICKING);
     if (names.length) return picked.length ? 'Researching ' + picked.join(SEP) : 'Picking a market to research';
+    // Only sessions still queued to start (research.queued): not "Researching" yet, and not "Idle" either.
+    if (apQueued(d)) return apQueued(d) === 1 ? 'Research session queued to start' : `${num(apQueued(d))} research sessions queued to start`;
     if (d.reviewing) return 'Reviewing the markets';
     // Between reviews with strategies on paper is not idle: they trade on their own between its moves.
     return d.paper_running ? `Between reviews${SEP}${num(d.paper_running)} on paper` : 'Idle';
@@ -547,7 +549,7 @@ window.TauPage('autopilot', (T) => {
       stats.dataset.cols = short.length;
       repaintKeep(stats, () => short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${budgetShown ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
-      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(SEP)) : 'Not researching right now'}${SEP}${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${+d.research.cost_7d >= 0.005 ? ', ' + usd(d.research.cost_7d) + ' spent' : (+d.research.cost_7d > 0 || d.research.cost_7d_under_cent) ? ', under $0.01 spent' : ''}</dd></div>` : ''}
+      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${apMarketNames(d).length ? 'Researching ' + esc(apMarketNames(d).join(SEP)) : apQueued(d) ? (apQueued(d) === 1 ? 'A session queued to start' : `${num(apQueued(d))} sessions queued to start`) : 'Not researching right now'}${SEP}${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested in the last 7 days, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${+d.research.cost_7d >= 0.005 ? ', ' + usd(d.research.cost_7d) + ' spent' : (+d.research.cost_7d > 0 || d.research.cost_7d_under_cent) ? ', under $0.01 spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a>${SEP}${paperCount(d.paper_progress)}${SEP}${usd(d.paper_progress.net_pnl, true)} net on them. <small>${gl(PAPER_COUNT_WHY_SAID, 'instantfill')}</small></dd></div>` : ''}`);
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
