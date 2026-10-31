@@ -870,4 +870,48 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.equal((await page({deployments: [], past_deployments: [{id: 7, mode: 'paper', created_at: '2026-09-20T08:00:00+00:00',
       removed_at: '2026-09-21T08:00:00+00:00', realized_pnl: 5.72, closed_trades: 14}]})).top, null);
   });
+
+  // Walk 2026-10-31 (strategy detail figures): a paper-only strategy's holdings summary read "4 open positions at cost +
+  // fees $20.38" with no word of which money (its rows untagged), and a demo-only one's read like real money.
+  test(`${name}: the holdings summary names its book even when it is the only one`, async () => {
+    const h = (mode) => ({ticker: 'KXBTC15M-' + mode, side: 'yes', qty: 3, entry_price: 0.5, cost: 1.56, unrealized: 0, mode,
+      mark_ts: null, market_close_time: '2030-10-25T07:45:00Z'});
+    for (const [mode, label] of [['paper', 'Paper'], ['demo', 'Demo'], ['live', 'Live']]) {
+      const f = await open({status: 'passed', holdings: [h(mode)], deployments: [{id: 1, mode, status: 'running'}]});
+      const text = main(f).replace(/<[^>]*>/g, '').replace(/⁠/g, '');
+      assert.match(text, new RegExp(`${label}: 1 open position at cost \\+ fees \\$1\\.56`), mode);
+      if (f.clearTimers) f.clearTimers();
+    }
+  });
+
+  // Walk 2026-10-31: Road to live's span row rounded (47.6h read "48h / 48h" beside a failed check, while the line above
+  // said "47h of 48h"), and its counts, the gates' trade count and the backtest's figures printed raw ("1200 / 30",
+  // "1200", a Sharpe "-1.82" beside "−$50.48"); the pre-registration stamp named no zone.
+  test(`${name}: Road to live, the gates and the backtest figures group their counts and agree on hours`, async () => {
+    const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
+      paper: {trades: 1200, trades_needed: 30, net_pnl: 3.4, events: 1500, events_needed: 20, span_hours: 47.6, span_needed_hours: 48,
+        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization: null, demo_orders: 1001, demo_orders_needed: 20,
+        checks: {realistic_trades: true, net_pnl: true, events: true, span: false, edge: false, recent: true, demo: true}}};
+    const oos = {pnl: -50.48, trades: 1200, win_rate: 0.5, fees: 26.03, profit_factor: 0.87, max_drawdown: 80.2, sharpe: -1.82, days: 30, roi: -0.05};
+    const registered = '2026-10-31T01:38:00Z';
+    const f = strategyFrontend(detailStrategy({status: 'passed', out_of_sample: oos,
+      gates: [{name: 'Enough unseen trades to judge', value: 1200, threshold: '≥ 10', ok: true},
+        {name: 'Wins outweigh losses on unseen data', value: -0.5, threshold: '≥ 1.1', ok: false}],
+      experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.', registered_at: registered}}),
+    (path) => response(path === '/api/strategies/42/live-readiness' ? road : {}));
+    await f.viewStrategy(42); await flush(); await flush();
+    const body = f.root.querySelector('#road-live-body').innerHTML;
+    assert.match(body, /47h of 48h/);
+    assert.match(body, /<span class="v">47h \/ 48h<\/span>/); assert.doesNotMatch(body, /48h \/ 48h/);
+    assert.match(body, /<span class="v">1,200 \/ 30<\/span>/); assert.match(body, /<span class="v">1,500 \/ 20<\/span>/);
+    assert.match(body, /<span class="v">1,001 \/ 20<\/span>/);
+    const gates = f.root.querySelector('#gates').innerHTML;
+    assert.match(gates, /<span class="v">1,200<\/span>/); assert.match(gates, /<span class="v">−0\.5<\/span>/);
+    const html = main(f);
+    assert.match(html, /<dt>Sharpe \(daily\)<\/dt><dd>−1\.82<\/dd>/); assert.match(html, /<dt>Profit factor<\/dt><dd>0\.87<\/dd>/);
+    assert.doesNotMatch(html, />-1\.82</);
+    const stamp = new Date(registered).toLocaleString(undefined, {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'});
+    assert.ok(html.includes(`Pre-registered <b>${stamp}</b>`), 'the stamp carries its zone');
+    if (f.clearTimers) f.clearTimers();
+  });
 }

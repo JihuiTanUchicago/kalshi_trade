@@ -46,7 +46,12 @@ window.TauPage('strategy', (T) => {
     next_open: 'the next bar’s open', finalized_payments_as_cost_only: 'settled funding payments, counted only as a cost' };
   const rpCost = (v) => (typeof v === 'string' ? RP_COST[v] || rpPlain(v) : String(v));
   const LORD_WORDS = ' (a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare)';
-  const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(iso); } };
+  // With its zone, as the page's other clock times say it ("Settles 23:38 EDT"): "Pre-registered Oct 30, 2026, 09:38 PM"
+  // named none (walked 2026-10-31).
+  const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }); } catch (e) { return String(iso); } };
+  // A figure that is neither money nor a stake share (a trade count, a profit factor, a Sharpe), grouped in thousands as
+  // num() groups counts and signed with the minus the money beside it uses: a gate read "1200" and a Sharpe "-1.82".
+  const rpFig = (v) => (typeof v !== 'number' || !Number.isFinite(v) ? esc(v == null ? '—' : v) : (v < 0 ? '−' : '') + num(Math.abs(v)));
   // The gatekeeper stores each phase as its per-trade net returns ([ts, return] per trade), not a running
   // total. The equity and drawdown figures add them up, counted in stakes (+2× = twice one trade's stake);
   // the distribution plots each one. They were drawn as a dollar curve, and the distribution as the
@@ -616,13 +621,13 @@ window.TauPage('strategy', (T) => {
         <dt>Trades</dt><dd>${num(m.trades)}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
         <dt>Win rate</dt><dd>${pct(m.win_rate, false)}</dd>
         <dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
-        <dt>Profit factor</dt><dd>${m.profit_factor == null ? '—' : m.profit_factor}</dd>
+        <dt>Profit factor</dt><dd>${rpFig(m.profit_factor)}</dd>
         <dt>Worst drawdown</dt><dd>${usd(m.max_drawdown)}</dd>
-        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : held ? '<p class="hint">Its test on unseen data is the validation-window evidence above.</p>' : splitOnly ? '<p class="hint">No result after the split date recorded: its only figures are from the history it searched.</p>' : `<p class="hint">Not tested on unseen data — ${esc(rejectReason(s))}</p>`;
+        <dt>Sharpe (daily)</dt><dd>${rpFig(m.sharpe)}</dd></dl>${luckFlag(m)}` : held ? '<p class="hint">Its test on unseen data is the validation-window evidence above.</p>' : splitOnly ? '<p class="hint">No result after the split date recorded: its only figures are from the history it searched.</p>' : `<p class="hint">Not tested on unseen data — ${esc(rejectReason(s))}</p>`;
     // The backtest's stored gate names say "unseen data"; with no gatekeeper record that slice is the data after the
     // split date, which these gates picked it on (display only: the stored names are unchanged).
     const gateName = (n) => splitOnly ? String(n).replace(/\bunseen data\b/g, 'data after the split date').replace(/\bunseen trades\b/g, 'trades after the split date') : n;
-    const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
+    const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : rpFig(g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
@@ -742,7 +747,9 @@ window.TauPage('strategy', (T) => {
               const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
               // The sum is as old as its oldest mark: dimmed, with that mark's age, once it is old (markFig).
               const oldest = marked.map((p) => p.mark_ts).filter((t) => Number.isFinite(Date.parse(t))).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-              const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
+              // Alone too: a strategy holding on paper only read "4 open positions at cost + fees $20.38" with no word of
+              // which money, its rows untagged (walked 2026-10-31), and a demo-only one's line read like real money.
+              const lead = ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ';
               return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(unreal))} (est., mark-to-market on the current bid${markOld(oldest) ? ', ' + markedAt(oldest) : ''})` : `${SEP}${NOT_MARKED.toLowerCase()}`}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
@@ -850,14 +857,14 @@ window.TauPage('strategy', (T) => {
         const p = r.paper, c = p.checks;
         const rows = [
           { name: 'Gatekeeper cleared', threshold: 'holdout + diversification', ok: r.deployment_candidate, value: r.deployment_candidate ? 'yes' : 'no' },
-          { name: 'Realistic paper trades', threshold: p.trades_needed + '+', ok: c.realistic_trades, value: p.trades + ' / ' + p.trades_needed },
+          { name: 'Realistic paper trades', threshold: p.trades_needed + '+', ok: c.realistic_trades, value: num(p.trades) + ' / ' + num(p.trades_needed) },
           ...(c.legacy_pnl === false ? [{ name: 'Paper P&L, every fill', threshold: '$0 or above', ok: false, value: p.legacy_pnl }] : []),
           { name: 'Net, ' + PAPER_NET, threshold: 'above $0', ok: c.net_pnl, value: p.net_pnl },
-          { name: 'Separate events', threshold: (p.events_needed || 20) + '+', ok: c.events, value: p.events == null ? '—' : p.events + ' / ' + (p.events_needed || 20) },
-          { name: 'First to last paper trade', threshold: p.span_needed_hours + 'h+', ok: c.span, value: Math.round(p.span_hours) + 'h / ' + p.span_needed_hours + 'h' },
+          { name: 'Separate events', threshold: (p.events_needed || 20) + '+', ok: c.events, value: p.events == null ? '—' : num(p.events) + ' / ' + num(p.events_needed || 20) },
+          { name: 'First to last paper trade', threshold: p.span_needed_hours + 'h+', ok: c.span, value: num(Math.floor(p.span_hours)) + 'h / ' + num(p.span_needed_hours) + 'h' },
           { name: 'Edge is not luck', threshold: 'p ≤ ' + p.p_value_needed.toFixed(2), ok: c.edge, value: roadP(p.p_value) },
           { name: 'Still working lately', threshold: 'newer half above $0', ok: c.recent, value: p.recent_trades ? p.recent_net_pnl : '—' },
-          { name: 'Clean demo record', threshold: (p.demo_orders_needed || 20) + '+ demo orders, book matches', ok: c.demo, value: p.demo_orders == null ? '—' : p.demo_orders + ' / ' + p.demo_orders_needed },
+          { name: 'Clean demo record', threshold: (p.demo_orders_needed || 20) + '+ demo orders, book matches', ok: c.demo, value: p.demo_orders == null ? '—' : num(p.demo_orders) + ' / ' + num(p.demo_orders_needed) },
         ];
         const auto = r.live_autopilot && r.live_autopilot.ok;
         const body = root.querySelector('#road-live-body');
