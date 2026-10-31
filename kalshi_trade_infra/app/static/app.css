@@ -1524,6 +1524,9 @@ body.landing-body { background: #FBFBFA; }
 /* A bell link to one post: the feed says where it starts, or that the post is gone, and marks the post. */
 .feedwrap .feed-from { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
 .feedwrap .feed-from .notice { flex: 1 1 240px; margin: 0; }
+/* Show older posts, under the feed: centred, with a failed read's line under it. */
+.feedwrap .feed-more { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 8px 0 16px; }
+.feedwrap .feed-more:has(> [data-older][hidden]):not(:has(#older-flash > *)) { display: none; }
 .feedwrap .post.post-target { background: var(--signal-wash); }
 #feed { padding-bottom: 6px; }
 /* Composer pinned to the bottom (chat-style): the feed scrolls above it, it floats
@@ -1554,6 +1557,8 @@ body.landing-body { background: #FBFBFA; }
 .post-head b { font-weight: 600; }
 .post-head .when { color: var(--ink-3); font-size: 12px; font-family: var(--f-nar); letter-spacing: .02em; }
 .cmt .when { color: var(--ink-3); font-size: 12px; margin-left: 6px; font-family: var(--f-nar); letter-spacing: .02em; }
+/* A post's or reply's time ("Oct 27, 06:04 EDT") wraps whole, never between its clock and its zone. */
+.post-head .when time, .cmt .when time { white-space: nowrap; }
 .pfp { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; background: var(--stock-sunk); }
 .pfp.ph { display: grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--ink-2); border: 1px solid var(--rule-2); }
 .post-body { font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

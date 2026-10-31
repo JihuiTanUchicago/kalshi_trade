@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from datetime import timedelta
-from typing import Dict, Iterable, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 from app import repository as repo
 from app.adapters.ses import notify
@@ -67,7 +67,7 @@ SNAPSHOT_FIELDS = {
 }
 
 
-def _snapshot_out(snap, mine: bool, unrecorded: bool = False) -> Optional[Dict]:
+def _snapshot_out(snap, mine: bool, unrecorded: bool = False, gone: bool = False) -> Optional[Dict]:
     """A post's shared card as one reader sees it. The author's row id goes only to the author, whose
     card links their own strategy page; anyone else's card is no link, so it needs none. A title reads
     as the app shows a person's text (no address, no internal model id). `unrecorded` (the feed read's
@@ -75,7 +75,9 @@ def _snapshot_out(snap, mine: bool, unrecorded: bool = False) -> Optional[Dict]:
     the flag, so it says later-period as its page does, not "on unseen data". It flags a "failed" (Void) card
     too: a void strategy with no gatekeeper record is one the first version's simple backtest stored as failed,
     never judged on held-out data (VOID_NO_RECORD_SQL, the rule its Strategies row is flagged by), so its card
-    says "not held out" as its page and row do. The same column of the feed's own read; display only."""
+    says "not held out" as its page and row do. The same column of the feed's own read; display only.
+    `gone` (the read's strategy_gone): the author has deleted the strategy since, so their card carries no id to link
+    (its page said "Not found") and says it is gone instead."""
     if not isinstance(snap, dict) or snap.get("kind") not in SNAPSHOT_FIELDS:
         return None
     out = {k: snap[k] for k in SNAPSHOT_FIELDS[snap["kind"]] if k in snap}
@@ -83,27 +85,54 @@ def _snapshot_out(snap, mine: bool, unrecorded: bool = False) -> Optional[Dict]:
         out["no_gatekeeper_record"] = True
     if out.get("title"):
         out["title"] = customer_text.clean(out["title"], "A strategy")
-    if mine and snap.get("id") is not None:
+    if mine and gone and out["kind"] == "strategy":
+        out["gone"] = True
+    elif mine and snap.get("id") is not None:
         out["id"] = snap["id"]
+    return out
+
+
+def _reactions_out(reactions) -> List[Dict]:
+    """A post's reaction pills as every reader sees them: each reactor's name as the app shows a person's name, so
+    one whose name is their email address reads as their @handle (or "Trader"). The pills' hover named them raw:
+    "dana.private@example.com" in every reader's feed (walked 2026-10-31)."""
+    out = []
+    for rx in reactions or []:
+        handles = list(rx.get("handles") or [])
+        names = [customer_text.display_name(n, (handles[i] if i < len(handles) and handles[i] else "Trader"))
+                 for i, n in enumerate(rx.get("names") or [])]
+        out.append({**rx, "names": names})
     return out
 
 
 def _post_out(p: Dict) -> Dict:
     return {
-        "id": p["id"], "body": p["body"], "kind": p["kind"], "snapshot": _snapshot_out(p.get("snapshot"), bool(p.get("mine")), bool(p.get("no_gatekeeper_record"))),
+        "id": p["id"], "body": p["body"], "kind": p["kind"],
+        "snapshot": _snapshot_out(p.get("snapshot"), bool(p.get("mine")), bool(p.get("no_gatekeeper_record")),
+                                  bool(p.get("strategy_gone"))),
         "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
         "author": customer_text.display_name(p.get("name"), "Trader"), "username": p.get("username"), "picture": p.get("picture_url"),
         "mine": p.get("mine", False), "liked": p.get("liked", False),
-        "reactions": p.get("reactions", []),
+        "reactions": _reactions_out(p.get("reactions")),
         "image": ("/api/community/image/%d" % p["image_id"]) if p.get("image_id") else None,
         "edited": bool(p.get("edited_at")),
     }
 
 
+# The feed reads a page of posts; Show older posts asks for more of them in the same one read (`limit`), up to
+# MAX_FEED_POSTS, so the 20s refresh stays one read with no gap or repeat between pages.
+FEED_PAGE = 30
+MAX_FEED_POSTS = 300
+
+
 def community(ctx: Ctx):
     before = int(ctx.query.get("before") or 0)
     mine_only = str(ctx.query.get("mine") or "") in ("1", "true")
-    return {"posts": [_post_out(p) for p in repo.list_posts(ctx.cur, ctx.uid, before, mine_only=mine_only)]}
+    try:
+        limit = min(max(int(ctx.query.get("limit") or FEED_PAGE), 1), MAX_FEED_POSTS)
+    except ValueError:
+        limit = FEED_PAGE
+    return {"posts": [_post_out(p) for p in repo.list_posts(ctx.cur, ctx.uid, before, limit=limit, mine_only=mine_only)]}
 
 
 IMAGE_MAGIC = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg", b"GIF8": "image/gif"}
@@ -161,9 +190,13 @@ def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: st
 
 
 def mention_candidates(ctx: Ctx):
+    """The @-autocomplete's matches. A name that is an email address (display_name hides it) is never matched on:
+    "?q=dana.private@exa" found the person whose name it is, so a reader could spell out another person's address
+    a letter at a time. Their @handle still matches."""
     q = (ctx.query.get("q") or "").strip()[:32]
     return {"users": [{"username": u["username"], "name": customer_text.display_name(u["name"], u["username"])}
-                      for u in repo.mention_candidates(ctx.cur, q)]}
+                      for u in repo.mention_candidates(ctx.cur, q)
+                      if str(u["username"] or "").lower().startswith(q.lower()) or customer_text.display_name(u["name"], "")]}
 
 
 def create_community_post(ctx: Ctx):
@@ -267,7 +300,7 @@ def react_post(ctx: Ctx):
     if not repo.post_exists(ctx.cur, pid):
         raise ApiError(404, "No such post.")
     repo.toggle_reaction(ctx.cur, pid, ctx.uid, emoji)
-    return {"reactions": repo.reactions_for(ctx.cur, [pid], ctx.uid).get(pid, [])}
+    return {"reactions": _reactions_out(repo.reactions_for(ctx.cur, [pid], ctx.uid).get(pid, []))}
 
 
 def post_comments(ctx: Ctx):

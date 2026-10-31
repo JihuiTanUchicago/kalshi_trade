@@ -63,21 +63,30 @@ POST_NO_RECORD_SQL = ("(p.kind='strategy' AND EXISTS (SELECT 1 FROM app_strategi
                       "AND s.user_id=p.user_id AND s.direction<>%s AND " + NO_EXPERIMENT_SQL + ")) AS no_gatekeeper_record")
 
 
+# The viewer's own strategy card whose strategy they have deleted since, as a column of the same read (its row by the
+# snapshot's id, primary key): their card linked its page, which said "Not found". Only the author's card links, so
+# only theirs is looked up. Display only (community._snapshot_out).
+POST_GONE_SQL = ("(p.kind='strategy' AND p.user_id=%s AND NOT EXISTS (SELECT 1 FROM app_strategies g "
+                 "WHERE g.id=CAST(JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json, '$.id')) AS UNSIGNED) "
+                 "AND g.user_id=p.user_id)) AS strategy_gone")
+
+
 def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_only: bool = False) -> List[Dict]:
     cur.execute(
         """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,
                   u.name, u.username, u.picture_url, (p.user_id = %s) AS mine,
                   EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked,
-                  """ + POST_NO_RECORD_SQL + """
+                  """ + POST_NO_RECORD_SQL + """, """ + POST_GONE_SQL + """
            FROM app_posts p JOIN app_users u ON u.id=p.user_id
            WHERE (%s = 0 OR p.id < %s) AND (%s = 0 OR p.user_id = %s) ORDER BY p.id DESC LIMIT %s""",
-        (viewer_id, viewer_id, DEMO_DIRECTION, before_id, before_id, 1 if mine_only else 0, viewer_id, limit),
+        (viewer_id, viewer_id, DEMO_DIRECTION, viewer_id, before_id, before_id, 1 if mine_only else 0, viewer_id, limit),
     )
     rows = cur.fetchall()
     for r in rows:
         r["snapshot"] = _loads(r.pop("snapshot_json"))
         r["mine"] = bool(r["mine"]); r["liked"] = bool(r["liked"])
         r["no_gatekeeper_record"] = bool(r.get("no_gatekeeper_record"))
+        r["strategy_gone"] = bool(r.get("strategy_gone"))
     by_post = reactions_for(cur, [r["id"] for r in rows], viewer_id)
     for r in rows:
         r["reactions"] = by_post.get(r["id"], [])
