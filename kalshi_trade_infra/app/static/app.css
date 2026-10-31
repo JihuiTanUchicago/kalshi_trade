@@ -588,6 +588,11 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .panel:first-child { margin-top: 0; }
 .panel h3, .panel > h2, .funds-sub > h2 { font-family: var(--f-nar); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 10px; }
 .figures.measure { margin: 0; }
+/* A money page's figures hold room while its first read is out (#app is aria-busy until the page has drawn): on a
+   phone they came in 200-380px tall and pushed the whole page down under the reader (slow-network walk 2026-10-31).
+   The room is less than the figures ever take, so nothing jumps back up when they land. */
+#app[aria-busy="true"] :is(#dfigs, #ffigs, #bfigs, #figs):empty { min-height: 110px; }
+@media (max-width: 760px) { #app[aria-busy="true"] :is(#dfigs, #ffigs, #bfigs, #figs):empty { min-height: 200px; } }
 /* A run's figures (status, time, cost, tested, passed) share one row on a
    desktop, each column as wide as its content needs: auto-fit's 160px floor pushed the sixth onto a
    row of its own at 1280px with the hot-markets rail open. Where the row is too narrow for six

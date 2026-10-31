@@ -8,7 +8,7 @@
 //   had already ended) goes to sign-in.
 // - Settings names the account (Google name and email, community name) and links to where the Kalshi keys
 //   and the card are managed;
-// - a confirmed sign-out forgets the unsent research and autopilot drafts on the device; one Tau didn’t confirm
+// - a confirmed sign-out forgets the unsent research, community and autopilot drafts on the device; one Tau didn’t confirm
 //   keeps them;
 // - the card wall's Save tapped before the card form is up says the form is still loading, and never
 //   submits the bare form (which reloaded the page to "/?" and started the form over).
@@ -223,9 +223,10 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
     ['the session had already ended (401)', () => response({error: 'Please sign in.'}, 401), true],
     ['got no reply', () => { throw new Error('Synthetic offline'); }, false],
   ]) {
-    test(`${name}: Sign out when ${what} ${out ? 'forgets' : 'keeps'} the unsent research and autopilot drafts on this device`, async () => {
+    test(`${name}: Sign out when ${what} ${out ? 'forgets' : 'keeps'} the unsent research, community and autopilot drafts on this device`, async () => {
       const local = new Map([['tau_ui', current], ['tau_tr_tab', 'paper'], ['tau_ap_draft:7', 'my unsent message'], ['tau_ap_draft:9', 'an older account’s']]);
-      const session = sessionStore({tau_research_draft: JSON.stringify({uid: 7, path: '/research', text: 'my idea'})});
+      const session = sessionStore({tau_research_draft: JSON.stringify({uid: 7, path: '/research', text: 'my idea'}),
+        tau_post_draft: JSON.stringify({uid: 7, text: 'my unsent post'})});
       const f = frontend({storage: storageFor(local), session,
         fetchImpl: path => (path === '/api/logout' ? reply() : path === '/api/me' ? response({error: 'Please sign in.'}, 401) : response({}))});
       f.location.pathname = '/settings';
@@ -236,10 +237,12 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
       if (out) {
         assert.deepEqual([...local.keys()].filter(k => k.startsWith('tau_ap_draft:')), []);
         assert.equal(session.map.has('tau_research_draft'), false);
+        assert.equal(session.map.has('tau_post_draft'), false);
         return;
       }
       assert.equal(local.get('tau_ap_draft:7'), 'my unsent message');
       assert.ok(session.map.has('tau_research_draft'));
+      assert.ok(session.map.has('tau_post_draft'));
     });
   }
 }

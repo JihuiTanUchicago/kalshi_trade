@@ -323,6 +323,11 @@ h1.page { font-family: var(--f-ui); font-size: 20px; line-height: 26px; font-wei
 .measure { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 24px; border-bottom: 1px solid var(--rule); margin: 0; padding: 0; }
 .measure > .m { min-width: 0; padding: 20px 0 24px; }
 .measure > .m:first-child { border-left: 0; padding-left: 0; }
+/* A money page's figures hold room while its first read is out (#app is aria-busy until the page has drawn): on a
+   phone they came in 200-380px tall and pushed the whole page down under the reader (slow-network walk 2026-10-31).
+   The room is less than the figures ever take, so nothing jumps back up when they land. */
+#app[aria-busy="true"] :is(#dfigs, #ffigs, #bfigs, #figs):empty { min-height: 110px; }
+@media (max-width: 760px) { #app[aria-busy="true"] :is(#dfigs, #ffigs, #bfigs, #figs):empty { min-height: 200px; } }
 .m dt.lab, .lab { font-family: var(--f-nar); font-size: 12px; letter-spacing: .01em; color: var(--ink-3); display: block; margin: 0 0 5px; }
 .m dd { margin: 0; }
 .fig { font-size: clamp(21px, 2.6vw, 27px); font-weight: 600; letter-spacing: -.015em; line-height: 1.1; display: inline-block; }

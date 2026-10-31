@@ -98,6 +98,49 @@ export function communityCases({name, frontend}) {
     assert.equal(art.querySelector('[data-act="comments"]').clicked, true);
   });
 
+  // Walk 2026-10-31: the session ended while a post was being written (a feed poll's 401, or Post's own) and sign-in
+  // brought the reader back to an empty box. The post is kept for the tab and put back for the same account.
+  test(`${name}: a post typed when the session ran out is there again after sign-in, for that account only, and goes once it posts`, async () => {
+    const m = new Map();
+    const session = {map: m, getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k)};
+    const open = (uid, posted = []) => {
+      const f = frontend({session, fetchImpl: (path, options) => {
+        if (path === '/api/strategies') return response({strategies: []});
+        if (path === '/api/community' && options && options.method === 'POST') { posted.push(JSON.parse(options.body).body); return response({id: 99}); }
+        if (path.startsWith('/api/community')) return response({posts: []});
+        return response({});
+      }});
+      f.S.me.user.id = uid;
+      f.location.pathname = '/community';
+      return f;
+    };
+    const f = open(7);
+    await f.viewCommunity(); await settle();
+    const ta = f.root.querySelector('#post-body');
+    ta.value = 'Half a thought about @Carol and BTC closes';
+    ta.dispatchEvent({type: 'input'});
+    assert.equal(JSON.parse(m.get('tau_post_draft')).text, 'Half a thought about @Carol and BTC closes');
+    f.clearTimers();
+
+    // Signed back in on the same tab: the box has it (Meridian's folded New post opens to show it).
+    const posted = [];
+    const g = open(7, posted);
+    await g.viewCommunity(); await settle();
+    assert.equal(g.root.querySelector('#post-body').value, 'Half a thought about @Carol and BTC closes');
+    const fold = g.root.querySelector('.community-compose');
+    if (fold) assert.equal(fold.open, true);
+    // Another account on this tab never sees it.
+    const other = open(9);
+    await other.viewCommunity(); await settle();
+    assert.equal(other.root.querySelector('#post-body').value || '', '');
+    other.clearTimers();
+    // Posted: it goes.
+    await g.root.querySelector('#composer-post').onsubmit({preventDefault() {}}); await settle();
+    assert.deepEqual(posted, ['Half a thought about @Carol and BTC closes']);
+    assert.equal(m.has('tau_post_draft'), false);
+    g.clearTimers();
+  });
+
   test(`${name}: a strategy a later check left uncleared reads as its row does, in the picker and on its card`, async () => {
     const mine = [{id: 41, title: 'Cleared', status: 'passed'}, {id: 42, title: 'Missed', status: 'passed', verdict: 'missed_final'},
       {id: 43, title: 'Held', status: 'passed', verdict: 'held_back'}, {id: 44, title: 'Paper held', status: 'failed', verdict: 'held_back'},

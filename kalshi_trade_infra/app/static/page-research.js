@@ -7,7 +7,7 @@ window.TauPage('research', (T) => {
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, liveOpen, loading, logTime, marketPicker, marketShort,
-    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
+    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, pct, phone, poll, retried, root, runKind, runTag,
     runWaitLine, S, SEP, sessionEstimate, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     dateFmt, LOG_STAMP,
     whyFailedHtml, wireMarketPicker
@@ -57,7 +57,11 @@ window.TauPage('research', (T) => {
   const rsiLoop = { board: null, at: 0, okAt: 0, req: null, failed: null };
   // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
   // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
-  function rsiLoopRead() {
+  // `fresh` (the page opening, or its Try again): a read that failed doesn't hold the next one back. The page's
+  // Try again, pressed once the network was back, drew the page with "Your research results didn't load" still
+  // on it, from the failure kept for the minute (walk 2026-10-31).
+  function rsiLoopRead(fresh) {
+    if (fresh && rsiLoop.failed) rsiLoop.at = 0;
     if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
       rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
         .then((b) => { rsiLoop.board = b; rsiLoop.okAt = Date.now(); rsiLoop.failed = null; }, (e) => { rsiLoop.failed = errText(e); /* a board read before is kept */ })
@@ -75,7 +79,7 @@ window.TauPage('research', (T) => {
     if (!b && rsiLoop.failed) {
       paint(host, loadFail(rsiLoop.failed, 'Your research results'));
       const again = host.querySelector('[data-retry]');
-      if (again) again.onclick = () => { rsiLoop.at = 0; paint(host, loading(56)); renderResearchLoop(host, pol, tried); };
+      if (again) again.onclick = () => { rsiLoop.at = 0; paint(host, loading(56)); renderResearchLoop(host, pol, tried).then(() => retried(host, host.children.length ? null : root.querySelector('main h1'))); };
       return;
     }
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
@@ -247,7 +251,7 @@ window.TauPage('research', (T) => {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
-    rsiLoopRead();  // the loop card's board, read beside the session list below
+    rsiLoopRead(true);  // the loop card's board, read beside the session list below
     // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
     const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
     // Arriving with ?market= (Explore's "Research <market>") for a market the picker doesn't offer right now

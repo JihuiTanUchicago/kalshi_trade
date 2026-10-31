@@ -8,7 +8,7 @@ window.TauPage('strategies', (T) => {
   'use strict';
   const {
     api, apNudge, boardTitle, bulkDeployable, busy, catOrder, depSaid, depWrite, errText, esc, fig, flash, gl, go, ICON, loadFail,
-    loading, marketShort, num, pageLede, paperShown, pct, registry, root, S, SEP, shell, smooth, strategySlip, strategyTable, theme
+    loading, marketShort, num, pageLede, paperShown, pct, registry, retried, root, S, SEP, shell, smooth, strategySlip, strategyTable, theme
   } = T;
   // Each theme heads the list its own way and says an empty list in its own words; the filters, figures, rows and
   // bulk deploy are the same in both.
@@ -81,7 +81,8 @@ window.TauPage('strategies', (T) => {
       try { d = await api('/api/strategies?' + p.toString()); } catch (e) {
         if (e.status === 401) throw e;
         slipsEl.innerHTML = loadFail(errText(e), 'Your strategies');
-        slipsEl.querySelector('[data-retry]').onclick = () => load();
+        // Focus goes into the list that came in (or the Try again of one that failed again), not the page's body.
+        slipsEl.querySelector('[data-retry]').onclick = () => load().then(() => retried(slipsEl));
         return;
       }
       // A remembered page past the end (the list shrank since) starts again at the first.
