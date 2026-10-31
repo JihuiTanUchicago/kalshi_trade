@@ -113,6 +113,11 @@ window.TauPage('funds', (T) => {
     : b.balance == null ? 'Couldn\u2019t read it just now' : usd(b.balance);
   // The demo key's line: its $0 or short-balance notice only from a figure Kalshi just sent.
   const demoLine = (kd) => keyLine(kd, 'demo') + (kd.pending || kd.failed ? '' : demoEmpty(kd.balance, kd.copies_from));
+  // The demo book's figure says so too while the Kalshi demo account is empty (a figure Kalshi just sent): it read
+  // "$1,000.00 starting capital · P&L shows once a demo trade closes" as if demo could trade, and the notice that
+  // Kalshi refuses its orders sat a screen and more below it on a phone (walk 2026-10-31).
+  const demoBroke = (kd) => kd.connected && !kd.pending && !kd.failed && kd.balance != null && kd.balance < 0.005
+    ? `Kalshi refuses demo orders while your Kalshi demo account has $0.00 (Demo key, below)${SEP}` : '';
   // A paper history line in plain words. The engine writes prices as dollars ("@ 0.40") and exit reasons as
   // codes ("stop_loss"); a settled row's $0.00 read as nothing happening when the contract lost. Display only:
   // the stored memo and the amount are unchanged.
@@ -120,16 +125,23 @@ window.TauPage('funds', (T) => {
     const memo = String(r.memo || r.kind || '').replace(/ (@|->) (\d*\.\d+)/g, (m, w, p) => ` ${w === '@' ? 'at' : '\u2192'} ${Math.round(+p * 100)}\u00a2`)
       .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '));
     const settled = r.kind === 'settlement' ? (+r.amount > 0 ? `${SEP}won, paid $1 a contract` : `${SEP}lost, paid $0`) : '';
-    // The contract goes by its plain name, as an open position does (contractName: "Bitcoin up or down in 15
-    // minutes"); its ticker carries the raw series key, so it moves to the small line under it (kalshiRef).
-    const t = LEDGER_TICKER.exec(memo);
-    const said = t ? esc(memo.slice(0, t.index)) + esc(contractName(t[0])) + esc(memo.slice(t.index + t[0].length)) : esc(memo);
+    // Each contract goes by its plain name, as an open position does (contractName: "Bitcoin up or down in 15
+    // minutes"); its ticker carries the raw series key, so it moves to the small line under it (kalshiRef). A pair
+    // trade names two: only the first was renamed, and the second's raw ticker stood in the words (walk 2026-10-31).
+    const ticks = [];
+    let said = '', from = 0;
+    for (const t of memo.matchAll(LEDGER_TICKER)) {
+      said += esc(memo.slice(from, t.index)) + esc(contractName(t[0]));
+      if (!ticks.includes(t[0])) ticks.push(t[0]);
+      from = t.index + t[0].length;
+    }
+    said += esc(memo.slice(from));
     // The words and the settled note are one inline run: the stacked cell is a flex row, so the note was an item
     // of its own and at 390px "· won, paid $1 a contract" began a line under "settled YES".
-    return `<span class="ledger-said">${said}${settled ? `<span class="hint">${settled}</span>` : ''}</span>` + (t ? `<div class="sub-fig">${kalshiRef(t[0])}</div>` : '');
+    return `<span class="ledger-said">${said}${settled ? `<span class="hint">${settled}</span>` : ''}</span>` + ticks.map((t) => `<div class="sub-fig">${kalshiRef(t)}</div>`).join('');
   };
   // A Kalshi contract ticker in a memo: its series, then the event's date (KXBTCD-26OCT2617-T114999.99).
-  const LEDGER_TICKER = /\b[A-Z][A-Z0-9]*-\d{2}[A-Z]{3}\d{2}(?:[A-Z0-9.-]*[A-Z0-9])?/;
+  const LEDGER_TICKER = /\b[A-Z][A-Z0-9]*-\d{2}[A-Z]{3}\d{2}(?:[A-Z0-9.-]*[A-Z0-9])?/g;
   // When cash moved: the clock and its zone, with the date on any day but today (settleAt), never a bare "Oct 24".
   const ledgerAt = (iso) => `<time datetime="${esc(iso || '')}">${esc(settleAt(iso))}</time>`;
   // Fees and settlement, once, in plain words, where the cash moves.
@@ -272,7 +284,7 @@ window.TauPage('funds', (T) => {
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : liveOpen() ? '' : '.') : cf ? `${cf[1]}${livePnl(k)}${liveLeft(k)}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)}${liveLeft(k)}` }) +
-        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${demoCapital(dm)}${SEP}${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : `needs a demo key${SEP}`}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox: ${DEMO_SANDBOX}` })) +
+        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${demoBroke(kd)}${demoCapital(dm)}${SEP}${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : `needs a demo key${SEP}`}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox: ${DEMO_SANDBOX}` })) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash${SEP}${openAt(d.paper, inBalance(d.paper))}${bookPnl(d.paper, 'paper')}practice money${paperSlip(d.paper)}` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
       // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
@@ -342,6 +354,7 @@ window.TauPage('funds', (T) => {
       const ledgerHow = `${LEDGER_HOW}${full && !done ? ` The latest ${num(hist.length)} entries.` : ''}`, ledgerBody = hist.map(ledgerRow).join('');
       const ledgerMore = !full ? '' : done ? `<p class="hint ledger-end" tabindex="-1">${LEDGER_END}</p>` : '<button type="button" class="btn" id="ledger-older-btn">Show older entries</button>';
       const histSpots = [['#ledger-how', ledgerHow], ['#ledger-rows', ledgerBody], ['#ledger-older', ledgerMore]];
+      const cashSpots = { 'live-ok': () => keyLine(k, 'live'), 'live-cell': () => cashCell(k), 'demo-ok': () => demoLine(kd) };
       const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         ${accounts}
@@ -358,8 +371,16 @@ window.TauPage('funds', (T) => {
       if (got) {
         // Only the cash changed: its spots are filled in place, so what someone is typing, an armed confirm or
         // the perps box stay as they are.
-        const spots = { 'live-ok': () => keyLine(k, 'live'), 'live-cell': () => cashCell(k), 'demo-ok': () => demoLine(kd) };
-        host.querySelectorAll('[data-cash]').forEach((el) => { const f = spots[el.dataset.cash]; if (f) el.innerHTML = f(); });
+        // A spot drawn the same is left alone, and one that changes under focus (the $0 notice's demo.kalshi.co link)
+        // gives it back to the same link: a failed poll redraws them, and focus fell to the page each time.
+        host.querySelectorAll('[data-cash]').forEach((el) => {
+          const f = cashSpots[el.dataset.cash];
+          if (!f) return;
+          const a = document.activeElement, href = a && a !== el && el.contains(a) && a.getAttribute ? a.getAttribute('href') : null;
+          paint(el, f());
+          const back = href && !a.isConnected ? [...el.querySelectorAll('a')].find((x) => x.getAttribute('href') === href) : null;
+          if (back && back.focus) back.focus({ preventScroll: true });
+        });
         // An older page just read lands the same way: the history alone is drawn again, the forms stay as they are.
         histSpots.forEach(([sel, html]) => paint(host.querySelector(sel), html));
         painted.set(host, main);
@@ -372,6 +393,7 @@ window.TauPage('funds', (T) => {
       if (connectOpen && host.querySelector('#connect-kalshi')) host.querySelector('#connect-kalshi').open = true;
       openLinked(host);
       histSpots.forEach(([sel, html]) => { const el = host.querySelector(sel); if (el) painted.set(el, html); });
+      host.querySelectorAll('[data-cash]').forEach((el) => { const f = cashSpots[el.dataset.cash]; if (f) painted.set(el, f()); });
       const lo = host.querySelector('#ledger-older');
       if (lo) lo.onclick = (e) => { const btn = e && e.target && e.target.closest ? e.target.closest('#ledger-older-btn') : null; if (btn) showOlder(btn); };
       if (S.perps) { S.perps.destroy(); S.perps = null; }
@@ -443,7 +465,17 @@ window.TauPage('funds', (T) => {
       return d;
     };
     try { await load(); } catch (err) { if (gen === S.gen) throw err; }
-    if (gen === S.gen) poll(load, 30000, 'funds-stale');
+    // A poll that can't read keeps the last answer up, and its read times age with it: on a failed poll (offline, a
+    // 5xx) Kalshi cash went on saying "read just now" under "Last updated 2m ago, retrying" (walk 2026-10-31). It is
+    // drawn again in place from the answer shown (load's `got`: no other read; the forms stay as they are), so each
+    // "read …" says its age; the failure still counts as the poll's.
+    const pollRead = async (cfg) => {
+      try { return await load(cfg); } catch (err) {
+        if (gen === S.gen && shown) await load(null, shown).catch(() => {});
+        throw err;
+      }
+    };
+    if (gen === S.gen) poll(pollRead, 30000, 'funds-stale');
   }
 
   return {viewFunds};
