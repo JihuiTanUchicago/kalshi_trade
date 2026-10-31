@@ -63,7 +63,8 @@ window.TauPage('strategy', (T) => {
   // the distribution plots each one. They were drawn as a dollar curve, and the distribution as the
   // differences between neighbouring trades.
   const rpCum = (series) => { let c = 0; return (series || []).map(([t, r]) => [t, (c += +r || 0)]); };
-  const rpStakes = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '×';
+  // Rounded before its sign is picked: a midpoint tick a hair under zero (-1e-17) read "−0.0×" on the axis.
+  const rpStakes = (v) => { const r = Math.round(v * 10) / 10; return (r > 0 ? '+' : r < 0 ? '−' : '') + Math.abs(r).toFixed(1) + '×'; };
   const RP_MECH = { who_pays: 'Who pays', why_not_arbitraged: 'Why it isn’t arbitraged', when: 'When it fires', why_persists: 'Why it persists' };
   const RP_RUNGS = [['promising', 'Promising'], ['statistically_supported', 'Stat. supported'], ['forward_validated', 'Forward-validated'], ['deployment_candidate', 'Deployment candidate']];
   const RP_RANK = { rejected: -1, inconclusive: 0, promising: 1, statistically_supported: 2, forward_validated: 3, deployment_candidate: 4 };
@@ -234,7 +235,7 @@ window.TauPage('strategy', (T) => {
     if (exp.primary_metric) pre.push(['Primary metric', rpPlain(exp.primary_metric)]);
     if (exp.planned_test) pre.push(['Planned test', rpPlain(exp.planned_test)]);
     if (exp.min_sample != null) pre.push(['Minimum sample', num(exp.min_sample) + ' trades']);
-    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? num(exp.planned_n_tests) + ` planned tests${SEP}` : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? num(exp.planned_n_tests) + ` planned test${+exp.planned_n_tests === 1 ? '' : 's'}${SEP}` : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
     if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${rpCost(v)}`).join(SEP)]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
@@ -578,7 +579,9 @@ window.TauPage('strategy', (T) => {
       small: `${num(r.out_of_sample.trades)} trade${+r.out_of_sample.trades === 1 ? '' : 's'}${overDays(r.out_of_sample.days)} after the split date${noPass ? '' : ', which picked it'}${SEP}not\u00a0held\u00a0out` }) : '';
     const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
-    const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
+    // Where it stood among the session's ideas: a session that tested one read "one of 1 ideas tested this run".
+    const ofIdeas = (n, verb = 'tested') => (+n === 1 ? `the only idea ${verb} this run` : `one of ${num(n)} ideas ${verb} this run`);
+    const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, ${ofIdeas(s.hypotheses_tried)}` : ''}.`;
     const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${num(r.out_of_sample.trades)} trade${+r.out_of_sample.trades === 1 ? '' : 's'}${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
       fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${num(r.in_sample.trades)} trade${+r.in_sample.trades === 1 ? '' : 's'} on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
@@ -638,7 +641,11 @@ window.TauPage('strategy', (T) => {
     // The backtest's stored gate names say "unseen data"; with no gatekeeper record that slice is the data after the
     // split date, which these gates picked it on (display only: the stored names are unchanged).
     const gateName = (n) => splitOnly ? String(n).replace(/\bunseen data\b/g, 'data after the split date').replace(/\bunseen trades\b/g, 'trades after the split date') : n;
-    const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : rpFig(g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
+    // With no backtest gates stored, a strategy with a gatekeeper record says its checks were the held-out tests (Verdict
+    // above): "No gate results recorded… only run for finalists that made money" sat under one that passed every one.
+    const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : rpFig(g.value)}</span></li>`).join('')}</ul>` : `<p class="hint">${hasExp ? (passedAll ? 'Its checks were the held-out tests on data it never saw, and it passed every one: see Verdict above.'
+      : 'Its checks were the held-out tests on data it never saw: Verdict, above, says which it missed.')
+      : 'No gate results recorded for this strategy. Gates only run for finalists that made money in testing.'}</p>`;
     // Opened is on the page's 24-hour clock, with its date and zone (LOG_STAMP): it read "11:21 PM EDT" beside "21:36 EDT".
     const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(dateFmt(new Date(t.opened.replace('Z', ':00Z')), LOG_STAMP)) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
@@ -657,9 +664,9 @@ window.TauPage('strategy', (T) => {
       ? `After the backtest’s split date it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}. ${noPass ? 'There’s no record it was held out, so it isn’t held-out evidence.' : 'That later slice is what picked it, so it isn’t held-out evidence.'}`
       : 'It has no held-out result: its only figures are from the history it searched.')
       : oos
-      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? (passedAll ? `, and cleared the gate as one of ${num(s.hypotheses_tried)} ideas tested this run` : `, one of ${num(s.hypotheses_tried)} ideas tested this run`) : ''}.`
+      ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? (passedAll ? `, and cleared the gate as ${ofIdeas(s.hypotheses_tried)}` : `, ${ofIdeas(s.hypotheses_tried)}`) : ''}.`
       : held ? heldWords(held)
-      : `It was ${s.status === 'rejected' ? 'rejected before reaching' : 'not advanced to'} the unseen-data test${s.hypotheses_tried ? ` — one of ${num(s.hypotheses_tried)} ideas tried this run` : ''}.`;
+      : `It was ${s.status === 'rejected' ? 'rejected before reaching' : 'not advanced to'} the unseen-data test${s.hypotheses_tried ? ` — ${ofIdeas(s.hypotheses_tried, 'tried')}` : ''}.`;
     const dataBlock = s.dataset ? `<div class="paper-sub"><h4 class="paper-h">Data &amp; partitioning</h4>
           <dl class="rp-grid">
             <div><dt>Market</dt><dd>${mktLink}</dd></div>

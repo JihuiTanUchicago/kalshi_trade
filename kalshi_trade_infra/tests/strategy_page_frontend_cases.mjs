@@ -944,4 +944,52 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.ok(html.includes(`Pre-registered <b>${stamp}</b>`), 'the stamp carries its zone');
     if (f.clearTimers) f.clearTimers();
   });
+
+  // Walk 2026-10-31 (research results): a strategy with a gatekeeper record stores no backtest gates, and its Gates panel
+  // read "No gate results recorded for this strategy. Gates only run for finalists that made money in testing." under a
+  // Verdict (and a session page) saying it passed every held-out check, or naming the one it missed.
+  test(`${name}: the Gates panel of a strategy with a gatekeeper record points at its held-out checks, never "no gates ran"`, async () => {
+    const val = {classification: 'statistically_supported', n_trades: 132, net_pnl: 20.46, mean_net_return: 0.031, p_value: 0.012};
+    const passed = await open({status: 'passed', out_of_sample: null, gates: null, why_failed: [],
+      experiment: {classification: 'deployment_candidate', validation: val, holdout: {classification: 'forward_validated', n_trades: 64}}});
+    const g1 = passed.root.querySelector('#gates').innerHTML;
+    assert.match(g1, /Its checks were the held-out tests on data it never saw, and it passed every one: see Verdict above\./);
+    assert.doesNotMatch(g1, /No gate results recorded|only run for finalists/);
+    if (passed.clearTimers) passed.clearTimers();
+    const missed = await open({status: 'failed', out_of_sample: null, gates: null,
+      why_failed: [{key: 'cost_stress', label: 'Loses its edge with 1¢ worse fills', measured: '−0.40%', needed: 'above 0%'}],
+      experiment: {classification: 'inconclusive', validation: {...val, classification: 'inconclusive'}}});
+    const g2 = missed.root.querySelector('#gates').innerHTML;
+    assert.match(g2, /Its checks were the held-out tests on data it never saw: Verdict, above, says which it missed\./);
+    assert.doesNotMatch(g2, /No gate results recorded|passed every one/);
+    if (missed.clearTimers) missed.clearTimers();
+    // No gatekeeper record and no gates: the old words stay.
+    const none = await open({status: 'rejected', out_of_sample: null, gates: null, experiment: null});
+    assert.match(none.root.querySelector('#gates').innerHTML, /No gate results recorded for this strategy\./);
+    if (none.clearTimers) none.clearTimers();
+  });
+
+  // Same walk: a session that tested one idea read "one of 1 ideas tested this run" and "1 planned tests", and the
+  // equity-by-phase axis's middle tick read "−0.0×" when the range sat across zero.
+  test(`${name}: one idea, one planned test and a zero tick read in the singular and unsigned`, async () => {
+    const f = await open({status: 'passed', hypotheses_tried: 1, out_of_sample: null, gates: null,
+      experiment: {classification: 'deployment_candidate', planned_n_tests: 1, correction_method: 'fixed alpha',
+        validation: {classification: 'statistically_supported', n_trades: 150, net_pnl: 19.5, mean_net_return: 0.026,
+          equity_curve: [[1761000000, -0.01], [1761086400, 0], [1761172800, 0.01]]}}});
+    const html = main(f);
+    assert.match(html, /it made \$19\.50 after fees \(\+2\.60% of the stake per trade\), the only idea tested this run\./);
+    assert.doesNotMatch(html, /one of 1 ideas/);
+    assert.match(html, /<dd>1 planned test[\s\u00a0]·/);
+    assert.doesNotMatch(html, /1 planned tests/);
+    assert.doesNotMatch(html, /−0\.0×/);
+    assert.match(html, />0\.0×</);
+    if (f.clearTimers) f.clearTimers();
+    const rejected = await open({status: 'rejected', hypotheses_tried: 1, out_of_sample: null, gates: null, experiment: null});
+    assert.match(main(rejected), /the only idea tried this run/);
+    if (rejected.clearTimers) rejected.clearTimers();
+    const three = await open({status: 'passed', hypotheses_tried: 3, out_of_sample: null, gates: null,
+      experiment: {classification: 'deployment_candidate', planned_n_tests: 3, validation: {classification: 'statistically_supported', n_trades: 132, net_pnl: 20.46}}});
+    assert.match(main(three), /one of 3 ideas tested this run/); assert.match(main(three), /3 planned tests/);
+    if (three.clearTimers) three.clearTimers();
+  });
 }

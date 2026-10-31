@@ -589,6 +589,11 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
   // one said "Cancelled" or "Failed" without who or what stopped it.
   const RUN_STOP = { credits: 'Out of credits', user: 'Stopped by you', error: 'Stopped on an error', limit: 'Finished', complete: 'Finished' };
+  // A `stopped` session's words (the server's stop_reason), on its page and in the list.
+  const RUN_DONE = { interrupted: 'Interrupted', no_data: 'Nothing to research' };
+  // A stopped session that tested nothing reads as its page's status says: Tau's card read "Explored 0 hypotheses"
+  // and Meridian's row "0/0 passed" for a session its page called Interrupted (walk 2026-10-31). Null once it tested one.
+  const stoppedEmpty = (r) => (r.status === 'stopped' && !(+r.hypotheses_tried > 0) ? RUN_DONE[r.stop_reason] || 'Stopped' : null);
   // A session's passes as its page counts them: its counter less those a later check left uncleared
   // (`not_cleared` from the server: the one-time holdout then failed, or the diversification check held it
   // back, stamped Missed final test and Held back on its page). The row read "2 of 10 passed" over a
@@ -615,6 +620,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-hidden="true"></span>'
       : r.status === 'queued' ? 'Queued<span class="working" aria-hidden="true"></span>'
       : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
+      : stoppedEmpty(r) ? stoppedEmpty(r)
       : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${num(ok)} passed</span>`)}` : unclear(explored))
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
@@ -644,6 +650,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     // green ratio: "0/2 passed, 1 not" broke before "cleared" and read as if nothing had passed.
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Queued'
+      : stoppedEmpty(r) ? stoppedEmpty(r)
       : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${num(ok)} of ${num(r.hypotheses_tried)}"><b class="run-passed">${num(ok)}</b><span aria-hidden="true">/</span><b class="run-tested">${num(r.hypotheses_tried)}</b></span> <span class="run-denominator">passed</span></span>${fell ? `<span class="run-denominator run-fell">+${num(fell)} passed, not cleared</span>` : ''}${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
@@ -1440,7 +1447,6 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // the list said "Finished" or "Stopped by you" and this page "Done" or "Cancelled" for the same session,
   // and an interrupted one read only "Stopped". A run-until-stopped session that used up the credits is
   // read from its log (runOutOfCredits), since the run page's server answer can't tell.
-  const RUN_DONE = { interrupted: 'Interrupted', no_data: 'Nothing to research' };
   const runDoneText = (r) => r.out_of_credits ? 'Out of credits' : RUN_STOP[r.stop_reason] || RUN_DONE[r.stop_reason]
     || (r.status === 'succeeded' ? 'Finished' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Stopped by you' : 'Stopped on an error');
   // A session that ended with no strategy to list says why it stopped (the server's stop_reason,
