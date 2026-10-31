@@ -48,6 +48,12 @@ def _pct(v: float) -> str:
     return "%d%%" % round(100 * float(v))
 
 
+def _count(n: int) -> str:
+    """A trade count as every other figure on the page writes one, with thousands separators: Deploy's row said
+    "1200 trades across all its paper runs" beside its own Trades column's "1,200"."""
+    return "{:,}".format(int(n))
+
+
 def backtest_figures(result: Optional[Dict], stake: Optional[float]) -> Optional[Dict]:
     """The backtest's per-trade P&L and win rate: unseen-data figures when there are any, else the
     tested data's. None when the backtest has no trades to compare with."""
@@ -91,8 +97,8 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
     book = "On %s" % LABEL[mode]
     if n < MIN_TRADES:
         out["verdict"] = "early"
-        out["line"] = ("%s: %d completed trade%s so far %s; too early to tell against the backtest (it takes about %d)."
-                       % (book, n, "" if n == 1 else "s", RUNS[mode], MIN_TRADES))
+        out["line"] = ("%s: %s completed trade%s so far %s; too early to tell against the backtest (it takes about %d)."
+                       % (book, _count(n), "" if n == 1 else "s", RUNS[mode], MIN_TRADES))
         return out
     var = max(0.0, (sq - pnl * pnl / n) / (n - 1))
     se = math.sqrt(var / n)
@@ -102,16 +108,16 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
     size = " at this book’s trade size" if scale != 1.0 else ""
     # A paper per-trade figure says what it is net of, as every paper P&L does (customer_text.PAPER_NET).
     net = " " + PAPER_NET_SHORT if mode == "paper" else ""
-    figures = "%d trades %s: %s/trade%s vs %s %s/trade%s" % (n, RUNS[mode], _usd(per), net, vs, _usd(expect), size)
+    figures = "%s trades %s: %s/trade%s vs %s %s/trade%s" % (_count(n), RUNS[mode], _usd(per), net, vs, _usd(expect), size)
     if bt.get("win_rate") is not None:
         figures += "; won %s vs %s" % (_pct(win), _pct(bt["win_rate"]))
     band = "(%s to %s)" % (_usd(low), _usd(high))
     if per < low:
         out["verdict"] = "behind"
-        out["line"] = "Behind its backtest on %s: %s. Below the usual range for %d trades %s." % (LABEL[mode], figures, n, band)
+        out["line"] = "Behind its backtest on %s: %s. Below the usual range for %s trades %s." % (LABEL[mode], figures, _count(n), band)
     elif per > high:
         out["verdict"] = "ahead"
-        out["line"] = "Ahead of its backtest on %s: %s. Above the usual range for %d trades %s." % (LABEL[mode], figures, n, band)
+        out["line"] = "Ahead of its backtest on %s: %s. Above the usual range for %s trades %s." % (LABEL[mode], figures, _count(n), band)
     else:
         out["verdict"] = "within"
         out["line"] = "%s: %s. Within the backtest’s usual range." % (book, figures)
