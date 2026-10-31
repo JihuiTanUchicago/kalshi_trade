@@ -100,7 +100,8 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
             "Research pauses when your credits run out.") in text and "/billing\n" in text
     assert not any(s in text for s in ("req_Z9", "pm_fail", customer, "pi_", "reload-%s" % uid, "list price"))
     bell = server.notifications(ctx())
-    assert bell["unread"] >= 1 and any(i["kind"] == "reload_failed" and i["link"] == "/billing" for i in bell["items"])
+    # Stored as /billing; the bell opens it at Billing's notice of the failure (bell.shown_link).
+    assert bell["unread"] >= 1 and any(i["kind"] == "reload_failed" and i["link"] == "/billing#autorel-fail" for i in bell["items"])
 
     state = server.billing_state(ctx())
     assert state["reload_failed"]["text"] == "It couldn’t add $25.00 in credits. That card has expired. Add a current card and try again."

@@ -155,8 +155,28 @@
     const d = new Date(iso || NaN);
     if (!Number.isFinite(d.getTime())) return '';
     // Past a day it names its zone ("Oct 27, 22:26 EDT"), as the trade list's clock does: the bare clock didn't say whose.
-    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : dateFmt(d, LOG_STAMP);
-    return `<time datetime="${esc(iso)}" title="${esc(dateFmt(d, LOG_STAMP))}">${esc(shown)}</time>`;
+    // One from another year names it ("Sep 26, 2025, 09:34 EDT"): a year-old notice read as this September's.
+    const stamp = dateFmt(d, d.getFullYear() === new Date().getFullYear() ? LOG_STAMP : LOG_STAMP_YEAR);
+    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : stamp;
+    return `<time datetime="${esc(iso)}" title="${esc(stamp)}">${esc(shown)}</time>`;
+  };
+  // What a grouped bell line stands for past its own words, from the server's `more`, `alike`, `from` and
+  // `from_more` (app/services/bell.py), as text (the caller escapes it: the names are people's own). "and 3 more
+  // like this" only when all of them say the same words: over replies from three people it read as if the shown
+  // one's author had written them all, and over a strategy's earlier pause (another reason, maybe another book)
+  // as the same pause again. Replies and mentions say whom the rest are from.
+  const BELL_MORE = { comment: ['reply', 'replies', 'to this post'], mention: ['mention', 'mentions', 'on this post'],
+    paused: ['earlier pause', 'earlier pauses', 'of this strategy'], reload_failed: ['earlier failed auto-reload', 'earlier failed auto-reloads', ''] };
+  const bellMore = (n) => {
+    const k = +(n && n.more) || 0;
+    if (!k) return '';
+    if (n.alike !== false) return `and ${num(k)} more like this`;
+    const [one, many, about] = BELL_MORE[n.kind] || ['earlier notice', 'earlier notices', 'about this'];
+    const names = (Array.isArray(n.from) ? n.from : []).map(String).filter(Boolean), rest = +n.from_more || 0;
+    if (names.length && rest > 0) names.push(`${num(rest)} other${rest === 1 ? '' : 's'}`);
+    const from = !names.length ? '' : `, from ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]}`;
+    const more = n.kind === 'comment' || n.kind === 'mention' ? 'more ' : '';
+    return `and ${num(k)} ${more}${k === 1 ? one : many}${about ? ' ' + about : ''}${from}`;
   };
   // Each date format is built once and reused: toLocaleString with options builds a new formatter on
   // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks (and
@@ -177,6 +197,7 @@
   const YEAR_DAY = { year: 'numeric', month: 'short', day: 'numeric' };
   const UTC_MONTH = { year: 'numeric', month: 'short', timeZone: 'UTC' };
   const LOG_STAMP = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
+  const LOG_STAMP_YEAR = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
   const clock = (iso) => dateFmt(new Date(iso), CLOCK);
   // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in. `at` (epoch ms)
   // names the zone in force then: a market's price history across the November clock change labelled its last
@@ -1282,7 +1303,7 @@
 
   window.TauCore = Object.freeze({
     esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
-    researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
+    researchOnly, researchBadge, tone, when, bellTime, bellMore, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
     PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,

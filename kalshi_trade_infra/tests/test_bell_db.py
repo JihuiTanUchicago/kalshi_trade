@@ -90,6 +90,9 @@ def test_the_bell_lists_a_bounded_grouped_window_newest_first(conn):
     items = bell.grouped(rows)
     assert len(items) == bell.SHOWN
     assert [(n["body"], n["more"]) for n in items[:2]] == [("Reply 149", 4), ("Reply 144", 4)]
+    # The endpoint reads one row past the window, in the same statement, to say older notices exist.
+    assert bell.older(repo.list_notifications(cur, uid, limit=bell.READ_ROWS + 1), items) is True
+    assert bell.older(rows[:bell.SHOWN * 5], bell.grouped(rows[:bell.SHOWN * 5])) is False
     assert all(not n["read"] for n in items)
     repo.mark_notifications_read(cur, uid)
     assert repo.count_unread_notifications(cur, uid) == 0

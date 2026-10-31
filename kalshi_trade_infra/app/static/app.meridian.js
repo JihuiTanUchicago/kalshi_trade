@@ -8,7 +8,7 @@
   // the page runs before this bundle. Each keeps its name here, so the code below calls it as before.
   const {
     esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
-    researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
+    researchOnly, researchBadge, tone, when, bellTime, bellMore, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
     PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
@@ -547,13 +547,14 @@
   // gets focus back on its new copy: the repaint dropped a keyboard user at the top of the page, Tab going from
   // the first link. Another view of one page (Explore's list to a market and back, /explore?m=) is a new page,
   // and its heading takes focus, as a page change does. `was`: the control that had focus, by its id or data-*.
-  let shownPath = null, shownAt = null;
+  let shownPath = null, shownAt = null, shownHash = '';
   function focusKey(el) {
     if (!el || el === document.body || !el.getAttribute || (root.contains && !root.contains(el)) || (el.closest && el.closest('#autopilot-float'))) return null;
     if (el.id) return /^[A-Za-z][\w-]*$/.test(el.id) ? '#' + el.id : null;
     const data = Object.keys(el.dataset || {}).map((k) => `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}="${String(el.dataset[k]).replace(/["\\\]]/g, '')}"]`).join('');
     return data ? el.tagName.toLowerCase() + data : null;
   }
+  const ARRIVE_AT = new Set(['since-deploying', 'autorel-fail']);
   function pageArrived(path, was) {
     const h = root.querySelector('h1'), tab = root.querySelector('.services [aria-current="page"]');
     // The signed-out landing keeps the plain product name; its headline is not a page name. The Terms and Privacy
@@ -562,8 +563,19 @@
     const name = root.querySelector('.services, .legal') ? plain((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
     document.title = name ? `${clipWords(name, 59)}${SEP}Tau` : 'Tau';
     const at = path + location.search, again = shownPath === path, moved = shownAt !== null && shownAt !== at;
-    shownPath = path; shownAt = at;
+    const hash = location.hash || '', newHash = hash !== shownHash;
+    shownPath = path; shownAt = at; shownHash = hash;
     const a = document.activeElement, top = pageStart();
+    // A bell notice opens its page at what it is about (app/services/bell.py adds it to the link: a pause at the
+    // strategy's Since deploying, a failed auto-reload at Billing's notice of it). On a phone both sat screens
+    // below the heading that took focus. A page without that part (none deployed, the notice cleared) starts at its heading.
+    // The same page drawn again keeps its place, unless a notice about it was opened there (its hash is new).
+    const spot = (!again || newHash) && !(a && a !== document.body && a.isConnected !== false) && ARRIVE_AT.has(hash.slice(1)) ? root.querySelector(hash) : null;
+    if (spot && spot.focus && !(spot.closest && spot.closest('[hidden]'))) {
+      if (spot.getAttribute('tabindex') == null) spot.setAttribute('tabindex', '-1');
+      spot.focus({ preventScroll: true }); if (spot.scrollIntoView) spot.scrollIntoView({ block: 'start' });
+      return;
+    }
     if (!again && !moved || (a && a !== document.body && a.isConnected !== false)) return;
     const back = again && was ? root.querySelector(was) : null;
     // The same page drawn again (Try again on a page that didn't load) with the control that had focus gone: the
@@ -836,12 +848,13 @@
     };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
     // A notice the server grouped (the same kind about the same page, in a row) says how many more it
-    // stands for. One without a page to open is plain text, not a link to nowhere. One about a strategy
-    // that is no longer the user's (the server's `gone`: deleted since, as a shared copy can be) says so,
+    // stands for, and whether they say the same (bellMore: replies from other people say whom from). One
+    // without a page to open is plain text, not a link to nowhere. One about a strategy that is no longer the user's (the server's `gone`: deleted since, as a shared copy can be) says so,
     // as text: its link opened "Not found" (walk 2026-10-31).
     const BELL_GONE = 'This strategy is no longer in your list.';
+    const BELL_OLDER = 'Older notices aren\u2019t listed here.';
     const item = (n) => {
-      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.gone ? `<span class="notif-more">${BELL_GONE}</span>` : ''}${n.more ? `<span class="notif-more">and ${num(n.more)} more like this</span>` : ''}${bellTime(n.created_at)}`;
+      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.gone ? `<span class="notif-more">${BELL_GONE}</span>` : ''}${n.more ? `<span class="notif-more">${esc(bellMore(n))}</span>` : ''}${bellTime(n.created_at)}`;
       return !n.gone && /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
     };
     const paint = (d) => {
@@ -849,7 +862,8 @@
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${num(d.unread)} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${num(d.unread)} new</span>` : '');
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
-      list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : `<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or ${liveOpen() ? 'is ready for live' : 'clears every paper-to-live check'}, and if auto-reload can\u2019t charge your card.</p>`;
+      // It lists the newest only: with older notices past them (the server's `older`), it says so under them.
+      list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') + (d.older ? `<p class="bell-empty bell-older">${BELL_OLDER}</p>` : '') : `<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or ${liveOpen() ? 'is ready for live' : 'clears every paper-to-live check'}, and if auto-reload can\u2019t charge your card.</p>`;
     };
     // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
     // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.

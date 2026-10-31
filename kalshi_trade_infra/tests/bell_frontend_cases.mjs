@@ -18,7 +18,7 @@ const notesRead = f => f.requests.filter(({path}) => path === '/api/notification
 const post = (id, over = {}) => ({id, body: 'Post ' + id, author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z',
   mine: true, comments: 1, reactions: [], ...over});
 
-export function bellCases({name, frontend}) {
+export function bellCases({name, frontend, detailStrategy}) {
   const dashboard = (notifications, extra = () => undefined) => frontend({notifications, fetchImpl: (path) => {
     const hit = extra(path);
     if (hit) return hit;
@@ -129,6 +129,89 @@ export function bellCases({name, frontend}) {
     // Counts carry their thousands separator, on screen and to a screen reader.
     assert.equal(wrap.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1,234 unread');
     assert.match(wrap.querySelector('.bell-head').innerHTML, /<span class="bell-new">1,234 new<\/span>/);
+  });
+
+  // Walk 2026-10-31: "Bob replied to your post. and 3 more like this" stood for replies from Dana, Carol and Bob, and
+  // a live pause's line for an earlier paper pause with another reason. "like this" only when they say the same.
+  test(`${name}: a grouped line says "more like this" only when they say the same, and whom replies and mentions are from`, async () => {
+    const at = ago(60e3), row = (id, kind, more, over) => ({id, kind, body: `Notice ${id}.`, link: `/x/${id}`, created_at: at, read: true, more, ...over});
+    const f = dashboard({unread: 0, items: [
+      row(9, 'comment', 3, {alike: false, from: ['Dana <b>x</b>', 'Carol', 'Bob'], from_more: 2}),
+      row(8, 'mention', 1, {alike: false, from: ['Bob'], from_more: 0}),
+      row(7, 'comment', 1, {alike: true, from: ['Carol'], from_more: 0}),
+      row(6, 'paused', 1, {alike: false, from: [], from_more: 0}),
+      row(5, 'reload_failed', 2, {alike: false, from: [], from_more: 0}),
+      row(4, 'share', 1, {alike: false, from: [], from_more: 0}),
+      row(3, 'comment', 2, {alike: false, from: [], from_more: 0}),
+      row(2, 'passed', 0, {alike: true, from: [], from_more: 0}),
+    ]});
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const more = f.root.querySelectorAll('#bell-list .notif').map((n) => (n.querySelector('.notif-more') || {innerHTML: ''}).innerHTML);
+    assert.deepEqual(more, [
+      'and 3 more replies to this post, from Dana &lt;b&gt;x&lt;/b&gt;, Carol, Bob and 2 others',
+      'and 1 more mention on this post, from Bob',
+      'and 1 more like this',
+      'and 1 earlier pause of this strategy',
+      'and 2 earlier failed auto-reloads',
+      'and 1 earlier notice about this',
+      'and 2 more replies to this post',
+      '']);
+  });
+
+  test(`${name}: a list with older notices past its lines says so under them, and an old notice names its year`, async () => {
+    const old = ago(400 * 86400e3), recent = ago(2 * 86400e3);
+    const year = (iso) => String(new Date(iso).getFullYear()), thisYear = String(new Date().getFullYear());
+    const list = async (d) => {
+      const f = dashboard(d); f.location.pathname = '/';
+      await f.render(); await settle();
+      return f.root.querySelector('#bell-list');
+    };
+    let el = await list({unread: 0, older: true, items: [
+      {id: 2, kind: 'deployed', body: 'Recent.', link: '/strategies/2', created_at: recent, read: true, more: 0},
+      {id: 1, kind: 'deployed', body: 'Old.', link: '/strategies/1', created_at: old, read: true, more: 0}]});
+    const older = el.querySelector('.bell-older');
+    assert.ok(older);
+    assert.equal(older.textContent, 'Older notices aren’t listed here.');
+    assert.equal(older.tagName, 'P');
+    const times = el.querySelectorAll('a.notif time');
+    assert.match(times[1].textContent, new RegExp(`\\b${year(old)}\\b`));
+    assert.match(times[1].getAttribute('title'), new RegExp(`\\b${year(old)}\\b`));
+    if (year(recent) === thisYear) assert.doesNotMatch(times[0].textContent, new RegExp(`\\b${thisYear}\\b`));  // this year's: as before
+    el = await list({unread: 0, older: false, items: [{id: 2, kind: 'deployed', body: 'Recent.', link: '/strategies/2', created_at: recent, read: true, more: 0}]});
+    assert.equal(el.querySelector('.bell-older'), null);
+    el = await list({unread: 0, older: true, items: []});  // empty is empty, whatever it says
+    assert.equal(el.querySelector('.bell-older'), null);
+  });
+
+  test(`${name}: a pause notice opens its strategy at Since deploying, focused, and a page without it at its heading`, async () => {
+    if (!detailStrategy) return;
+    const dep = {id: 3, mode: 'live', status: 'paused', status_reason: 'Live is down $4.20 over its first 6 closed trades.', realized_pnl: -4.2,
+      closed_trades: 6, open_positions: 0, created_at: '2026-10-18T08:00:00Z'};
+    const open = async (deployments, hash) => {
+      const f = frontend({fetchImpl: (path) => path === '/api/strategies/42' ? response(detailStrategy({deployments})) : response({deployments: [], open_positions: []})});
+      f.location.pathname = '/deploy';
+      await f.render(); await settle();
+      f.location.pathname = '/strategies/42'; f.location.hash = hash;  // the bell's link, as go() opens it
+      await f.render(); await settle();
+      return f;
+    };
+    let f = await open([dep], '#since-deploying');
+    const spot = f.root.querySelector('#since-deploying');
+    assert.ok(spot, 'the strategy lists its deployments');
+    assert.equal(spot.focusOptions && spot.focusOptions.preventScroll, true, 'focus lands on what the notice is about');
+    assert.equal(spot.getAttribute('tabindex'), '-1');
+    assert.equal(f.root.querySelector('main h1').focusOptions, undefined, 'not on the heading screens above it');
+    if (f.clearTimers) f.clearTimers();
+    // Deployed no more (removed since): the page starts at its heading, as any page change does.
+    f = await open([], '#since-deploying');
+    assert.equal(f.root.querySelector('#since-deploying'), null);
+    assert.equal(f.root.querySelector('main h1').focusOptions.preventScroll, true);
+    if (f.clearTimers) f.clearTimers();
+    // Only the bell's parts are taken: another hash on the page leaves focus to the heading.
+    f = await open([dep], '#main');
+    assert.equal(f.root.querySelector('main h1').focusOptions.preventScroll, true);
+    if (f.clearTimers) f.clearTimers();
   });
 
   test(`${name}: a notice that arrives while the page sits open reaches the bell within a minute, without a reload`, async () => {
