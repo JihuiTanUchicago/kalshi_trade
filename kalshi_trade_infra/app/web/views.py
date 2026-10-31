@@ -163,7 +163,9 @@ def _with_gate_lines(events: List[Dict], not_cleared: int = 0, not_cleared_at: O
             fell, at = not_cleared, ev.get("created_at")
             if ev.get("kind") == "step" and not_cleared_at is not None and at is not None:
                 fell = sum(1 for t in not_cleared_at if t is not None and t <= at)
-            note = gate_explain.step_note(ev.get("kind"), ev.get("message"), fell)
+            # Its housekeeping lines (playbook, long-term memory, the screening model, a reclaim) too.
+            note = gate_explain.step_note(ev.get("kind"), ev.get("message"), fell) or (
+                customer_text.step_words(ev.get("message")) if ev.get("kind") == "step" else None)
             if note:
                 data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
                 data["note"] = note
