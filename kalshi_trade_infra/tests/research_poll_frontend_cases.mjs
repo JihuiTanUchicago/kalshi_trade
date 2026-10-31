@@ -132,4 +132,26 @@ export function researchPollCases({name, frontend}) {
     assert.doesNotMatch(top, /[Hh]ypothes/);
     f.clearTimers();
   });
+  test(`${name}: each session row's Created date carries its day, clock and zone`, async () => {
+    // Walked 2026-10-31: the rows read "Oct 28" in no zone, beside session pages whose clocks name theirs.
+    const runs = [run({id: 8, created_at: '2026-10-25T08:00:00Z'}), run({id: 7, created_at: 'not a date'})];
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/runs')) return response({runs, counts, policy: null, totals: {tried: 9, passed: 1}, v: 'v1'});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    const html = f.root.querySelector('#runs').innerHTML;
+    const stamp = new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'})
+      .format(new Date('2026-10-25T08:00:00Z'));
+    assert.match(stamp, /\d\d:\d\d \S+$/);  // the zone, last
+    const day = new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric'}).format(new Date('2026-10-25T08:00:00Z'));
+    assert.ok(html.includes(`<time datetime="2026-10-25T08:00:00Z" title="${stamp}">${day}</time>`), html);
+    // A row with no readable date says none, not "Invalid Date".
+    assert.doesNotMatch(html, /Invalid Date|NaN/);
+    f.clearTimers();
+  });
 }
