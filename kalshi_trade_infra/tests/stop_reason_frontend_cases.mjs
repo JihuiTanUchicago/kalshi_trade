@@ -91,7 +91,7 @@ export function stopReasonCases({name, frontend}) {
     const said = f.root.querySelector('#rstatus .said');
     if (said) {  // Tau's sentence over the figures
       assert.match(words(said.innerHTML), /kept 1 that beat every gate \( 2 more passed but weren’t cleared to trade\)/);
-      assert.match(figs, /\b5(\.0)?% of ideas tested/);  // 1 of 20, not 3 of 20
+      assert.match(figs, /\b5(\.0)?% of 20 ideas/);  // 1 of 20, not 3 of 20
       // It says what it is a rate of: Strategies' pass rate is of the strategies it lists, a different figure.
       assert.doesNotMatch(figs, /pass rate/);
     }
@@ -120,7 +120,7 @@ export function stopReasonCases({name, frontend}) {
     assert.match(figs, /Passed[^0-9]*4 all time/);
     const said = f.root.querySelector('#rstatus .said');
     if (said) assert.match(words(said.innerHTML), /researching now\. All time: 37 ideas tested · 4 through every gate/);  // Tau's line beside "researching now"
-    else assert.match(f.root.querySelector('#rfigs').getAttribute('title'), /of 37 tested, all time/);
+    else assert.match(f.root.querySelector('#rfigs').getAttribute('title'), /^10\.8% of 37 ideas passed, all time$/);
     f.clearTimers();
   });
 

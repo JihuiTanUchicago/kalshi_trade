@@ -1371,17 +1371,32 @@
   // A list repaints row by row: while its rows are the same ones in the same order, only a row whose
   // markup changed is rewritten (a running session's spend moved, and the other 49 sessions stay as they
   // are). `rows` is [[key, markup]], each markup one element. Any other change rewrites the whole list.
+  // Keyboard focus in a row the repaint rewrites goes back to the same place in that row's new markup, found by the
+  // row's key and the element's position in it: a session row whose "40m ago" or "Queued 30 min" moved on a minute
+  // was rewritten and focus on it fell to the page's body, once a minute (walk 2026-10-31). A row the repaint took
+  // away leaves focus where it fell.
   const paintedRows = new WeakMap();
+  const rowPath = (row, a) => { const path = []; for (let n = a; n && n !== row; n = n.parentElement) path.unshift([...n.parentElement.children].indexOf(n)); return path; };
   function paintRows(el, rows, empty) {
     if (!el) return;
     const keys = rows.map(([k]) => k).join(' '), was = paintedRows.get(el);
+    const a = document.activeElement, at = was && a && a !== el && el.contains(a) ? [...el.children].findIndex((c) => c.contains(a)) : -1;
+    const hold = at >= 0 && was.ks ? { key: was.ks[at], path: rowPath(el.children[at], a) } : null;
+    const back = () => {
+      if (!hold || a.isConnected) return;
+      const i = rows.findIndex(([k]) => String(k) === hold.key);
+      const t = i >= 0 ? hold.path.reduce((n, j) => (n && n.children[j]) || null, el.children[i]) : null;
+      if (t && t.focus) t.focus({ preventScroll: true });
+    };
     if (!rows.length || !was || was.keys !== keys || el.children.length !== rows.length) {
-      paintedRows.set(el, rows.length ? { keys, html: rows.map(([, h]) => h) } : null);
+      paintedRows.set(el, rows.length ? { keys, ks: rows.map(([k]) => String(k)), html: rows.map(([, h]) => h) } : null);
       paint(el, rows.length ? rows.map(([, h]) => h).join('') : empty);
+      back();
       return;
     }
     rows.forEach(([, h], i) => { if (was.html[i] !== h) { was.html[i] = h; el.children[i].outerHTML = h; } });
     painted.set(el, was.html.join(''));
+    back();
   }
   // The dashboard and Deploy board polls send back the version of their last full answer (?v=). While the
   // answer is unchanged the server says {same: true} with only what moves between writes: each open

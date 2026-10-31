@@ -463,7 +463,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         const said = running || paused
           ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> queued` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
           : tried
-            ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+            ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept ${+passed ? `<em>${num(passed)}</em>` : 'none'} that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
             // Nothing tested yet: it repeated the page's subtitle word for word ("describe an idea, it writes strategies
             // and tests each on data it never saw"), under a form that already asks for the idea.
             // With autopilot on it is about to start one itself: "Describe an idea to start your first session" read as
@@ -476,10 +476,10 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Queued', num(queued)) +
           // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
           // each says its window.
-          fig('Ideas tested', num(tried), { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), num(passed), { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
+          fig('Ideas tested', num(tried), { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), num(passed), { small: [ALL_TIME, passShare(passed, tried), fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
       } else {
         paint(root.querySelector('#research-status'), fig('Running', num(running)) + (paused ? fig('Paused', num(paused)) : '') + fig('Queued', num(queued)));
-        const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested, all time` : 'No strategies tested';
+        const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${upFirst(passShare(passed, tried))} passed, all time` : 'No strategies tested';
         // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
         // each says its window.
         paint(rfigs, fig(gl('Passed', 'gate'), num(passed), { small: [ALL_TIME, fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }) + fig('Tested', num(tried), { small: ALL_TIME }));
@@ -605,12 +605,25 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // A stopped session that tested nothing reads as its page's status says: Tau's card read "Explored 0 hypotheses"
   // and Meridian's row "0/0 passed" for a session its page called Interrupted (walk 2026-10-31). Null once it tested one.
   const stoppedEmpty = (r) => (r.status === 'stopped' && !(+r.hypotheses_tried > 0) ? RUN_DONE[r.stop_reason] || 'Stopped' : null);
+  // A finished session that tested no idea (the agent came up with none it could test) says so: Tau's card read
+  // "Finished · 0 of 0 passed" and Meridian's row "0/0 passed" (walk 2026-10-31).
+  const finishedEmpty = (r) => r.status === 'succeeded' && !(+r.hypotheses_tried > 0) && !(+r.strategies_passed > 0);
   // A session's passes as its page counts them: its counter less those a later check left uncleared
   // (`not_cleared` from the server: the one-time holdout then failed, or the diversification check held it
   // back, stamped Missed final test and Held back on its page). The row read "2 of 10 passed" over a
   // session whose page said "Passed 1" and "1 not cleared".
   // The Research headline's window: its totals count every session ever (the server's totals).
   const ALL_TIME = 'all time';
+  // The share of the ideas tested that passed, beside the Passed figure: "0.0% of ideas tested" under a session's
+  // three tested ideas read as if none had been tested (walk 2026-10-31). It names how many it is a share of, says
+  // "none of" for nothing passed, and "under 0.1% of" for a share that rounds to 0.0%. '' with nothing tested. Display only.
+  const passShare = (passed, tried) => {
+    const p = +passed || 0, t = +tried || 0, of = `${num(t)} idea${t === 1 ? '' : 's'}`;
+    if (!(t > 0)) return '';
+    if (!(p > 0)) return `none of ${of}`;
+    return p / t < 0.0005 ? `under 0.1% of ${of}` : `${pct(p / t, false)} of ${of}`;
+  };
+  const upFirst = (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1);
   const runPassed = (r) => {
     const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
     return { ok: all - fell, fell };
@@ -631,6 +644,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     const explored = `Tested ${num(r.hypotheses_tried)} idea${+r.hypotheses_tried === 1 ? '' : 's'}`;
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-hidden="true"></span>'
       : r.status === 'queued' ? 'Queued<span class="working" aria-hidden="true"></span>'
+      : finishedEmpty(r) ? `${why ? why + SEP : ''}no ideas tested`
       : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
       : stoppedEmpty(r) ? stoppedEmpty(r)
       // Led by why it stopped, as its page's status says ("Interrupted"): the card said only "Tested 3 ideas" (walk 2026-10-31).
@@ -664,6 +678,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Queued'
       : stoppedEmpty(r) ? stoppedEmpty(r)
+      : finishedEmpty(r) ? `<span class="run-denominator">No ideas tested</span>${why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${num(ok)} of ${num(r.hypotheses_tried)}"><b class="run-passed">${num(ok)}</b><span aria-hidden="true">/</span><b class="run-tested">${num(r.hypotheses_tried)}</b></span> <span class="run-denominator">passed</span></span>${fell ? `<span class="run-denominator run-fell">+${num(fell)} passed, not cleared</span>` : ''}${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : r.status === 'stopped' ? `<span class="run-why">${RUN_DONE[r.stop_reason] || 'Stopped'}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
@@ -860,7 +875,10 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         // A PASSED hypothesis has a strategy page: Tau links its title, its stamp and an explicit "View
         // strategy →" in the verdict row; Meridian only its title, the verdict being status text (one destination
         // needs no three links). VOID/REJECTED have no page, so stay unlinked.
-        const href = cls === 'pass' && dd.strategy_id ? `/strategies/${dd.strategy_id}` : '';
+        // One the user deleted since (`gone`, marked by viewRun from the session's strategies) has no page: its
+        // "View strategy →" opened "Strategy not found" (walk 2026-10-31). It says so in place of the link.
+        const href = cls === 'pass' && dd.strategy_id && !dd.gone ? `/strategies/${dd.strategy_id}` : '';
+        const goneSaid = dd.gone ? `<span class="hx-vtext hx-gone">${GONE_SAID}</span>` : '';
         if (tau) stampEl.innerHTML = href ? `<a href="${href}">${label}</a>` : label;
         else stampEl.textContent = label;
         if (href) {
@@ -877,8 +895,8 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         reviewEl.hidden = false;
         // A space before "View strategy →": it ran into the sentence ("…it never saw.VIEW STRATEGY →"), and a
         // space, unlike a margin, collapses when the link wraps to a line of its own.
-        reviewEl.insertAdjacentHTML('beforeend', tau ? `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? ` <a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`
-          : `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', tau ? `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? ` <a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}${goneSaid}</div>`
+          : `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${goneSaid}</div>`);
       },
       // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
       // to what the user runs) land on its own card; they were loose lines stamped VOID.
@@ -1520,9 +1538,12 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // into its next ideas" all the same (walk 2026-10-31).
   const apNext = (r, tested = true) => +r.by_autopilot && !r.example ? ` <span data-ap-next${S.me && S.me.user && S.me.user.autopilot ? '' : ' hidden'}>${tested ? 'The autopilot takes these results into its next ideas and starts its next session on its own.' : 'The autopilot starts its next session on its own.'}</span>` : '';
   const runTested = (r, strategies) => (strategies || []).length > 0 || +r.hypotheses_tried > 0;
-  function runNext(r, strategies) {
+  // `gonePassed`: the session's passes the user deleted since ({title}), which no list shows. Its Passed figure
+  // counts them, and the line under it said "Nothing passed this time" beside "Passed 1" (walk 2026-10-31).
+  function runNext(r, strategies, gonePassed = []) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
     const passed = (strategies || []).filter(cleared);
+    const goneLine = gonePassed.length ? `${gonePassed.slice(0, 3).map((g) => `<b>${esc(g.title)}</b>`).join(', ')}${gonePassed.length > 3 ? ` and ${num(gonePassed.length - 3)} more` : ''} passed, but you deleted ${gonePassed.length === 1 ? 'it' : 'them'} since.` : '';
     const fell = (strategies || []).filter(laterMissed), held = (strategies || []).filter(heldBack);
     const named = (xs) => xs.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
     const fellLine = [fell.length ? `${named(fell)} passed ${fell.length === 1 ? 'its' : 'their'} first test on unseen data, then missed the one-time final test (${esc(lcFirst(fell[0].later_missed[0].label))}).` : '',
@@ -1542,8 +1563,9 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
-      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}${fellLine ? ' ' + fellLine : ''}</p>`;
+      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}${fellLine ? ' ' + fellLine : ''}${goneLine ? ' ' + goneLine : ''}</p>`;
     }
+    if (goneLine && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${credits}${goneLine}${fellLine ? ' ' + fellLine : ''}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
     // The server's reason is written for the customer; one that already says the session stopped
     // stands alone ("…stopped on an error. …so the session stopped.").
@@ -1574,6 +1596,8 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // in plain words. Each idea's outcome sat only in the log, a scroll box that held 200+ lines on a
   // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold. A later
   // check its status leaves out (`verdict`) stamps it instead, as its strategy page does.
+  const GONE_SAID = 'You deleted this strategy since, so it has no page now.';
+  const STRATS_READ = 500;  // the most strategies the session page's read lists (strategy_repository.list_strategies' limit)
   const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'],
     missed_final: ['rej', 'Missed final test'], held_back: ['rej', 'Held back'] };
   // An idea the agent dropped while building it never becomes a strategy, and one still being tested has
@@ -1581,10 +1605,13 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
   // "still being tested" until the session ended (walk 2026-10-30: "3 more still being tested" over a log that
   // dropped all three).
-  const ideasGap = (n, listed, active, dropped = 0) => {
-    const gap = n - listed, drop = active ? Math.min(dropped, Math.max(gap, 0)) : gap, testing = gap - drop;
-    if (gap <= 0) return '';
-    return (drop ? `${SEP}${num(drop)} more dropped before testing` : '') + (testing ? `${SEP}${num(testing)} ${drop ? '' : 'more '}still being tested` : '');
+  // A strategy the user deleted since is in no list either (`gone`, a finished session's only): it isn't one dropped
+  // before testing. A session whose pass was deleted read "1 more dropped before testing" (walk 2026-10-31).
+  const ideasGap = (n, listed, active, dropped = 0, gone = 0) => {
+    const gap = n - listed - gone, drop = active ? Math.min(dropped, Math.max(gap, 0)) : gap, testing = gap - drop;
+    const del = gone > 0 ? `${SEP}${num(gone)} deleted since` : '';
+    if (gap <= 0) return del;
+    return (drop ? `${SEP}${num(drop)} more dropped before testing` : '') + (testing ? `${SEP}${num(testing)} ${drop ? '' : 'more '}still being tested` : '') + del;
   };
   // A deployed pass's line, with its paper record since deploying when the session's data carries one (a card's `real`
   // in paper mode, as the Strategies list has it): "Already deployed" alone sent a reader to Deploy to learn whether it
@@ -1631,6 +1658,11 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     let after = 0, tried = 0, dropped = 0, runActive = true, loaded = false, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
+    // strategy id -> {status, title} of every strategy its log judged (the server's `earlier.judged` for the lines not
+    // sent): one that isn't among the session's strategies any more was deleted since (`goneIds`).
+    const judged = new Map();
+    let goneIds = new Set();
+    const markGone = (events) => (events || []).forEach((ev) => { if (ev.kind === 'verdict' && ev.data && goneIds.has(ev.data.strategy_id)) ev.data.gone = true; });
     // Meridian's: a long session's strategy cards (40+, a screen each on a phone) buried the agent log under
     // them: the first few show, the rest behind "Show all". On a phone eight cards were still ~2,000px
     // (a run-until-stopped session's "Research progress" and log sat four screens down), so it shows four.
@@ -1698,6 +1730,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         (pre.pauses || []).forEach((ev) => runPauses(pauses, ev));
         if (pre.out_of_credits) outOfCredits = true;
         (pre.why_failed || []).forEach(([sid, why]) => whyBySid.set(sid, why));
+        (pre.judged || []).forEach(([sid, status, title]) => { if (!judged.has(sid)) judged.set(sid, { status, title }); });
       }
       (d.events || []).forEach((ev) => {
         after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
@@ -1706,7 +1739,16 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         const dd = ev.data || {};
         if (ev.kind === 'verdict' && dd.status === 'abandoned') dropped++;
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
+        if (ev.kind === 'verdict' && dd.strategy_id != null && dd.status && dd.status !== 'abandoned' && !judged.has(dd.strategy_id)) judged.set(dd.strategy_id, { status: dd.status, title: dd.title || ev.message });
       });
+      // Judged strategies no longer among the session's own: the user deleted them. A finished session's only: a running
+      // one's newest strategy can land between the server's two reads and would read as deleted.
+      // Nor when the server's list may be cut short (list_strategies reads at most STRATS_READ): an older one is then
+      // only unlisted.
+      const have = new Set((d.strategies || []).map((s) => s.id));
+      const gone = active || have.size >= STRATS_READ ? [] : [...judged].filter(([sid]) => !have.has(sid)).map(([sid, g]) => ({ sid, ...g }));
+      goneIds = new Set(gone.map((g) => g.sid));
+      markGone(d.events);
       r.out_of_credits = outOfCredits && !active;
       // The 2s poll repaints only what changed: rewriting the same title and figures each time made
       // the phone lay the page out again (and the autopilot pill re-check what it covers).
@@ -1738,7 +1780,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       repaintFigs();
       if (!active) askUsual(r);
       const next = root.querySelector('#runnext');
-      paint(next, active ? '' : runNext(r, d.strategies));
+      paint(next, active ? '' : runNext(r, d.strategies, gone.filter((g) => g.status === 'passed')));
       // Painted only when it changes: a finished run still polls, and a repaint would undo the
       // autopilot line's "on" note or a press in flight. Tau's foot is under the log; Meridian's under the
       // strategy rows, but the example's, which lists none, under its log.
@@ -1753,10 +1795,12 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         // "Tested 5" sat over "Strategies 4" with nothing to say why.
         // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
         // "still being tested" until the session ended (walk 2026-10-30).
-        const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length;
+        // A strategy the user deleted since isn't one dropped before testing either (`gone`, as Tau's ideasGap).
+        const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length - gone.length;
         const dropN = active ? Math.min(dropped, Math.max(gapN, 0)) : gapN, testN = gapN - dropN;
-        const gap = gapN <= 0 ? '' : dropN ? `${num(dropN)} more idea${dropN === 1 ? '' : 's'} dropped before testing${testN ? `, ${num(testN)} still being tested` : ''}.`
-          : `${num(gapN)} more idea${gapN === 1 ? '' : 's'} still being tested.`;
+        const gap = [gapN <= 0 ? '' : dropN ? `${num(dropN)} more idea${dropN === 1 ? '' : 's'} dropped before testing${testN ? `, ${num(testN)} still being tested` : ''}.`
+          : `${num(gapN)} more idea${gapN === 1 ? '' : 's'} still being tested.`,
+        gone.length ? `${num(gone.length)} you deleted since ${gone.length === 1 ? 'isn’t' : 'aren’t'} listed.` : ''].filter(Boolean).join(' ');
         // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
         // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
         // A deployed one adds its paper record since deploying when the session's data carries one (a card's `real` in
@@ -1807,12 +1851,23 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       runControls(root.querySelector('#runact'), id, r.status, load);
       if (tau) {
         // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
-        const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active, dropped);
+        const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active, dropped, gone.length);
         const ideasKey = runIdeas(d.strategies, whyBySid, false, gap);
-        if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]'), gap); }
+        // A new idea or verdict rewrites the list, and focus on an idea's title (or "Show all") fell to the page's body
+        // on a live session (walk 2026-10-31): it goes back to the same idea's title, link or fold in the new list.
+        if (ideasEl.dataset.h !== ideasKey) {
+          const a = document.activeElement, inIdeas = a && a !== ideasEl && ideasEl.contains(a);
+          const li = inIdeas && a.closest('li'), sid = li && li.querySelector('[data-goto]') ? li.querySelector('[data-goto]').dataset.goto : null;
+          const tag = inIdeas ? a.tagName.toLowerCase() : '';
+          const was = !inIdeas ? null : sid != null ? { sid, tag, nth: [...li.querySelectorAll(tag)].indexOf(a) } : tag === 'summary' ? { summary: true } : null;
+          ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]'), gap);
+          const row = was && was.sid != null ? (ideasEl.querySelector(`[data-goto="${was.sid}"]`) || {}).parentElement : null;
+          const twin = !was ? null : was.summary ? ideasEl.querySelector('summary') : row ? row.querySelectorAll(was.tag)[was.nth] : null;
+          if (twin && twin.focus) twin.focus({ preventScroll: true });
+        }
       }
       stream.push(d.events);
-      if (pre) stream.older(pre.before, (before) => api(`/api/runs/${id}?before=${before}`));
+      if (pre) stream.older(pre.before, (before) => api(`/api/runs/${id}?before=${before}`).then((x) => { markGone(x && x.events); return x; }));
       stream.state(active ? r.status : 'done', r.wait, active ? '' : runDoneText(r));
       if (pre) obs.seen(pre.kinds, pre.dreamed);
       obs.push(d.events, r.status, r);

@@ -97,7 +97,7 @@ def _figures(events, pre=None):
            "why": {sid: w for sid, w in pre.get("why_failed", [])},
            "pauses": [(p["kind"], str(p["created_at"])) for p in pre.get("pauses", [])],
            "out_of_credits": pre.get("out_of_credits", False), "dreamed": pre.get("dreamed", False),
-           "kinds": set(pre.get("kinds", []))}
+           "kinds": set(pre.get("kinds", [])), "judged": {sid: (st, t) for sid, st, t in pre.get("judged", [])}}
     for ev in events:
         d = ev.get("data") or {}
         fig["tried"] += ev["kind"] == "hypothesis"
@@ -109,6 +109,9 @@ def _figures(events, pre=None):
             fig["dropped"] += 1
         if ev["kind"] == "verdict" and d.get("strategy_id") is not None and d.get("why_failed"):
             fig["why"][d["strategy_id"]] = d["why_failed"]
+        # The strategies its log judged (the page tells one deleted since from an idea dropped before testing).
+        if ev["kind"] == "verdict" and d.get("strategy_id") is not None and d.get("status") not in (None, "abandoned"):
+            fig["judged"].setdefault(d["strategy_id"], (d["status"], d.get("title") or ev["message"]))
         if ev["kind"] in ("hypothesis", "challenger", "verdict", "paused", "resumed"):
             fig["kinds"].add("step" if ev["kind"] == "verdict" and not d.get("title") else ev["kind"])
     # A strategy's missed checks as the pages show them: the first whole, and how many. The loop panel's stages
