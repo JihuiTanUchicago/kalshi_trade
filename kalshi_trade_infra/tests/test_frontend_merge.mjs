@@ -941,6 +941,21 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
   }
 });
 
+test('with live trading closed the dashboard\'s not-connected live line says a key shows real cash, not that it trades', async () => {
+  // Funds walk 2026-10-31: with the server's live switch closed, "Connect your Kalshi account on Funds to trade real
+  // money" promised what a key can't do yet; it reads the real cash and places nothing. Open, the wording is unchanged.
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response(apOn);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.live_trading_available = false;
+  await f.viewDashboard(); await flush();
+  const body = f.root.querySelector('#boardbody').innerHTML;
+  assert.match(body, /on <a href="\/funds#connect-kalshi">Funds<\/a> to see your real cash at Kalshi\. Live trading isn\u2019t open yet, so Tau places no live trades/);
+  assert.doesNotMatch(body, /to trade real money/);
+});
+
 test('an empty Deployed box names its next step "research an idea yourself", as Meridian does, with or without a session yet', async () => {
   for (const own_sessions of [false, true]) {
     const f = frontend({fetchImpl: path => {
