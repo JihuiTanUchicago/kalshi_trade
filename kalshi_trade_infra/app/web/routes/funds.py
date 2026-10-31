@@ -12,6 +12,7 @@ from app.adapters.ses import notify
 from app.services import book_memo
 from app.web.http import ApiError, Ctx, _num
 from app.web.routes.brokers import _perps_live_call
+from app.web import settings as web_settings
 from app.web.settings import MAX_PAPER_BALANCE, MAX_WAITLIST_PER_MINUTE
 from app.web.views import FOLLOW_UP_TTL, _demo_cash, _live_balance, _open_book, _paper_equity
 from trading_core.domain.money import cents
@@ -266,5 +267,6 @@ def waitlist(ctx: Ctx):
         raise ApiError(429, "We’re getting a lot of requests right now. Try again in a minute.")
     is_new = repo.add_waitlist(cur, email, note or None)
     if is_new:
-        notify.waitlist_request(email, note or None, repo.count_waitlist(cur))
+        # The confirmation says how to get in as sign-in works now (open sign-up or invite-only).
+        notify.waitlist_request(email, note or None, repo.count_waitlist(cur), open_signup=web_settings.OPEN_SIGNUP)
     return {"ok": True}

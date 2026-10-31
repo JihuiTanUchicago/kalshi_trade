@@ -56,12 +56,20 @@ def _plain(text: Optional[str], limit: int = 0) -> str:
     return s[:limit - 1].rstrip() + "…" if limit and len(s) > limit else s
 
 
+def _hi(name: Optional[str]) -> str:
+    """The greeting line: the reader's name, or "there" when there is none or it is an email address (a
+    Google profile with no name set uses the address as its name: "Hi ann@example.com,")."""
+    s = (name or "").strip()
+    return "Hi %s," % (s if s and "@" not in s else "there")
+
+
 def _optional_footer(unsub_url: Optional[str]) -> str:
-    """How to stop an optional email: the one-click link when the sender has one, and Settings' switch."""
+    """How to stop an optional email: the one-click link when the sender has one, and Settings' switch. Each
+    address ends its line: a mail app that links "…/settings)" took the bracket into the link, a page not found."""
     settings = "%s/settings" % PUBLIC_URL
     if unsub_url:
-        return "Don't want these? Unsubscribe: %s\n(or turn them off anytime under Email in Settings: %s)" % (unsub_url, settings)
-    return "(Turn these off anytime under Email in Settings: %s)" % settings
+        return "Don't want these? Unsubscribe: %s\nOr turn them off anytime under Email in Settings: %s" % (unsub_url, settings)
+    return "Turn these off anytime under Email in Settings: %s" % settings
 
 
 def _send(to: str, subject: str, body: str, reply_to: Optional[str] = None) -> bool:
@@ -87,28 +95,34 @@ def _send(to: str, subject: str, body: str, reply_to: Optional[str] = None) -> b
         return False
 
 
-def waitlist_request(email: str, note: Optional[str], count: int) -> bool:
+def waitlist_request(email: str, note: Optional[str], count: int, open_signup: bool = False) -> bool:
     """Email the operator and confirm to the signer. Returns True if the
-    operator notification was sent."""
+    operator notification was sent. `open_signup` is the server's sign-up switch (app.web.settings.OPEN_SIGNUP):
+    while it is on anyone can sign in with Google, so the confirmation says so instead of promising an
+    invite email that nothing sends (approving a request sends no email). Each paragraph is one line, so a
+    phone's mail app wraps it to the screen instead of breaking it mid-sentence."""
     signup_line = email + ((" (%s)" % note) if note else "")
+    let_in = ("Sign-up is open, so they can already sign in with Google; nothing to do." if open_signup else
+              "To let them in while the Google app is in Testing: add this address as a test user in the Google "
+              "Cloud console (Google Auth Platform > Audience).")
     operator_body = (
         "A new person asked for access to Tau.\n\n"
         "Email: %s\n"
         "Note:  %s\n"
         "Total waitlist requests: %d\n\n"
-        "To let them in while the Google app is in Testing: add this address as a\n"
-        "test user in the Google Cloud console (Google Auth Platform > Audience).\n"
-        "Reply to this email to reach the applicant directly."
-    ) % (email, note or "(none)", count)
+        "%s Reply to this email to reach them directly."
+    ) % (email, note or "(none)", count, let_in)
     sent_op = _send(OPERATOR_EMAIL, "Tau waitlist: %s" % signup_line, operator_body, reply_to=email)
 
+    access = ("Sign-up is open now: sign in with Google to start.\n\n  %s/signin" % PUBLIC_URL if open_signup else
+              "Access is invite-only right now. Once your request is approved, sign in with Google here:\n\n  %s/signin"
+              % PUBLIC_URL)
     confirm_body = (
         "Thanks for joining the Tau waitlist.\n\n"
-        "Tau turns a trading idea into strategies an agent researches and backtests\n"
-        "on data it never saw. Access is invite-only right now; we'll email you here\n"
-        "as soon as your spot opens.\n\n"
+        "Tau turns a trading idea into strategies an agent researches and backtests.\n\n"
+        "%s\n\n"
         "— The Tau team"
-    )
+    ) % access
     _send(email, "You're on the Tau waitlist", confirm_body)
     return sent_op
 
@@ -119,14 +133,14 @@ def comment_notice(to_email: str, author_name: Optional[str], commenter: str,
     """Tell a post's author that someone replied, with a link that opens the post and its replies.
     Best-effort (SES sandbox only delivers to verified addresses until production access lands)."""
     body = (
-        "Hi %s,\n\n"
+        "%s\n\n"
         "%s replied to your post on Tau:\n\n"
         "  Your post: “%s”\n"
         "  Their reply: “%s”\n\n"
         "Read the replies and answer: %s\n\n"
         "— Tau\n\n"
         "%s"
-    ) % (author_name or "there", commenter, _plain(post_preview, 140), _plain(comment_body, 280),
+    ) % (_hi(author_name), commenter, _plain(post_preview, 140), _plain(comment_body, 280),
          link or page_url("/community"), _optional_footer(unsub_url))
     return _send(to_email, "%s replied to your Tau post" % commenter, body)
 
@@ -136,27 +150,28 @@ def community_post_notice(to_email: str, name: Optional[str], author: str,
     """Tell a user a new post landed in the community, with a link to it. Best-effort; respects the
     per-recipient cooldown and opt-out enforced by the caller."""
     body = (
-        "Hi %s,\n\n"
+        "%s\n\n"
         "%s just posted in the Tau community:\n\n"
         "  “%s”\n\n"
         "Read it and join in: %s\n\n"
         "— Tau\n\n"
         "%s"
-    ) % (name or "there", author, _plain(preview, 280), link or page_url("/community"), _optional_footer(unsub_url))
+    ) % (_hi(name), author, _plain(preview, 280), link or page_url("/community"), _optional_footer(unsub_url))
     return _send(to_email, "New in the Tau community", body)
 
 
 def mention_notice(to_email: str, name: Optional[str], author: str, body: str,
-                   link: Optional[str] = None, unsub_url: Optional[str] = None) -> bool:
-    """Tell a user they were @-mentioned in the community, with a link to where. Best-effort."""
+                   link: Optional[str] = None, unsub_url: Optional[str] = None, where: Optional[str] = None) -> bool:
+    """Tell a user they were @-mentioned in the community, with a link to where. `where` is what the mention
+    is in ("a post" or "a reply"), as the bell says it. Best-effort."""
     text = (
-        "Hi %s,\n\n"
-        "%s mentioned you in the Tau community:\n\n"
+        "%s\n\n"
+        "%s mentioned you in %sthe Tau community:\n\n"
         "  “%s”\n\n"
         "Read it and reply: %s\n\n"
         "— Tau\n\n"
         "%s"
-    ) % (name or "there", author, _plain(body, 280), link or page_url("/community"), _optional_footer(unsub_url))
+    ) % (_hi(name), author, (where + " in ") if where else "", _plain(body, 280), link or page_url("/community"), _optional_footer(unsub_url))
     return _send(to_email, "%s mentioned you on Tau" % author, text)
 
 
@@ -191,12 +206,27 @@ def reload_failed_email(to_email: str, name: Optional[str], amount, reason: str)
     optional-email switch in Settings says, because research stops when the credits run out. `reason`
     is the customer-safe reason (StripeError.customer_message), never Stripe's own text."""
     body = (
-        "Hi %s,\n\n"
+        "%s\n\n"
         "Auto-reload couldn't add $%s in credits. %s\n\n"
         "Research pauses when your credits run out. To keep it going, update your card on Billing:\n\n"
         "  %s/billing\n\n"
         "— Tau\n\n"
         "(An account email about your credits, so Tau sends it even with updates and community email "
         "off in Settings.)"
-    ) % (name or "there", amount, (reason or "").strip(), PUBLIC_URL)
+    ) % (_hi(name), amount, (reason or "").strip(), PUBLIC_URL)
     return _send(to_email, "Tau auto-reload couldn't add credits", body)
+
+
+def perps_alert(to_email: str, kind: str, detail: str) -> bool:
+    """A Bitcoin perps safety alert (app/adapters/kalshi_perps/kalshi_perps_watch.py: a position mismatch,
+    near liquidation, or heavy margin). Sent whatever Settings' optional-email switch says, as Settings and
+    the unsubscribe page tell the user, so the email says why it came. `detail` is the watch's own line,
+    the same one the chat shows."""
+    body = (
+        "%s.\n\n"
+        "Review your perps account on Funds or in the Kalshi app:\n\n"
+        "  %s/funds\n\n"
+        "— Tau\n\n"
+        "(A safety alert about real money, so Tau sends it even with updates and community email off in Settings.)"
+    ) % (detail.rstrip("."), PUBLIC_URL)
+    return _send(to_email, "Tau: Bitcoin perps %s alert" % kind, body)

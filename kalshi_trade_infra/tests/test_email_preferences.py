@@ -164,7 +164,7 @@ def test_opted_out_mention_gets_the_bell_but_no_email(monkeypatch):
         {"id": 2, "username": "bob", "name": "Bob", "email": "b@x.invalid", "email_opt_out": 1},
         {"id": 3, "username": "cat", "name": "Cat", "email": "c@x.invalid", "email_opt_out": 0}])
     monkeypatch.setattr(server.repo, "add_notification", lambda cur, uid, kind, body, link: bells.append(uid))
-    monkeypatch.setattr(server.notify, "mention_notice", lambda to, *a: mails.append(to) or True)
+    monkeypatch.setattr(server.notify, "mention_notice", lambda to, *a, **k: mails.append(to) or True)
     server._notify_mentions(None, 1, "Me", "hey @bob and @cat", "/community")
     assert sorted(bells) == [2, 3] and mails == ["c@x.invalid"]
 
@@ -211,7 +211,7 @@ def test_perps_safety_alerts_ignore_the_switch(monkeypatch):
     monkeypatch.setattr(kalshi_perps_watch.repo, "get_user", lambda cur, uid: {
         "id": uid, "email": "p@x.invalid", "email_opt_out": 1})
     monkeypatch.setattr(notify, "_send", lambda to, subject, body, reply_to=None: sent.append((to, subject)) or True)
-    kalshi_perps_watch._email(None, 4, "Tau: Bitcoin perps margin alert", "detail")
+    kalshi_perps_watch._email(None, 4, "margin", "detail")
     assert sent == [("p@x.invalid", "Tau: Bitcoin perps margin alert")]
 
 

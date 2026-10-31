@@ -54,7 +54,8 @@ def _num(value) -> Decimal:
 
 
 def _fmt(value: Decimal) -> str:
-    text = format(value, "f")
+    """A figure as Funds' perps panel shows it: exact, thousands grouped, no trailing zeros (60,000, -4, 0.25)."""
+    text = format(value, ",f")
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
@@ -89,7 +90,7 @@ def risk_alerts(risk: dict, account: dict) -> List[Alert]:
         distance = abs(mark - liq) / mark * 100
         if distance <= liq_pct:
             out.append(Alert("liquidation:" + row["market_ticker"], LIQUIDATION,
-                             "%s is %.1f%% from liquidation: mark %s, Kalshi's estimated liquidation %s, "
+                             "%s is %.1f%% from liquidation: mark $%s, Kalshi's estimated liquidation $%s, "
                              "position %s" % (row["market_ticker"], distance, _fmt(mark), _fmt(liq),
                                               _fmt(_num(row["position"])))))
     equity, maintenance = _num(account["account_equity"]), _num(account["maintenance_margin"])
@@ -106,12 +107,13 @@ def _persisted(row: dict) -> bool:
     return d is not None and u is not None and u > d
 
 
-def _email(cur, user_id: int, subject: str, body: str) -> None:
+def _email(cur, user_id: int, kind: str, detail: str) -> None:
+    """The alert by email (notify.perps_alert: the line, a link to Funds, and why it came with optional email off)."""
     try:
         from app.adapters.ses import notify
         user = repo.get_user(cur, user_id) or {}
         if user.get("email"):
-            notify._send(user["email"], subject, body)
+            notify.perps_alert(user["email"], kind, detail)
     except Exception as e:  # best effort: the chat line is the record
         print("[perps-watch] email to user %d failed: %r" % (user_id, e), flush=True)
 
@@ -134,8 +136,7 @@ def watch_user(cur, user_id: int, env: str, state: dict, in_flight: bool) -> Lis
         announce = (prev is not None and not _persisted(prev)) if alert.kind == MISMATCH else prev is None
         if announce:
             repo.add_chat(cur, user_id, "system", "Bitcoin perps watch: " + alert.detail)
-            _email(cur, user_id, "Tau: Bitcoin perps " + alert.kind + " alert",
-                   alert.detail + "\n\nReview your position in Tau Funds or the Kalshi app.")
+            _email(cur, user_id, alert.kind, alert.detail)
     cleared = [key for key in existing if key not in active and not (in_flight and key.startswith("mismatch:"))]
     for key in cleared:
         if existing[key]["kind"] != MISMATCH or _persisted(existing[key]):

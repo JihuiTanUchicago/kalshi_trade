@@ -64,7 +64,7 @@ def test_an_email_with_no_link_given_still_opens_the_feed_and_says_how_to_stop(m
     notify.mention_notice("e@x.invalid", "E", "Bob", "hi")
     body = mails[-1][2]
     assert notify.PUBLIC_URL + "/community" in body
-    assert "(Turn these off anytime under Email in Settings: %s/settings)" % notify.PUBLIC_URL in body
+    assert body.endswith("\n\nTurn these off anytime under Email in Settings: %s/settings" % notify.PUBLIC_URL)
 
 
 # -- the routes hand each email its post and its reader's unsubscribe link -----------------------------
@@ -83,10 +83,12 @@ def test_a_reply_and_a_mention_email_carry_the_post_and_the_readers_own_unsubscr
     monkeypatch.setattr(community.repo, "users_by_usernames", lambda cur, hs: [
         {"id": 3, "username": "cat", "name": "Cat", "email": "cat@x.invalid", "email_opt_out": 0}])
     monkeypatch.setattr(community.notify, "comment_notice", lambda *a: calls.setdefault("reply", a) and True)
-    monkeypatch.setattr(community.notify, "mention_notice", lambda *a: calls.setdefault("mention", a) and True)
+    monkeypatch.setattr(community.notify, "mention_notice", lambda *a, **k: calls.setdefault("mention", (a, k)) and True)
     assert community.create_comment(_ctx(body={"body": "nice @cat"}, params=("5",))) == {"ok": True}
     assert calls["reply"][0] == "au@x.invalid" and calls["reply"][5:] == (POST, notify.unsubscribe_url(2))
-    assert calls["mention"][0] == "cat@x.invalid" and calls["mention"][4:] == (POST, notify.unsubscribe_url(3))
+    (args, kw) = calls["mention"]
+    assert args[0] == "cat@x.invalid" and args[4:] == (POST, notify.unsubscribe_url(3))
+    assert kw == {"where": "a reply"}  # the email says where the mention is, as the bell does
 
 
 class _Now:  # runs the new-post dispatch on this thread
@@ -123,10 +125,10 @@ def test_someone_mentioned_in_a_new_post_gets_one_email_about_it(monkeypatch, di
     monkeypatch.setattr(community.repo, "add_notification", lambda cur, uid, kind, body, link: bells.append((uid, body, link)))
     monkeypatch.setattr(community.repo, "users_by_usernames", lambda cur, hs: [
         {"id": 3, "username": "cat", "name": "Cat", "email": "cat@x.invalid", "email_opt_out": 0}])
-    monkeypatch.setattr(community.notify, "mention_notice", lambda to, *a: mentions.append(to) or True)
+    monkeypatch.setattr(community.notify, "mention_notice", lambda to, *a, **k: mentions.append((to, k)) or True)
     ctx = SimpleNamespace(cur=None, uid=1, body={"body": "look @cat", "kind": "note"}, query={}, params=())
     assert community.create_community_post(ctx) == {"id": 5}
-    assert mentions == ["cat@x.invalid"]
+    assert mentions == [("cat@x.invalid", {"where": "a post"})]
     assert [c[0] for c in digest.calls] == ["r@x.invalid"]  # not a second email to Cat about the same post
     assert digest.marked == [4]
     assert bells == [(3, "Bob mentioned you in a post.", "/community#post-5")]
