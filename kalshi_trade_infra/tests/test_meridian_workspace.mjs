@@ -6027,6 +6027,17 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   // Payments off (the server sends no spend): no Cost row. Nothing spent: says so.
   assert.doesNotMatch(await strip({since: {...since, spent: null}}), /<dt>Cost<\/dt>/);
   assert.match(await strip({since: {...since, spent: {since: 0, week: 0}}}), /<dt>Cost<\/dt><dd>No credits spent/);
+  // A spend that rounds to $0.00 but isn't nothing (one short call, the server's since_under_cent) says so, as Billing's
+  // line for it does, not "No credits spent" beside a charge on the statement (walk 2026-10-31).
+  const sliver = await strip({since: {...since, spent: {since: 0, week: 0.004, since_under_cent: true}}});
+  assert.match(sliver, /<dt>Cost<\/dt><dd><b>Under \$0\.01<\/b> of credits spent/);
+  assert.doesNotMatch(sliver, /No credits spent/);
+  // The pause is read at Billing's pace (the server's pace_days), as the autopilot panel reads it: a two-day-old
+  // account's $27.45 is $13.73 a day, so $6.15 above the floor lasts under a day, not "about 2 days" (over 7).
+  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 2}}}), /Research pauses within a day at this week’s pace/);
+  // A first day's spend counts as one day's (the panel's warning, never later): $79 at $27.45 a day is about 3 days.
+  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 0.4}}}, {credit_balance: 80}), /Research pauses in about 3 days at this week’s pace/);
+  assert.doesNotMatch(await strip({since: {...since, spent: {...since.spent, pace_days: 7}}}, {credit_balance: 80}), /Research pauses/);
   // Something else passed too: the list first, the forward test after it.
   const both = await strip({since: {...since, passed: {n: 1, items: [{id: 9, title: 'Fade'}]}}});
   assert.match(both, /1 strategy passed: <a href="\/strategies\/9">Fade<\/a>.*\. <a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live\./);

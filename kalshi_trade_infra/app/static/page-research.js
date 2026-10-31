@@ -480,7 +480,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       if (!tau) paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
         <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span>${sessionNo(active) ? `<b>${sessionNo(active)}</b>` : ''}${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
-        <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${num(active.hypotheses_tried || 0)}</dd></div><div><dt>Passed</dt><dd>${num(runPassed(active).ok)}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${+active.spent_usd > 0 ? `<span class="nobr">${spentSoFar(active.spent_usd)}</span>${CRED}` : spentSoFar(active.spent_usd)}</dd></div>` : ''}</dl></aside>
+        <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${num(active.hypotheses_tried || 0)}</dd></div><div><dt>Passed</dt><dd>${num(runPassed(active).ok)}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${runPaid(active) ? `<span class="nobr">${runSpentText(active)}</span>${CRED}` : runSpentText(active)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
       // Meridian lists every session but that one; Tau lists them all.
       const newer = new Set(d.runs.map((r) => r.id));
@@ -557,6 +557,11 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   // One phrase for nothing spent, on the card ("Spent so far: none yet"), the session page and Billing ("Spent so
   // far / None yet"): the card said "nothing yet" where the page said "None yet".
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
+  // A run's own figure: the server sends spent_usd to the cent, and spent_under_cent when its debits round to
+  // $0.00 but aren't nothing (a session that failed on one short call). That one said "Cost: none" on its row
+  // and page while Billing listed its charge; it says "under $0.01", from your credits, as Billing's line does.
+  const runSpentText = (r, none) => (r.spent_under_cent && !(+r.spent_usd >= 0.005) ? 'under $0.01' : spentSoFar(r.spent_usd, none));
+  const runPaid = (r) => +r.spent_usd > 0 || !!r.spent_under_cent;
   // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
   // in a list a reader could take for a loss.
   // On Meridian the unit is its own span, kept whole by its no-break space, so the 120px Market column breaks
@@ -565,7 +570,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   const runCred = tau ? ' in credits' : CRED;
   // A finished session that spent nothing says "Cost: none" (final, so not "none yet"), in the words a live one
   // uses ("Spent so far: none yet"): "Cost: $0.00 in credits" read as a charge. Display only.
-  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? runCred : ''}` : `Cost: ${spentSoFar(r.spent_usd, 'none')}${+r.spent_usd > 0 ? runCred : ''}`;
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${runSpentText(r, 'none yet')}${runPaid(r) ? runCred : ''}` : `Cost: ${runSpentText(r, 'none')}${runPaid(r) ? runCred : ''}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -1650,7 +1655,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       repaintFigs = () => paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : r.example ? usd(r.spent_usd) : spentSoFar(r.spent_usd, 'None'), { small: r.example ? 'free: Tau ran it for you' : [active || +r.spent_usd > 0 ? 'from your credits' : '', usual != null && !active ? `sessions like it usually cost about ${usd(usual)}` : ''].filter(Boolean).join(SEP) }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? runSpentText(r) : r.example ? usd(r.spent_usd) : runSpentText(r, 'None'), { small: r.example ? 'free: Tau ran it for you' : [active || runPaid(r) ? 'from your credits' : '', usual != null && !active ? `sessions like it usually cost about ${usd(usual)}` : ''].filter(Boolean).join(SEP) }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       repaintFigs();
       if (!active) askUsual(r);

@@ -2603,7 +2603,11 @@
     // CREDITS_WARN_DAYS (the server's CREDIT_RUNWAY_WARN_DAYS, which the autopilot panel warns on).
     const spent = me.billing_enabled ? s.spent : null, wk = spent ? +spent.week || 0 : 0;
     const left = (+me.credit_balance || 0) - (+me.min_run_balance || 0);  // research pauses under the floor, not at $0
-    const runway = wk > 0 && left > 0 ? left / (wk / 7) : null;
+    // At Billing's pace (the server's pace_days: the days the week's spend covers, the account's age up to 7, and a
+    // first day's spend counted as one day's, as the panel's warning counts it), to a tenth of a day as theirs is:
+    // over 7 days, a two-day-old account's pause read days later here than on Billing and the autopilot panel.
+    const pace = spent && spent.pace_days != null ? Math.max(1, Math.min(7, +spent.pace_days)) : 7;
+    const runway = wk > 0 && left > 0 ? Math.round(left / (wk / pace) * 10) / 10 : null;
     if (spent && !low && !me.needs_card && !me.auto_reload && runway != null && runway < CREDITS_WARN_DAYS)
       needs.push(`${pausesIn(runway)} <a href="/billing">Add credits or turn on auto-reload</a>`);
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
@@ -2615,7 +2619,7 @@
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
     const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : charges === 2 ? 'twice' : num(charges) + ' times'} for`
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${paid ? SEP + paid : ''}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : spent.since_under_cent ? '<b>Under $0.01</b> of credits spent' : 'No credits spent'}${bought}<span class="since-sub">${paid ? SEP + paid : ''}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     // The Money row leads with its window, as every paper figure on the dashboard does (PNL_WINDOW): beside the
     // autopilot card's "Since you started", its figures read as the same paper P&L.

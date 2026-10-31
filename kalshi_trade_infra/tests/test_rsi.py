@@ -105,7 +105,9 @@ class _Cur:
 
     def execute(self, sql, args=None):
         self.sql.append((sql, args))
-        if "FROM app_agent_runs" in sql:
+        if "FROM app_credit_ledger" in sql:  # repo.runs_spent: what run 9's usage rows debited
+            self._rows = [{"run_id": 9, "s": 3.124999}]
+        elif "FROM app_agent_runs" in sql:
             self._rows = [dict(RUN)]
         else:
             self._rows = [{"run_id": 9, "kind": e["kind"], "message": e["message"],
@@ -120,6 +122,28 @@ def test_load_scoreboard_reads_runs_then_their_verdicts():
     board = rsi.load_scoreboard(cur, days=3, user_id=2)
     assert board["total"]["passed"] == 1 and board["cards"][0]["run_id"] == 9
     assert cur.sql[0][1] == [3, 2] and "kind='verdict'" in cur.sql[1][0]
+
+
+def test_the_boards_spend_is_the_ledger_of_its_sessions_not_their_tokens_repriced(monkeypatch):
+    # The Research page's "Is research getting better?" card read Spend $0.00 ($0.00 per idea) over five
+    # sessions whose rows read $12.35, $45.68, $8.77, $20.00 and under $0.01 (walk 2026-10-31): rsi re-prices
+    # the runs' stored tokens. The card's figure is their ledger debits, summed exactly, then to the cent.
+    from app import server
+    from app.web.routes import research as research_routes
+    board = {"total": {"runs": 5, "cost_usd": 0.0, "explored": 23},
+             "cards": [{"run_id": i, "cost_usd": 0.0} for i in (2, 4, 5, 7, 8)]}
+    asked = []
+
+    def runs_spent(cur, uid, ids):
+        asked.append((uid, list(ids)))
+        return {2: 12.345678, 4: 45.678912, 5: 0.004213, 7: 8.765432, 8: 20.000004}
+    monkeypatch.setattr(server.repo, "runs_spent", runs_spent)
+    research_routes._board_ledger_spend(object(), 7, board)
+    assert board["total"]["cost_usd"] == 86.79 and asked == [(7, [2, 4, 5, 7, 8])]
+    assert [c["cost_usd"] for c in board["cards"]] == [0.0] * 5  # the cards themselves are rsi's, untouched
+    empty = {"total": {"runs": 0, "cost_usd": 0.0}, "cards": []}
+    research_routes._board_ledger_spend(object(), 7, empty)  # no sessions: nothing read
+    assert empty["total"]["cost_usd"] == 0.0 and len(asked) == 1
 
 
 def test_scoreboard_leaves_out_the_seeded_example_session():
@@ -143,6 +167,10 @@ def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
     ctx = SimpleNamespace(cur=cur, uid=2, query={"days": "999"})
     board = server.research_scoreboard(ctx)
     assert board["days_back"] == 60 and board["total"]["runs"] == 1
+    # Its Spend is what those sessions took from credits (their ledger rows, as each session's Cost), to the
+    # cent: not their stored tokens re-priced.
+    assert board["total"]["cost_usd"] == 3.12
+    assert any("FROM app_credit_ledger" in q and "run_id IN" in q and a[-1] == 2 for q, a in cur.sql)
     assert board["playbooks"] == [{"family": "weather-high", "version": 1}]
     assert cur.sql[0][1] == [60, 2]
     # memoized per (user, days): a second request inside the TTL reads nothing (prod p50 was 4.4s)
