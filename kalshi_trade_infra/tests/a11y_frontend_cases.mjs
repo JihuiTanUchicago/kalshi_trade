@@ -115,6 +115,33 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     f.clearTimers();
   });
 
+  // Walk 2026-10-31: the profile button said aria-haspopup="true" (a menu of menuitems, with arrow keys) over a plain
+  // list of links, and named nothing it opened; the bell had already become a disclosure. On Meridian, Funds, Billing,
+  // Settings, Dev Logs and System have no section tab, so nothing said which of them was showing, and its menu had no
+  // way to Terms or Privacy at all.
+  test(`${name}: the profile menu is a disclosure that names its list, marks the page showing, and reaches Terms and Privacy`, async () => {
+    const f = frontend({fetchImpl: () => response({})});
+    f.location.pathname = '/settings';
+    await f.viewSettings();
+    const trig = f.root.querySelector('.profile-trig'), menu = f.root.querySelector('.profile-menu');
+    assert.equal(trig.getAttribute('aria-haspopup'), null);
+    assert.equal(trig.getAttribute('aria-controls'), 'profile-menu'); assert.equal(menu.getAttribute('id'), 'profile-menu');
+    assert.equal(trig.getAttribute('aria-expanded'), 'false');
+    const links = menu.querySelectorAll('a');
+    const current = links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => a.getAttribute('href'));
+    assert.deepEqual(current, ['/settings']);
+    for (const href of ['/terms', '/privacy']) assert.equal(links.filter((a) => a.getAttribute('href') === href).length, 1, href);
+    // Meridian has no Terms or Privacy page of its own: boot.js serves them in Tau, so the links load afresh.
+    if (name === 'Meridian') for (const a of links.filter((x) => /^\/(?:terms|privacy)$/.test(x.getAttribute('href')))) assert.ok(a.hasAttribute('data-native'), a.getAttribute('href'));
+    f.clearTimers();
+    // A page the menu doesn't hold marks none of its links (its section tab says where the reader is).
+    const d = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
+    d.location.pathname = '/deploy';
+    await d.render(); await flush(); await flush();
+    assert.equal(d.root.querySelectorAll('.profile-menu a[aria-current="page"]').length, 0);
+    d.clearTimers();
+  });
+
   test(`${name}: every <aside> has a name of its own, on Dashboard and the strategy page as everywhere`, async () => {
     const names = (f) => f.root.querySelectorAll('aside').map((a) => a.getAttribute('aria-label'));
     const d = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(dashboard()) : response({})});

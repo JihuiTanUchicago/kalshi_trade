@@ -284,6 +284,7 @@ th .info { vertical-align: 0; }
 .profile-menu[hidden] { display: none; }
 .profile-menu a, .profile-item { display: block; width: 100%; text-align: left; font: inherit; font-family: var(--f-nar); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: none; border: 0; padding: 7px 9px; cursor: pointer; text-decoration: none; }
 .profile-menu a:hover, .profile-item:hover { background: var(--stock-sunk); color: var(--ink); }
+.profile-menu a[aria-current="page"] { color: var(--ink); box-shadow: inset 2px 0 0 var(--ink); }
 .profile-menu a + .profile-item { border-top: 1px solid var(--rule); margin-top: 2px; padding-top: 9px; }
 
 .services { border-bottom: 1px solid var(--rule); }
@@ -1361,7 +1362,7 @@ body.landing-body { background: #FBFBFA; }
 .legal-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 0; border-bottom: 1px solid var(--line, #E7E6E2); flex-wrap: wrap; }
 .legal-nav { display: flex; gap: 20px; }
 .legal-nav a, .legal-foot a { color: var(--ink-3); text-decoration: none; }
-.legal-nav a:hover { color: var(--ink); }
+.legal-nav a:hover, .legal-nav a[aria-current="page"] { color: var(--ink); }
 .legal { padding: 40px 0 72px; color: var(--ink-2); font-size: 15.5px; line-height: 1.65; }
 .legal h1 { color: var(--ink); font-size: clamp(28px, 5vw, 38px); letter-spacing: -.02em; margin: 8px 0 4px; }
 .legal-updated { color: var(--ink-3); font-size: 13.5px; margin: 0 0 28px; }

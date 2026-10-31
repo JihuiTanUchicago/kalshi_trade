@@ -14,10 +14,12 @@ window.TauPage('legal', (T) => {
     document.body.classList.add('landing-body');
     // Links out of the legal pages load the app afresh: boot.js serves these pages in Tau for
     // everyone, so a Meridian user has to reload to get their own theme back.
+    // The page's own link says it is the one showing, as the app's section tabs do.
+    const here = (href, label) => `<a href="${href}"${location.pathname === href ? ' aria-current="page"' : ''}>${label}</a>`;
     const away = S.me ? '<a class="legal-away" href="/" data-native>Dashboard</a>' : '<a class="legal-away" href="/signin" data-native>Sign in</a>';
     root.innerHTML = `<div class="legal-wrap">
       <header class="legal-top"><a class="lbrand" href="/" data-native>${ICON.mark}<span>Tau</span></a>
-        <nav class="legal-nav"><a href="/terms">Terms</a><a href="/privacy">Privacy</a>${away}</nav></header>
+        <nav class="legal-nav" aria-label="Legal">${here('/terms', 'Terms')}${here('/privacy', 'Privacy')}${away}</nav></header>
       <main class="legal" id="main">
         <h1>${title}</h1><p class="legal-updated">Last updated ${LEGAL_UPDATED}</p>
         ${bodyHtml}

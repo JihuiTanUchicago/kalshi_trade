@@ -61,6 +61,10 @@ test('the money words a customer meets are defined, plainly', () => {
   assert.match(g.latervoid[1], /after its split date, where it failed its checks\. There’s no record that stretch was held out/);
   assert.doesNotMatch(g.latervoid[1], /picked/);
   assert.match(g.unseen[1], /held-out slice of history the agent never looked at/);
+  // Void and Rejected, on the strategies list, are said without the terms of art (in-sample, out-of-sample) they
+  // stood on (walk 2026-10-31).
+  for (const k of ['void', 'rejected']) assert.doesNotMatch(g[k][1], /\b(?:in|out-of)-sample\b/i, k);
+  assert.match(g.rejected[1], /before any test on unseen data/);
   assert.doesNotMatch(g.unseen[1], /wasn’t held out/);
   // "after typical live slippage" (slipEst, beside paper P&L) is said and sized in the paper fills bubble.
   assert.match(g.paperfills[1], /price moving in the second or two before a real order lands\. Where a page shows an estimate after typical live slippage/);
@@ -123,3 +127,79 @@ test('both themes name the dashboard’s paper P&L windows in the same words, an
   }
   for (const f of ['app.css', 'app.meridian.css']) assert.match(read(f), /\n\.pnl-win \{ white-space: nowrap; \}/, f);
 });
+
+// Each bundle's setupGlossary, run against a small stand-in document that records its listeners, then driven with the
+// events a browser sends. A tap on a phone sends pointerover, pointerdown, pointerout (the finger lifts), focusin and
+// click, in that order; a mouse sends pointerover on arriving, then pointerdown, focusin and click. The press's own
+// hover and focus opened the bubble, so its click toggled it shut: a tap showed nothing, and a click on a computer
+// shut the bubble its hover had just opened (walk 2026-10-31).
+const glossaryRig = (bundle) => {
+  const src = read(bundle), at = src.indexOf('  function setupGlossary() {');
+  assert.ok(at > 0, bundle);
+  const fn = src.slice(at, src.indexOf('\n  }\n', at) + 4);
+  const on = {};
+  const el = (cls) => {
+    const attrs = {};
+    const e = {cls, attrs, dataset: {}, hidden: false, style: {}, offsetWidth: 268, offsetHeight: 120, innerHTML: '',
+      setAttribute: (k, v) => { attrs[k] = String(v); }, removeAttribute: (k) => { delete attrs[k]; }, getAttribute: (k) => attrs[k] ?? null,
+      classList: {toggle() {}},
+      getBoundingClientRect: () => ({left: 100, right: 116, top: 300, bottom: 316, width: 16, height: 16}),
+      closest: (sel) => (sel === '.' + e.cls ? e : null)};
+    return e;
+  };
+  const pops = [];
+  const document = {activeElement: null, body: {appendChild: (p) => pops.push(p)}, createElement: () => el('glossary-pop'),
+    addEventListener: (type, cb) => { on[type] = cb; }};
+  const run = new Function('document', 'GLOSSARY', 'esc', 'innerWidth', 'addEventListener', `${fn}; setupGlossary();`);
+  run(document, glossary(), (s) => String(s), 390, () => {});
+  const marker = (key) => { const m = el('info'); m.dataset.glo = key; return m; };
+  const page = el('page');
+  const fire = (type, target, extra = {}) => {
+    const e = {type, target, relatedTarget: null, prevented: false, preventDefault() { e.prevented = true; }, ...extra};
+    if (type === 'focusin') document.activeElement = target;
+    if (on[type]) on[type](e);
+    return e;
+  };
+  const tap = (m) => { fire('pointerover', m); fire('pointerdown', m); fire('pointerout', m); if (document.activeElement !== m) fire('focusin', m); return fire('click', m); };
+  const shown = () => (pops[0].hidden ? null : pops[0].innerHTML);
+  return {fire, tap, marker, page, shown};
+};
+
+for (const bundle of ['app.js', 'app.meridian.js']) {
+  test(`${bundle}: a tap or a click on an info marker shows its bubble, a second one shuts it, and the keys still work`, () => {
+    const r = glossaryRig(bundle), a = r.marker('realized'), b = r.marker('unrealized');
+    // A phone: the tap shows the bubble and it stays; the next tap on it shuts it.
+    const click = r.tap(a);
+    assert.equal(click.prevented, true);
+    assert.match(r.shown(), /^<b>Realized<\/b>/);
+    assert.equal(a.getAttribute('aria-describedby'), 'glossary-pop');
+    r.tap(a);
+    assert.equal(r.shown(), null); assert.equal(a.getAttribute('aria-describedby'), null);
+    // A tap on another marker moves the bubble to it; a tap on the page shuts it.
+    r.tap(a); r.tap(b);
+    assert.match(r.shown(), /^<b>Unrealized<\/b>/);
+    assert.equal(a.getAttribute('aria-describedby'), null); assert.equal(b.getAttribute('aria-describedby'), 'glossary-pop');
+    r.fire('pointerdown', r.page); r.fire('click', r.page);
+    assert.equal(r.shown(), null);
+
+    // A mouse: resting on the marker shows it and leaving takes it away, as before.
+    const g = glossaryRig(bundle), m = g.marker('slippage');
+    g.fire('pointerover', m); assert.match(g.shown(), /After typical live slippage/);
+    g.fire('pointerout', m, {relatedTarget: g.page}); assert.equal(g.shown(), null);
+    // Clicking the marker it rests on keeps the bubble, even once the pointer leaves; a second click shuts it.
+    g.fire('pointerover', m); g.fire('pointerdown', m); g.fire('focusin', m); g.fire('click', m);
+    assert.match(g.shown(), /After typical live slippage/);
+    g.fire('pointerout', m, {relatedTarget: g.page}); assert.match(g.shown(), /After typical live slippage/);
+    g.fire('pointerover', m); g.fire('pointerdown', m); g.fire('click', m);
+    assert.equal(g.shown(), null);
+
+    // The keyboard: focus shows it, Esc shuts it, Enter (a click with no press) opens it again and the next shuts it.
+    const k = glossaryRig(bundle), n = k.marker('paperfills');
+    k.fire('focusin', n); assert.match(k.shown(), /Paper fills/);
+    k.fire('keydown', n, {key: 'Escape'}); assert.equal(k.shown(), null);
+    k.fire('click', n); assert.match(k.shown(), /Paper fills/);
+    k.fire('click', n); assert.equal(k.shown(), null);
+    // Focus moving on to something else shuts it.
+    k.fire('click', n); k.fire('focusin', k.page); assert.equal(k.shown(), null);
+  });
+}

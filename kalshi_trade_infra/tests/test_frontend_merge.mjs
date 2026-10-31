@@ -2142,6 +2142,23 @@ test('the legal pages offer a signed-in reader the dashboard, not Sign in', asyn
   }
 });
 
+// Walk 2026-10-31: a tab left on Terms or Privacy said only "Tau", signed in or out, and the page's own link at the
+// top looked and read like the other one.
+test('the legal pages name themselves in the tab title and mark their own link, signed in or out', async () => {
+  for (const signedIn of [false, true]) for (const [path, title, other] of [['/terms', 'Terms of Service', '/privacy'], ['/privacy', 'Privacy Policy', '/terms']]) {
+    const f = frontend({fetchImpl: p => (p === '/api/me' ? (signedIn ? response({user: {id: 7}}) : response({error: 'Please sign in.'}, 401)) : response({}))});
+    if (!signedIn) f.S.me = null;
+    f.location.pathname = path;
+    await f.render(); await flush(); await flush();
+    assert.equal(f.root.querySelector('h1').textContent, title);
+    assert.equal(f.document.title, `${title}\u00a0· Tau`, `${path} signed ${signedIn ? 'in' : 'out'}`);
+    const nav = f.root.querySelector('.legal-nav');
+    assert.equal(nav.getAttribute('aria-label'), 'Legal');
+    assert.match(nav.innerHTML, new RegExp(`<a href="${path}" aria-current="page">`));
+    assert.match(nav.innerHTML, new RegExp(`<a href="${other}">`));
+  }
+});
+
 // Terms and Privacy are in app-legal.js, fetched on first use. They draw signed out too, so they wait as
 // boot does (the splash after a moment, never the app's shell) and a file that fails offers Try again there.
 test('the legal pages load their file once, signed out, without the app shell', async () => {

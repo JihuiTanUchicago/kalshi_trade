@@ -302,10 +302,12 @@
   // The glossary's words (info bubbles); each bundle's setupGlossary draws the bubble.
   // Plain-language definitions for the jargon the agent produces. Keep each to a
   // sentence or two; "plain language first, numbers second".
+  // Void and Rejected say "the history the agent searched" for in-sample, and never out-of-sample: the strategies list's
+  // bubbles are the first place a new account meets them, and those words are defined nowhere it looks (walk 2026-10-31).
   const GLOSSARY = {
     passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
-    void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
-    rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
+    void: ['Void', 'The strategy did well enough on the history the agent searched to be tested on unseen data, but it failed at least one gate there. A real candidate that didn’t hold up.'],
+    rejected: ['Rejected', 'Cut while the agent was still searching, on the history it searches, before any test on unseen data. It never reached that test.'],
     unseen: ['Later-period P&L (unseen data)', 'What the strategy made in the backtest after its split date, on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
     laterperiod: ['Later-period P&L', 'What the strategy made in the backtest after its split date. That later stretch is what picked it, so unlike unseen data it wasn’t held out: a weaker test.'],
     // A Void strategy's later stretch picked nothing: the first version's simple backtest judged it there, it failed, and

@@ -1,7 +1,8 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian):
 // - a theme switch saves to the account before it reloads: a save Tau didn't confirm stays on this
 //   theme and says so (the signed-in page is served in the account's theme, so reloading anyway put
-//   the reader back where they were with no word why); a saved one says so once, after the reload;
+//   the reader back where they were with no word why); a saved one says so once, after the reload, with
+//   keyboard focus back on the theme chosen;
 // - the theme radios: the checked one is the tab stop and the arrow keys move between them;
 // - Sign out that Tau didn't confirm stays on the page and says the reader is still signed in, from
 //   the profile menu and from the card wall's "Sign out instead"; a confirmed one (or a session that
@@ -84,6 +85,12 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
     await g.viewSettings();
     assert.match(g.root.querySelector('#theme-flash').innerHTML,
       new RegExp(`class="notice good".*Theme set to ${label[current]}\\. It’s saved to your account, so it applies wherever you sign in\\.`));
+    // Keyboard focus, which the reload dropped at the top of the page, is back on the theme just chosen, and that
+    // radio is described by the line saying it took (walk 2026-10-31).
+    const chosen = g.root.querySelector(`[data-theme="${current}"]`);
+    assert.equal(hasFocus(g, chosen), true);
+    assert.equal(chosen.getAttribute('aria-describedby'), 'theme-flash');
+    assert.equal(g.root.querySelector(`[data-theme="${other}"]`).getAttribute('aria-describedby'), null);
     assert.equal(after.map.size, 0);
     await g.viewSettings();
     assert.equal(g.root.querySelector('#theme-flash').innerHTML, '');
@@ -91,6 +98,9 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
     const stale = frontend({session: sessionStore({tau_theme_saved: other})});
     await stale.viewSettings();
     assert.equal(stale.root.querySelector('#theme-flash').innerHTML, '');
+    // Settings opened any other way leaves focus to the page (its heading), not on a radio.
+    const mine = stale.root.querySelector(`[data-theme="${current}"]`);
+    assert.equal(hasFocus(stale, mine), false); assert.equal(mine.getAttribute('aria-describedby'), null);
   });
 
   test(`${name}: the theme radios have one tab stop, the checked one, and the arrow keys move between them`, async () => {
