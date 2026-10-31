@@ -5,7 +5,7 @@
 window.TauPage('admin', (T) => {
   'use strict';
   const {
-    adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loadFail, loading, logTime, num, phone, poll,
+    adminViewOn, alert0, api, armed, boardTitle, busy, compact, esc, flash, go, loadFail, loading, logTime, num, phone, poll,
     retried, root, S, SEP, settleAt, shell, theme, usd, when
   } = T;
   // Tau's pages have a line under each title, and its System map lists the database's largest tables; Meridian's
@@ -255,7 +255,8 @@ window.TauPage('admin', (T) => {
         ? `<div class="sys-tables"><b>Largest tables</b><ul>${L.top_tables.map((t) =>
             `<li><span>${esc(t.table)}</span><span>${t.mb >= 1024 ? (t.mb / 1024).toFixed(1) + ' GB' : num(t.mb) + ' MB'}</span></li>`).join('')}</ul></div>`
         : '';
-      detail.innerHTML = `<h2>${esc(n.label)}</h2><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p>${L && L.mine ? '<p class="hint">Yours only: other users’ aren’t counted here.</p>' : ''}<p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${tbls}${open}`;
+      const said = stateText(id, L);
+      detail.innerHTML = `<h2>${esc(n.label)}</h2><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p>${said ? `<p class="sys-state" id="sys-ds">${esc(said)}</p>` : ''}${L && L.mine ? '<p class="hint">Yours only: other users’ aren’t counted here.</p>' : ''}<p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${tbls}${open}`;
     };
     const modName = (p) => p.split('/').pop();
     const crumbs = (parts) => `<nav class="sys-crumb">${parts.map((p, i) =>
@@ -314,6 +315,46 @@ window.TauPage('admin', (T) => {
       g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
     });
     const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
+    // The last good read: when it was taken (this device's clock), its nodes and the server's clock then; and the
+    // server's clock for the nodes painted. A box's state says when it last heard from its part by the server's clock,
+    // and its ages grow while reads fail (sysAged).
+    let sysAt = 0, sysNow = NaN, sysRead = null, readNow = NaN;
+    // The last good read's nodes with every heartbeat age grown by the time since it was taken, and the server's clock
+    // moved on with them. It shows once two 4s reads are missed.
+    const SYS_AGE_AFTER = 8000;
+    const sysAged = () => {
+      const lag = Math.max(0, Math.round((Date.now() - sysAt) / 1000)), out = {};
+      Object.keys(sysRead || {}).forEach((k) => { const L = sysRead[k]; out[k] = L && L.age != null ? { ...L, age: L.age + lag } : L; });
+      return [out, readNow + lag * 1000];
+    };
+    // How long ago, in words, for the detail's state line ("20 minutes ago"); the box keeps its short "20m ago".
+    const agoWords = (s) => (s < 90 ? `${s} second${s === 1 ? '' : 's'} ago` : s < 5400 ? `${Math.round(s / 60)} minutes ago`
+      : s < 172800 ? `${Math.round(s / 3600)} hours ago` : `${Math.floor(s / 86400)} days ago`);
+    // The clock time (with its zone, and its date when not today) a heartbeat `age` seconds old was written, by the
+    // server's clock for the nodes painted (sysNow).
+    const sinceAt = (age) => settleAt(new Date((Number.isFinite(sysNow) ? sysNow : Date.now()) - age * 1000).toISOString());
+    // A box's state in words, under its count in the details: the dot's colour was the only sign a feed had stopped,
+    // and "20m ago" never said it was behind (walk 2026-10-31: the Coinbase collector 20 minutes stale read the
+    // same as a running one but for the dot). An outside service's state is its collector's (SYS_FED); nothing on
+    // the page reads Claude or Stripe, so their boxes say nothing.
+    function stateText(id, L) {
+      const n = sysNode(id);
+      if (n && n.ext) {
+        const fed = SYS_FED[id] && S.sysLive && S.sysLive[SYS_FED[id]];
+        if (!fed) return '';
+        if (fed.age == null) return `Tau hasn’t had data from ${n.label} yet.`;
+        return fed.age < 300 ? `Tau had new data from ${n.label} ${agoWords(fed.age)}.`
+          : `No new data from ${n.label} since ${sinceAt(fed.age)} (${agoWords(fed.age)}). The page can’t tell whose end stopped.`;
+      }
+      if (!L || !('age' in L)) return '';
+      if (L.age == null) return 'Not heard from yet.';
+      const st = fresh(L.age);
+      return st === 'live' ? `Running: last heard from ${agoWords(L.age)}.`
+        : st === 'warn' ? `Running late: last heard from at ${sinceAt(L.age)}, ${agoWords(L.age)}.`
+        : `Stale since ${sinceAt(L.age)} (${agoWords(L.age)}).`;
+    }
+    // A count and its noun, one or many: "1 strategies tested" read for a customer's one strategy.
+    const plural = (n, one, many) => `${num(n)} ${+n === 1 ? one : many}`;
     // The page knows an outside service is sending only by the collector that reads it: Kalshi's book by the
     // forward collector's heartbeat, Coinbase's candles by its collector's. Nothing on the page reads Claude
     // or Stripe, so their boxes say nothing about a connection (they all read "connected", always green). A
@@ -337,14 +378,14 @@ window.TauPage('admin', (T) => {
       if (!L) return '';
       const n = sysNode(id);
       // An outside service's box counts what Tau has stored from it, when there is any; never "connected".
-      if (n && n.ext) return id === 'kalshi' && +L.markets > 0 ? `${compact(+L.markets)} markets${SEP}${num(L.series)} series` : '';
+      if (n && n.ext) return id === 'kalshi' && +L.markets > 0 ? `${compact(+L.markets)} market${+L.markets === 1 ? '' : 's'}${SEP}${num(L.series)} series` : '';
       if (id === 'db') {
         const size = +L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : +L.size_mb >= 1 ? num(L.size_mb) + ' MB' : '';
         return [size, aboutRows(L.rows, 'rows')].filter(Boolean).join(SEP);
       }
-      if (id === 'web') return L.users != null ? `${num(L.users)} users${SEP}serving` : `online${SEP}serving`;
+      if (id === 'web') return L.users != null ? `${plural(L.users, 'user', 'users')}${SEP}serving` : `online${SEP}serving`;
       if (id === 'agents') return metricLines(id, L).join(SEP);
-      if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
+      if (id === 'backtest') return `${plural(L.strategies, 'strategy', 'strategies')} tested`;
       // No heartbeat on record (the server's age is null) reads in words: a bare "—" read "2 paper running · —".
       // Past 90 minutes it says hours, then days: "stale" read the same for a feed 2 hours behind and one 3 days behind.
       const a = L.age == null ? 'not seen yet' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago`
@@ -365,6 +406,25 @@ window.TauPage('admin', (T) => {
       const n = e.data && e.data.note;
       if (n) return e.data.title ? `${e.data.title}: ${n}` : n;
       return e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '');
+    };
+    // Paints the boxes, their dots and edges, and an open box's details from `nodes`, read by the server's clock `now`.
+    const paint = (nodes, now) => {
+      S.sysLive = nodes; sysNow = now;
+      SYS_NODES.forEach((n) => {
+        const L = nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
+        const mt = svg.querySelector(`[data-m="${n.id}"]`), lines = metricLines(n.id, L), spans = mt ? mt.querySelectorAll('tspan') : [];
+        if (spans.length) spans.forEach((t, i) => { t.textContent = lines[i] || ''; }); else if (mt) mt.textContent = lines[0];
+        const sb = svg.querySelector(`[data-s="${n.id}"]`), sub = sysSub(n, L); if (sb && sb.textContent !== sub) sb.textContent = sub;
+        const fed = SYS_FED[n.id] && nodes[SYS_FED[n.id]];
+        const st = n.ext ? (fed && fed.age != null && fed.age < 300 ? fresh(fed.age) : 'idle') : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
+        g.setAttribute('data-st', st);
+      });
+      // light up edges whose source is live
+      svg.querySelectorAll('.sys-edge').forEach((p) => {
+        const src = svg.querySelector(`.sys-node[data-id="${p.dataset.e}"]`);
+        p.classList.toggle('active', !!src && (src.getAttribute('data-st') === 'live'));
+      });
+      const sel = svg.querySelector('.sys-node.sel'); if (sel && !codeState) showDetail(sel.dataset.id);
     };
     // A read that failed says so above the map (a 401 is already on its way to sign-in); the next good one clears it.
     // It says so once per message: the 4s poll put the same words into the assertive live region on every tick, so a
@@ -392,28 +452,18 @@ window.TauPage('admin', (T) => {
       if (gen !== S.gen) return;
       sysSaid = null; sysOk = true;
       root.querySelector('#sys-error').innerHTML = '';
-      S.sysLive = d.nodes;
-      SYS_NODES.forEach((n) => {
-        const L = d.nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
-        const mt = svg.querySelector(`[data-m="${n.id}"]`), lines = metricLines(n.id, L), spans = mt ? mt.querySelectorAll('tspan') : [];
-        if (spans.length) spans.forEach((t, i) => { t.textContent = lines[i] || ''; }); else if (mt) mt.textContent = lines[0];
-        const sb = svg.querySelector(`[data-s="${n.id}"]`), sub = sysSub(n, L); if (sb && sb.textContent !== sub) sb.textContent = sub;
-        const fed = SYS_FED[n.id] && d.nodes[SYS_FED[n.id]];
-        const st = n.ext ? (fed && fed.age != null && fed.age < 300 ? fresh(fed.age) : 'idle') : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
-        g.setAttribute('data-st', st);
-      });
-      // light up edges whose source is live
-      svg.querySelectorAll('.sys-edge').forEach((p) => {
-        const src = svg.querySelector(`.sys-node[data-id="${p.dataset.e}"]`);
-        p.classList.toggle('active', !!src && (src.getAttribute('data-st') === 'live'));
-      });
-      const sel = svg.querySelector('.sys-node.sel'); if (sel && !codeState) showDetail(sel.dataset.id);
-      root.querySelector('#sys-stamp').textContent = 'updated ' + clock(d.now);
+      sysAt = Date.now(); sysRead = d.nodes; readNow = Date.parse(d.now);
+      paint(d.nodes, readNow);
+      // The time of the read in the reader's zone: a bare "updated 12:11" named no zone.
+      root.querySelector('#sys-stamp').textContent = 'updated ' + settleAt(d.now);
       const feed = root.querySelector('#sys-feed');
       feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}">${feedTime(e.created_at)}<span>${e.kind === 'verdict' ? esc(sysVerdict(e)) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
     };
     await load();
     if (gen === S.gen) poll(load, 4000);
+    // While reads fail (the poll backs off up to two minutes), the boxes' ages grow from the last good read instead of
+    // standing still: a feed read "6s ago" with a green dot for as long as the page couldn't ask (walk 2026-10-31).
+    if (gen === S.gen) S.timers.push(setInterval(() => { if (gen === S.gen && sysAt && Date.now() - sysAt > SYS_AGE_AFTER) paint(...sysAged()); }, 4000));
   }
 
   return {viewAdmin, viewSystem};

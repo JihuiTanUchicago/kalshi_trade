@@ -126,6 +126,7 @@ span.gain, span.loss, b.gain, b.loss, .amt { white-space: nowrap; }
 @keyframes syspulse { 50% { opacity: .3; } }
 .sys-side .panel > h2, .sys-side .panel h3 { margin-bottom: 6px; }
 .sys-metric { font-family: var(--f-nar); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--ink); letter-spacing: .02em; }
+.sys-state { margin-top: 4px; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
 .sys-live { font-family: var(--f-nar); font-size: 11.5px; color: var(--ink-3); text-transform: none; letter-spacing: .02em; }
 .sys-feed { max-height: 320px; overflow-y: auto; }
 .sys-feed li { font-size: 12.5px; }

@@ -52,6 +52,7 @@ import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
+import {statusWalkCases} from './status_walk_frontend_cases.mjs';
 import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
 import {firstWeekCases} from './first_week_frontend_cases.mjs';
 import {autopilotCostCases, billingCostCases} from './autopilot_cost_frontend_cases.mjs';
@@ -68,7 +69,7 @@ import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewAdmin', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater', 'hotOpen', 'renderHotRail'];
+const EXPOSE = ['S', 'api', 'PAGES', 'viewDevLog', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewAdmin', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater', 'hotOpen', 'renderHotRail'];
 const source = bundleSource('app.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -4193,7 +4194,7 @@ test('Tau: System reports a current read failure and clears the notice after a s
   await f.viewSystem();
   const notice = f.root.querySelector('#sys-error');
   assert.ok(notice); assert.match(notice.innerHTML, /&lt;unsafe&gt; unavailable/); assert.doesNotMatch(notice.innerHTML, /<unsafe>/);
-  assert.equal(f.S.timers.length, 1);
+  assert.equal(f.S.timers.length, 2, 'the poll, and the clock that ages the boxes while reads fail');
   f.intervals.get(f.S.timers[0])(); await flush();
   assert.equal(notice.innerHTML, ''); assert.match(f.root.querySelector('#sys-stamp').textContent, /updated/);
   f.clearTimers();
@@ -6319,6 +6320,7 @@ flakyNetworkCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
+statusWalkCases({name: 'Tau', frontend});
 newcomerMoneyCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 firstWeekCases({name: 'Tau', frontend, dashboard: () => emptyDashboard(), detailStrategy, strategyFrontend});
 autopilotCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn});

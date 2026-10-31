@@ -1032,11 +1032,11 @@
     root.querySelector('#main').innerHTML = `
       <div class="chips dl-tabs" role="group" aria-label="Dev Logs view">
         <button class="chip" type="button" data-dltab="planned" aria-pressed="${tab === 'planned'}">Up next</button>
-        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped${SEP}${shippedCount}</button>
+        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped${SEP}${num(shippedCount)}</button>
       </div>
       <section class="sect dl-panel" data-dlpanel="planned"${tab === 'planned' ? '' : ' hidden'}><div class="sect-head"><h2>Shipping next</h2></div>
         <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
-      <section class="sect dl-panel" data-dlpanel="shipped"${tab === 'shipped' ? '' : ' hidden'}><div class="sect-head"><h2>Shipped</h2><p>${shippedCount} updates</p></div>
+      <section class="sect dl-panel" data-dlpanel="shipped"${tab === 'shipped' ? '' : ' hidden'}><div class="sect-head"><h2>Shipped</h2><p>${num(shippedCount)} update${shippedCount === 1 ? '' : 's'}</p></div>
         <ul class="dl-list">${shipped || '<li class="hint">Nothing shipped yet.</li>'}</ul></section>`;
     const setTab = (t) => {
       root.querySelectorAll('[data-dltab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.dltab === t)));
