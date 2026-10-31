@@ -154,33 +154,55 @@ window.TauPage('explore', (T) => {
     const bid = +d.yes_bid, ask = +d.yes_ask;
     // A contract nobody has traded and nobody quotes both sides of read only "— as of 01:36": it says so, and shows
     // the one side of the book there is.
-    const quote = bid > 0 && ask > 0 ? `bid\u00a0${cents(bid)}\u00a0/ ask\u00a0${cents(ask)}` : ask > 0 ? `no bid\u00a0/ ask\u00a0${cents(ask)}` : bid > 0 ? `bid\u00a0${cents(bid)}\u00a0/ no ask` : '';
+    // With neither side quoted (a closed contract, a quiet book) the price is the last trade, which may be hours old: it read
+    // "≈ 62% chance of Yes · as of 09:11", the time Tau read it, as if the book said so now. It says the figure is the last
+    // trade and that nobody quotes either side (walk 2026-10-31).
+    const quote = bid > 0 && ask > 0 ? `bid\u00a0${cents(bid)}\u00a0/ ask\u00a0${cents(ask)}` : ask > 0 ? `no bid\u00a0/ ask\u00a0${cents(ask)}` : bid > 0 ? `bid\u00a0${cents(bid)}\u00a0/ no ask` : mid == null ? '' : 'no bid or ask';
     // A price under half a cent read "≈ 0% chance of Yes" and one over 99.5¢ "≈ 100%", odds Kalshi's book doesn't give.
     const chance = (p) => { const n = Math.round(p * 100); return n < 1 ? 'under\u00a01%' : n > 99 ? 'over\u00a099%' : `≈\u00a0${n}%`; };
-    const priceSub = [mid == null ? 'No trades yet' : `${chance(mid)} chance of Yes`, quote,
+    const priceSub = [mid == null ? 'No trades yet' : `${chance(mid)} chance of Yes${bid > 0 && ask > 0 ? '' : ', from the last trade'}`, quote,
       d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as\u00a0of\u00a0${keepZone(settleAt(d.as_of))}`) : ''].filter(Boolean).join(SEP);
     const settled = d.result === 'yes' || d.result === 'no';
+    // Settled with no Yes or No (Kalshi voided it, or its record says settled and sends no result): the page read
+    // "Settled" over a live-looking "≈ 41% chance of Yes" and "Result expected" a day gone, and never said there was no
+    // result (walk 2026-10-31). It says so where the result goes, and in How it settles.
+    const voided = !settled && d.result === 'void';
+    const noResult = !settled && (voided || ['determined', 'settled', 'finalized'].includes(d.status));
+    const over = settled || noResult;
     // The close, counting down from when Tau read the market (as_of; the feed's snapshot is older, so it counts from
     // the reader's clock); a closed or settled market's figure reads "Closed", not "Closes" at a time already past.
     const closeSkew = d.as_of && !d.snapshot ? (Date.now() - Date.parse(d.as_of)) / 1000 || 0 : 0;
-    const closedNow = settled || ['closed', 'determined', 'settled', 'finalized'].includes(d.status) || (d.close_time && closeLeft(d.close_time, closeSkew) <= 0);
-    const closesFig = !d.close_time ? fig('Closes', '—') : closedNow ? fig('Closed', keepZone(settleAt(d.close_time)))
+    const closedNow = over || ['closed', 'determined', 'settled', 'finalized'].includes(d.status) || (d.close_time && closeLeft(d.close_time, closeSkew) <= 0);
+    // A market Kalshi closed before its scheduled time (a game that ended early) read "Closed 17:00 EDT" at 15:00, a close
+    // still to come: it says it closed early and when it was due.
+    const closedEarly = closedNow && d.close_time && closeLeft(d.close_time, closeSkew) > 0;
+    const closesFig = !d.close_time ? fig('Closes', '—') : closedEarly ? fig('Closed', 'Early', { small: `was due ${keepZone(settleAt(d.close_time))}` })
+      : closedNow ? fig('Closed', keepZone(settleAt(d.close_time)))
       : fig(liveClose(d.close_time, 'lab', { skew: closeSkew }), keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
     // An open market's status follows the same clock as its Closes figure (closeClock), flipping to "Closed, result
     // pending" once the close passes; Kalshi's own closed and settled statuses stay as Kalshi sent them.
+    // A read with no status (the Explore feed's snapshot) said "Market" there, a word that says nothing: it says nothing.
     const statusLine = d.close_time && (d.status === 'active' || d.status === 'open') ? liveClose(d.close_time, 'status', { skew: closeSkew })
-      : esc(MKT_STATUS[d.status] || d.status || 'Market');
+      : voided ? 'Voided' : esc(MKT_STATUS[d.status] || d.status || '');
+    // A count Kalshi didn't send reads "—", not 0 ("0 contracts traded" for a figure that never came), and a long one is set
+    // smaller on a phone (.fig-long): 98,765,432,100 ran out of its figure on a 390px phone (walk 2026-10-31).
+    const count = (label, v, small) => {
+      const t = v == null || v === '' || !Number.isFinite(+v) ? '—' : num(Math.round(+v));
+      return fig(label, t, { small, ...(t.length > 11 ? { cls: 'fig-long' } : {}) });
+    };
     // The way back sits at the top as well as the foot: on a 390px phone the foot's "Back to Explore" was about three
     // screens down. Both go to the list this tab last showed, its filter kept (exploreBackHref).
-    shell('/explore', `<p class="mk-back"><a href="${esc(exploreBackHref())}">← Back to Explore</a></p>` + boardTitle(label, [esc(contractMarket(d.ticker)), statusLine].filter(Boolean).join(SEP) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
+    shell('/explore', `<p class="mk-back"><a href="${esc(exploreBackHref())}">← Back to Explore</a></p>` + boardTitle(label, [esc(contractMarket(d.ticker)), statusLine, d.ticker ? kalshiRef(d.ticker) : ''].filter(Boolean).join(SEP)) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
-          : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + closesFig + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? spotSect(d.ticker || ticker) : ''}
+          : voided ? fig('Result', 'Voided', { small: 'Kalshi voided this market: no Yes or No result' })
+          : noResult ? fig('Result', '—', { small: 'Kalshi lists it as settled but sent no Yes or No result' })
+          : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + count('24h volume', d.volume_24h, 'contracts traded') +
+        count('Open interest', d.open_interest, 'contracts held') + closesFig + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !over ? spotSect(d.ticker || ticker) : ''}
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
-      <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${settled ? `Settled${SEP}${d.result === 'yes' ? 'Yes' : 'No'}` : d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
+      <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${settled ? `Settled${SEP}${d.result === 'yes' ? 'Yes' : 'No'}` : voided ? 'Voided, no result' : noResult ? 'Settled, no result sent' : d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(rulesText(d.rules))}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(rulesText(d.rules_more))}</p>` : ''}`
           : `<p class="hint mk-rules">Kalshi’s settlement rules didn’t come with this snapshot. <a href="${kalshiLink}" target="_blank" rel="noopener">Read them on Kalshi ↗</a></p>`}</section>
       <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : `${SEP}${GRAN_EACH[gran]}, from Kalshi`}</p></div>
@@ -195,7 +217,7 @@ window.TauPage('explore', (T) => {
     const retry = root.querySelector('#mk-retry');
     if (retry) retry.onclick = again;
     closeClock();
-    if (spotReq && !settled) mountSpot(ticker, spotReq, d);
+    if (spotReq && !over) mountSpot(ticker, spotReq, d);
     const pts = d.points.slice().reverse();  // newest first
     const PER = 25; let pg = 0;
     const rawEl = root.querySelector('#rawsect');
