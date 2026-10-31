@@ -14,6 +14,19 @@ window.TauPage('strategies', (T) => {
   // bulk deploy are the same in both.
   const tau = theme === 'tau';
 
+  // The market filter's markets: every one the research picker offers (as the other options, whether or not this
+  // account has a strategy on it), and the Bitcoin perpetual when that list leaves it out (its research closed on this
+  // server): a customer's perpetual strategies still list, and they couldn't be filtered to. A market a link filters
+  // to that neither has is offered too, so the select says what the list is filtered to (it read "All markets").
+  // Each option reads its market's customer label (marketShort), never the key.
+  const PERP = 'btc_perp';
+  const filterMarkets = (markets, picked) => {
+    const out = (markets || []).slice(), has = (k) => out.some((m) => m.key === k);
+    if (!has(PERP)) out.push({ key: PERP, category: 'Crypto perpetuals' });
+    if (picked && !has(picked)) out.push({ key: picked, category: 'Other' });
+    return out;
+  };
+
   // ---------- strategies ----------
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
@@ -26,7 +39,7 @@ window.TauPage('strategies', (T) => {
       <div class="section-head filters stratfilters">
         <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['not_cleared', 'Not cleared'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}"${v === 'not_cleared' && f.status !== v ? ' hidden' : ''}${tau || v ? '' : ' title="Passed and backtest-only strategies"'} aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
-        ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
+        ${(() => { const by = {}; filterMarkets(S.me.markets, f.market).forEach((m) =>(by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
         <label class="vh" for="strat-sort">Sort</label><select class="input strat-mkt strat-sort" id="strat-sort" aria-label="Sort strategies">${[['', 'Newest first'], ['best', 'Later-period P&amp;L']].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
         <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
       </div>
