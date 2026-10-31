@@ -1,0 +1,10 @@
+{
+  "base_commit": "8c15996c9f4ae295030eeb7636e3411518f26998",
+  "scope": "Autopilot conversation layout only",
+  "hashes": {
+    "kalshi_trade_infra/app/static/app.css": "a3b8a352f0a29ac14874ab90eaa1f1b1a44cdc7695063d2c9d372580d2d3bc03",
+    "kalshi_trade_infra/app/static/app.meridian.css": "1d23b58bd610f4cd4b3613f4518759b5f6a99a18fbc6201857f37615b4c610a9",
+    "kalshi_trade_infra/PLAN.md": "55bd3ea079794df4dc6d8f0e7224893138b8bf362e28e637c33a8883e06d3975",
+    "mvp.md": "4046768671a37b13d30483e9417c94a232ea9d6377b190acc63d73affc21f2a8"
+  }
+}
