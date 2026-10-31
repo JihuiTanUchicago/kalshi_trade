@@ -94,6 +94,7 @@ export function chartTrustCases({name, frontend, detailStrategy, strategyFronten
     const phase = find('Running total of net return per trade');
     assert.match(label(phase), /by research phase\. Validation, (?:from|on) [^:]+: starts at \+0\.1×, ends at \+0\.7×; low \+0\.1× \([^)]+\), high \+0\.7× \([^)]+\)\. Holdout, (?:from|on) [^:]+: starts at \+0\.1×, ends at −0\.2×; low −0\.2× \([^)]+\), high \+0\.1× \([^)]+\)$/);
     assert.match(label(find('Average net return per trade')), /in each slice of the validation window: [A-Z][a-z]{2} \d+ \+3\.00% over 6 trades, [A-Z][a-z]{2} \d+ −1\.00% over 6 trades$/);
+    assert.equal(label(find('Validation versus locked holdout')), 'Validation versus locked holdout average net return per trade, as % of the stake: validation +6.00%, holdout −5.00%');
     assert.doesNotMatch(html, /NaN|undefined|Infinity/);
     f.clearTimers();
   });

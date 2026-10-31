@@ -134,7 +134,9 @@ window.TauPage('strategy', (T) => {
       const shr = Math.round((1 - holdMean / valMean) * 100);
       note = `<div class="cap">Average net return per trade, as % of its stake. The holdout’s is ${shr >= 0 ? shr + '% smaller' : Math.abs(shr) + '% larger'} than validation’s — ${shr >= 100 ? 'the edge did not hold up on fresh data' : shr >= 40 ? 'heavy shrinkage, a sign the validation edge was partly luck' : 'it held up on fresh data'}.</div>`;
     }
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Validation versus locked holdout average net return per trade">
+    // Its name says both bars' figures (it named only the two bars), or that the holdout hasn't run.
+    const barsName = `Validation versus locked holdout average net return per trade, as % of the stake: ${bars.map((b) => `${b[0].toLowerCase()} ${rpRet(b[1])}`).join(', ')}${holdMean == null ? '; the locked holdout hasn’t run yet' : ''}`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(barsName)}">
       <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
     </svg>${note}`;
   }
