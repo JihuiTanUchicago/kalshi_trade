@@ -65,7 +65,7 @@ const headingSkips = (host) => {
   return levels.filter(([level], i) => level > (i ? levels[i - 1][0] : 0) + 1).map(([level, text]) => `h${level} ${text}`);
 };
 
-export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, detailStrategy, dashboard, fundsData}) {
+export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, detailStrategy, dashboard, fundsData, apStatus}) {
   test(`${name}: <main> starts at the page's heading and figures, and a page change and Skip to content land there`, async () => {
     const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
     f.location.pathname = '/deploy';
@@ -725,6 +725,99 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     for (const tick of [...f.intervals.values()]) { await tick(); await settle(); }
     assert.equal(said(f), '', 'the list kept current says nothing');
     f.clearTimers();
+  });
+
+  // Walks of 2026-10-31: a Try again that brought back what failed drew over its notice, the button with it, and
+  // keyboard focus fell to <body> (Billing's saved cards, System's map, Explore's list, the dashboard's autopilot card).
+  // Back, focus goes to the heading of what came in (or the card, which has none); failed again, to the new Try again.
+  test(`${name}: a Try again that brings back what failed puts focus on what came in, and one that fails again on Try again`, async () => {
+    const settle = async () => { for (let i = 0; i < 8; i++) await flush(); };
+    const focused = (el) => !!(el && el.focusOptions && el.focusOptions.preventScroll === true);
+    // Billing: the saved cards come back under Payment method; still unread, focus goes to the new Try again.
+    let cards = cardedBilling({cards: [], cards_unread: true});
+    const b = billingPage(null, [], {[`/api/billing?tz=${new Date().getTimezoneOffset()}`]: () => response(cards)});
+    await b.viewBilling(); await settle();
+    let again = b.root.querySelector('#cards [data-retry]');
+    b.document.activeElement = again;
+    await again.onclick(); await settle();
+    const still = b.root.querySelector('#cards [data-retry]');
+    assert.ok(still && still !== again, 'still unread: a new Try again');
+    assert.ok(focused(still), 'focus is on the new Try again');
+    b.document.activeElement = still; cards = cardedBilling();
+    await still.onclick(); await settle();
+    const pay = b.root.querySelector('#main .panel h2');
+    assert.equal(pay.textContent, 'Payment method');
+    assert.ok(focused(pay), 'the cards back: their panel heading takes focus');
+    assert.equal(pay.getAttribute('tabindex'), '-1');
+    b.clearTimers();
+
+    // System: the map back, the page's heading takes focus (the map has none); failed again, the new Try again.
+    let sysUp = false, sysAsk = 0;
+    const s = frontend({fetchImpl: (path) => path === '/api/admin/system'
+      ? (++sysAsk, sysUp ? response({nodes: {}, events: [], now: '2026-10-20T16:00:00Z'}) : response({error: 'System status is busy.'}, 500)) : response({})});
+    await s.viewSystem(); await settle();
+    again = s.root.querySelector('#sys-error [data-retry]');
+    s.document.activeElement = again;
+    await again.onclick(); await settle();
+    const sysAgain = s.root.querySelector('#sys-error [data-retry]');
+    assert.ok(sysAgain && sysAgain !== again && focused(sysAgain), 'failed again: focus on the new Try again');
+    assert.equal(focused(s.root.querySelector('main h1')), false);
+    s.document.activeElement = sysAgain; sysUp = true;
+    await sysAgain.onclick(); await settle();
+    assert.equal(s.root.querySelector('#sys-error [data-retry]'), null);
+    const sysHead = s.root.querySelector('main h1');
+    assert.equal(sysHead.textContent.trim(), 'System');
+    assert.ok(focused(sysHead), 'the map back: the page heading takes focus');
+    assert.equal(sysHead.getAttribute('tabindex'), '-1');
+    s.clearTimers();
+
+    // Explore: the list back, the page's heading takes focus (the list has none); failed again, Try again keeps it.
+    const at = new Date(Date.now() + 5 * 3600e3).toISOString();
+    const feed = {at: new Date().toISOString(), total: 1, shown: 1, matched: 1, page: 0, per: 40, sort: 'v24', spot: null,
+      markets: [{t: 'KXBTCD-26OCT2617-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .48, ask: .52, last: .5, v24: 9, oi: 5, ct: at}]};
+    let xUp = false;
+    const x = frontend({fetchImpl: (path) => path.startsWith('/api/explore?') ? (xUp ? response(feed) : response({error: 'Explore is busy.'}, 500))
+      : path.startsWith('/api/explore/spot?') ? response({spot: null}) : response({})});
+    x.location.pathname = '/explore'; x.location.search = '';
+    await x.viewExplore(); await settle();
+    again = x.root.querySelector('#xbody [data-xretry]');
+    x.document.activeElement = again;
+    await again.onclick(); await settle();
+    assert.equal(x.root.querySelector('#xbody [data-xretry]'), again, 'failed again with the same words: the same button, still focused');
+    assert.equal(focused(x.root.querySelector('main h1')), false);
+    xUp = true;
+    await again.onclick(); await settle();
+    assert.ok(x.root.querySelector('#xrows a'), 'the list is back');
+    const xHead = x.root.querySelector('main h1');
+    assert.equal(xHead.textContent.trim(), 'Explore');
+    assert.ok(focused(xHead), 'the list back: the page heading takes focus');
+    x.clearTimers();
+
+    // The dashboard's autopilot card: back, the card (named Autopilot, with no heading when on) takes focus.
+    let apUp = false;
+    const d = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response(dashboard());
+      if (path === '/api/autopilot/status') return apUp ? response(apStatus) : response({error: 'Something went wrong on our side.'}, 500);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      return response({});
+    }});
+    d.S.me = {...d.S.me, billing_enabled: true, credit_balance: 25.71, min_run_balance: 1};
+    d.S.me.user.autopilot = true; d.S.ap = null; d.S.apAt = 0;
+    await d.viewDashboard(); await settle();
+    again = d.root.querySelector('#dash-ap [data-apcard="again"]');
+    d.document.activeElement = again;
+    await again.onclick(); await settle();
+    assert.equal(d.root.querySelector('#dash-ap [data-apcard="again"]'), again, 'failed again: the same button keeps focus');
+    assert.equal(focused(d.root.querySelector('#dash-ap')), false);
+    apUp = true;
+    await again.onclick(); await settle();
+    const card = d.root.querySelector('#dash-ap');
+    assert.equal(card.querySelector('[data-apcard="again"]'), null, 'the card draws the status');
+    assert.ok(focused(card), 'the card takes focus');
+    assert.equal(card.getAttribute('tabindex'), '-1');
+    assert.equal(card.getAttribute('aria-label'), 'Autopilot');
+    d.clearTimers();
   });
 
   test(`${name}: a session's working spinner is hidden from a screen reader, not named "in process"`, async () => {

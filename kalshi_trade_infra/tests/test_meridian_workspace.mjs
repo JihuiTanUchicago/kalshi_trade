@@ -6640,7 +6640,7 @@ fundsWalkCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboa
 fundsHistoryCases({name: 'Meridian', frontend, fundsData: funds});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,
-  dashboard: dashboardData, fundsData: funds});
+  dashboard: dashboardData, fundsData: funds, apStatus});
 creditsCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
 writeWaitCases({name: 'Meridian', frontend, billingPage, cardedBilling, postRequests, storageFor: m => m});
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});

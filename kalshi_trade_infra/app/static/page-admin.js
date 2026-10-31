@@ -6,7 +6,7 @@ window.TauPage('admin', (T) => {
   'use strict';
   const {
     adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loadFail, loading, logTime, num, phone, poll,
-    root, S, SEP, settleAt, shell, theme, usd, when
+    retried, root, S, SEP, settleAt, shell, theme, usd, when
   } = T;
   // Tau's pages have a line under each title, and its System map lists the database's largest tables; Meridian's
   // Admin has the waitlist.
@@ -377,7 +377,8 @@ window.TauPage('admin', (T) => {
           else if (box) {
             box.innerHTML = loadFail(err.message);
             const again = box.querySelector('[data-retry]');
-            if (again) again.onclick = () => busy(again, () => { sysSaid = null; return load(); });
+            // The map back (it has no heading of its own), focus goes to the page's: the notice took its button with it.
+            if (again) again.onclick = () => busy(again, () => { sysSaid = null; return load(); }).then(() => retried(root.querySelector('main'), 'h1'));
           }
         }
         if (cfg) throw err;  // the poll's read: it backs off

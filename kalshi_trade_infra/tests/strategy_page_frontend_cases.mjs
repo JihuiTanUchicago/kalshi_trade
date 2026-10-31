@@ -32,6 +32,24 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.ok(rule.root.querySelector('#dep-paper'));
   });
 
+  // Walk 2026-10-31: the trade list's Opened read "Oct 25, 11:21 PM EDT" on a page whose other times are 24-hour
+  // ("21:36 EDT"). It reads on the page's clock, with its date and zone: "Oct 25, 23:21 EDT".
+  test(`${name}: the trade list says when each trade opened on the page's 24-hour clock, with its date and zone`, async () => {
+    const opened = '2026-10-25T23:21Z', at = new Date('2026-10-25T23:21:00Z');
+    const f = await open({status: 'passed', recent_trades: [{opened, ticker: 'KXBTCD-26OCT2617-T112999.99', side: 'yes', qty: 2,
+      entry: .38, exit: .52, reason: 'settled', pnl: 0.28}]});
+    const cell = f.root.querySelector('td[data-lab="Opened"]');
+    assert.ok(cell, 'the trade list has its Opened cell');
+    const shown = cell.textContent.trim();
+    const want = new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}).format(at);
+    assert.equal(shown, want);
+    assert.doesNotMatch(shown, /\b(?:AM|PM)\b/i, 'no 12-hour clock');
+    assert.match(shown, new RegExp(`\\b${String(at.getHours()).padStart(2, '0')}:21\\b`), 'the hour as a 24-hour clock says it');
+    const zone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(at).find((p) => p.type === 'timeZoneName').value;
+    assert.ok(shown.endsWith(zone), 'with its zone');
+    f.clearTimers();
+  });
+
   // Walk 2026-10-30: the Deploy panel's Kalshi link read "Open BTC above set price at 5pm ET on Kalshi ↗" (a market's
   // short label inside a sentence), and a holding with no mark yet read "awaiting first mark" in its book's summary and
   // "not marked yet" on its own line: one phrase now, as Deploy says it.
