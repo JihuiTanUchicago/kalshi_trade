@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import requests
 
@@ -287,10 +287,83 @@ def _with_cross(market: Market, sources: "Sources", now_ts: int, feats: Optional
     return dict(feats, **xf) if xf else feats
 
 
-def fetch_result(ticker: str) -> Optional[str]:
-    m = (api_get("/markets/%s" % ticker) or {}).get("market") or {}
+# How Kalshi settles a binary market it cancels (a postponed game, a retired player): result
+# "scalar", status "finalized", and settlement_value_dollars at a fair price it sets (often $0.50,
+# else near the last trade). 9,723 of ~496k settled markets in our series ended that way (scan of
+# 2026-10-31), nearly all sports. VOID is the fallback for a final market with no result and no
+# published price: the position is unwound at cost.
+VOID = "void"
+# Statuses after which Kalshi will not change a market's result again.
+_FINAL_STATUSES = ("settled", "finalized")
+
+# What Sources.result reports for a ticker: "yes" or "no"; VOID; a YES payout per contract in
+# [0, 1] for a market Kalshi settled at a price (a fair-value settlement); None = not settled yet.
+Settlement = Union[str, float, None]
+
+
+def _settlement_value(m: Dict) -> Optional[float]:
+    """The YES payout per contract Kalshi published for a settled market, in dollars, or None."""
+    raw = m.get("settlement_value_dollars")
+    scale = 1.0
+    if raw in (None, ""):
+        raw, scale = m.get("settlement_value"), 100.0  # the older field, in cents
+    try:
+        v = float(raw) / scale
+    except (TypeError, ValueError):
+        return None
+    return v if 0.0 <= v <= 1.0 else None
+
+
+def market_settlement(m: Dict) -> Settlement:
+    """How Kalshi settled one market object (GET /markets/{ticker}'s "market").
+
+    A YES/NO result is final as soon as Kalshi publishes it. Without one, the market is only settled
+    once its status is final: then it paid the published settlement value, or (no value) it was
+    voided. A market with no result and a non-final status (closed, determined, disputed) is None:
+    try again next round."""
     result = (m.get("result") or "").lower()
-    return result if result in ("yes", "no") else None
+    if result in ("yes", "no"):
+        return result
+    status = (m.get("status") or "").lower()
+    if result == VOID or status in ("void", "voided"):
+        return VOID
+    if status not in _FINAL_STATUSES:
+        return None
+    value = _settlement_value(m)
+    return VOID if value is None else value
+
+
+def fetch_result(ticker: str) -> Settlement:
+    return market_settlement((api_get("/markets/%s" % ticker) or {}).get("market") or {})
+
+
+def settlement_terms(settlement: Settlement, side: str, qty: float, entry_price: float,
+                     entry_fee: float) -> Tuple[float, float, float]:
+    """(payout, exit_price, pnl) of holding `qty` contracts of `side` to a settled market.
+
+    YES/NO pays $1 a contract to the winning side. A price settlement pays its value to YES and one
+    minus it to NO. A void refunds what the contracts cost; the entry fee is not refunded (the
+    conservative reading of Kalshi's void terms, so paper never books more than live would)."""
+    if settlement == VOID:
+        payout = qty * entry_price
+        exit_price = entry_price
+    elif isinstance(settlement, str):
+        exit_price = 1.0 if settlement == side else 0.0
+        payout = qty * exit_price
+    else:
+        exit_price = float(settlement) if side == "yes" else 1.0 - float(settlement)
+        payout = qty * exit_price
+    return payout, exit_price, payout - qty * entry_price - entry_fee
+
+
+def settlement_label(settlement: Settlement) -> str:
+    """How a settled ticker reads in the ledger: "YES", "NO", "VOID (refunded at cost)", or for a
+    market Kalshi cancelled and settled at a fair price, "VOID at $0.50 a YES contract"."""
+    if settlement == VOID:
+        return "VOID (refunded at cost)"
+    if isinstance(settlement, str):
+        return settlement.upper()
+    return "VOID at $%.2f a YES contract" % float(settlement)
 
 
 @dataclass
@@ -301,7 +374,7 @@ class Sources:
     spot: Callable[[Market], Optional[BtcSeries]] = fetch_spot_series
     # product -> one-minute closes for CROSS_FEATURES; None (tests' default) = no cross features
     cross_spot: Optional[Callable[[str], Optional[BtcSeries]]] = None
-    result: Callable[[str], Optional[str]] = fetch_result
+    result: Callable[[str], Settlement] = fetch_result
     live_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = live disabled
     demo_kernel: Optional[Callable[[int], object]] = None  # user_id -> kernel; None = demo disabled
     # user_id -> kernel over a SimulatedVenue (never sends an order). None = legacy instant paper fills
@@ -438,14 +511,17 @@ def settle_due(conn, market: Market, sources: Sources, now: datetime) -> int:
             result = results[pos["ticker"]]
             if result is None:
                 continue  # Kalshi has not settled it yet
-            payout = float(pos["qty"]) if result == pos["side"] else 0.0
-            pnl = payout - float(pos["qty"]) * float(pos["entry_price"]) - float(pos["entry_fee"])
+            # Every book closes the same way: paper credits the payout to its ledger; live and demo
+            # only book it, since Kalshi already settled the account (a void zeroes the position
+            # there too, so a row left open here would read as a reconcile mismatch and halt entries).
+            payout, exit_price, pnl = settlement_terms(result, pos["side"], float(pos["qty"]),
+                                                       float(pos["entry_price"]), float(pos["entry_fee"]))
             with repo.transaction(conn) as tx:
-                if not repo.close_position(tx, pos["id"], 1.0 if payout else 0.0, 0.0, pnl, "settled"):
+                if not repo.close_position(tx, pos["id"], exit_price, 0.0, pnl, "settled"):
                     continue
                 if pos["mode"] == "paper":
                     repo.add_ledger(tx, pos["user_id"], "settlement", payout,
-                                    "%s settled %s" % (pos["ticker"], result.upper()), pos["id"])
+                                    "%s settled %s" % (pos["ticker"], settlement_label(result)), pos["id"])
             settled += 1
     return settled
 
@@ -471,11 +547,11 @@ def score_early_exits(conn, market: Market, sources: Sources, now: datetime) -> 
             results[pos["ticker"]] = sources.result(pos["ticker"])
         result = results[pos["ticker"]]
         if result is None:
-            continue  # not settled yet (or voided): try again next round
-        qty = float(pos["qty"])
-        payout = qty if result == pos["side"] else 0.0
-        hold = payout - qty * float(pos["entry_price"]) - float(pos["entry_fee"])
-        if repo.score_early_exit(cur, pos["id"], result, hold):
+            continue  # not settled yet: try again next round
+        _, _, hold = settlement_terms(result, pos["side"], float(pos["qty"]), float(pos["entry_price"]),
+                                      float(pos["entry_fee"]))
+        label = result if isinstance(result, str) else "%.2f" % float(result)  # settle_result is 4 chars
+        if repo.score_early_exit(cur, pos["id"], label, hold):
             scored += 1
     return scored
 

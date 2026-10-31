@@ -310,11 +310,10 @@ def market_from_series(row: Dict) -> Optional[Market]:
     category = (row.get("category") or "").strip()
     if not series or "MVE" in series.upper():   # multi-leg parlay series don't fit one-contract book model
         return None
-    # SCALAR guard. The engine's fetch_result only resolves YES/NO, so a scalar (numeric-settled)
-    # series can't settle and must never be generated. In today's Kalshi data every market is
-    # market_type="binary" with a yes/no result (verified: 22k open + 10k settled sampled, 100%
-    # binary/yes-no), so the catalog supplies no market_type and this never fires - but if Kalshi
-    # adds scalar series and the collector starts recording it, a non-binary row is rejected here.
+    # SCALAR guard. A scalar (numeric-settled) series' payoff is not one contract's YES/NO book, so it
+    # must never be generated. Today every catalog market is market_type="binary", so this never
+    # fires. (A binary market Kalshi cancels does settle with result "scalar" at a fair price, ~2% of
+    # settled sports markets; engine.market_settlement books those, see engine.VOID.)
     mtype = (row.get("market_type") or "binary").strip().lower()
     if mtype and mtype != "binary":
         return None

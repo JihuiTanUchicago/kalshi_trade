@@ -144,6 +144,80 @@ def test_no_position_settles_on_a_no_result(conn, user):
     assert float(row2["exit_price"]) == 0.0 and float(row2["pnl"]) == pytest.approx(-10 * 0.60 - 0.10)
 
 
+def test_a_voided_market_closes_every_book_at_cost_and_never_halts_live_entries(conn, user):
+    """Kalshi voided the market: no YES/NO result, status finalized. Each book's position closes at
+    its entry price (fee kept), paper gets the cost back in its ledger, and the live book no longer
+    holds the row, so reconciling against the account Kalshi already zeroed finds no mismatch (a row
+    left open read as MISSING and, on the second sweep, halted the user's live entries)."""
+    from app.trading import engine, reconcile
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    past = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
+    ticker = "VOIDTEST-" + uuid.uuid4().hex[:8]
+    before = repo.paper_balance(cur, user["id"])
+    ids = {mode: repo.insert_position(cur, dep["id"], user["id"], mode, ticker, "yes", 10, 0.40, 0.20, past)
+           for mode in ("paper", "demo", "live")}
+    voided = engine.Sources(result=lambda t: engine.market_settlement({"result": "", "status": "finalized"})
+                            if t == ticker else None)
+
+    assert engine.settle_due(conn, engine.MARKETS["btc15m"], voided, datetime.now(timezone.utc)) >= 3
+    assert engine.settle_due(conn, engine.MARKETS["btc15m"], voided, datetime.now(timezone.utc)) == 0  # idempotent
+    for mode, pid in ids.items():
+        cur.execute("SELECT status, close_reason, exit_price, pnl FROM app_positions WHERE id=%s", (pid,))
+        row = cur.fetchone()
+        assert (row["status"], row["close_reason"]) == ("closed", "settled"), mode
+        assert float(row["exit_price"]) == pytest.approx(0.40) and float(row["pnl"]) == pytest.approx(-0.20), mode
+    # Only paper money moves: the $4 the contracts cost comes back to the ledger.
+    assert repo.paper_balance(cur, user["id"]) == pytest.approx(before + 4.0)
+
+    assert not [r for r in repo.live_book_by_ticker_side(cur, user["id"]) if r["ticker"] == ticker]
+    reconcile.reconcile_user(cur, user["id"], {})
+    reconcile.reconcile_user(cur, user["id"], {})
+    assert not [h for h in repo.live_entry_halts(cur, user["id"]) if h["ticker"] == ticker]
+
+
+def test_a_cancelled_game_settles_at_kalshis_fair_price(conn, user):
+    """How Kalshi actually voids a binary market: result "scalar" at a price it sets. A NO bought at
+    60c on a game Kalshi settled at $0.50 a YES contract is worth 50c."""
+    from app.trading import engine
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    ticker = "SCALARTEST-" + uuid.uuid4().hex[:8]
+    before = repo.paper_balance(cur, user["id"])
+    pid = repo.insert_position(cur, dep["id"], user["id"], "paper", ticker, "no", 10, 0.60, 0.10,
+                               datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1))
+    fair = engine.market_settlement({"status": "finalized", "result": "scalar", "settlement_value_dollars": "0.5000"})
+    engine.settle_due(conn, engine.MARKETS["btc15m"], engine.Sources(result=lambda t: fair if t == ticker else None),
+                      datetime.now(timezone.utc))
+    cur.execute("SELECT status, exit_price, pnl FROM app_positions WHERE id=%s", (pid,))
+    row = cur.fetchone()
+    assert row["status"] == "closed" and float(row["exit_price"]) == pytest.approx(0.50)
+    assert float(row["pnl"]) == pytest.approx(10 * 0.50 - 10 * 0.60 - 0.10)
+    assert repo.paper_balance(cur, user["id"]) == pytest.approx(before + 5.0)
+
+
+def test_a_market_awaiting_its_result_stays_open(conn, user):
+    """Closed but not yet determined (a rain market waits for the day's report): no result is not a void."""
+    from app.trading import engine
+    from app import repository as repo
+
+    dep = _deployment(conn, user)
+    cur = conn.cursor()
+    ticker = "WAITTEST-" + uuid.uuid4().hex[:8]
+    pid = repo.insert_position(cur, dep["id"], user["id"], "paper", ticker, "yes", 5, 0.94, 0.02,
+                               datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1))
+    waiting = engine.Sources(result=lambda t: engine.market_settlement({"result": "", "status": "closed"}))
+    engine.settle_due(conn, engine.MARKETS["btc15m"], waiting, datetime.now(timezone.utc))
+    cur.execute("SELECT status FROM app_positions WHERE id=%s", (pid,))
+    assert cur.fetchone()["status"] == "open"
+    engine.settle_due(conn, engine.MARKETS["btc15m"], engine.Sources(result=lambda t: "yes" if t == ticker else None),
+                      datetime.now(timezone.utc))
+
+
 def test_paper_buy_respects_cash_and_book_size(conn, user):
     from app.trading import engine
     from app import repository as repo
