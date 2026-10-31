@@ -153,7 +153,7 @@ def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: st
         if u.get("email") and not u.get("email_opt_out"):  # optional email: Settings can turn it off
             try:
                 notify.mention_notice(u["email"], u.get("name"), author_name, body, notify.page_url(link),
-                                      notify.unsubscribe_url(u["id"]))
+                                      notify.unsubscribe_url(u["id"]), where=where)
                 emailed.add(u["id"])
             except Exception as e:
                 print("[mention] email failed: %r" % e, flush=True)
