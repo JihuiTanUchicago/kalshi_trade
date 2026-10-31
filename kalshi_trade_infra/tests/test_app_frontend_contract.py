@@ -286,6 +286,79 @@ def test_system_counts_a_customers_own_sessions_strategies_and_deployments_and_t
     assert nodes['live_engine']['live'] == 0 and nodes['live_engine']['demo'] == 0 and nodes['live_engine']['mine'] is True
 
 
+def test_the_operators_system_boxes_count_research_sessions_and_strategies_as_a_customers_do_fleet_wide():
+    # Walked 2026-10-31 on a seeded fleet: the operator's research box read "2 running · 1 queued · 62 done" for one
+    # running session (the other a chat reply), 53 finished sessions and 3 stopped ones: it counted every chat reply,
+    # autopilot review and seeded example, and a stopped session as neither running nor done. Its Backtester read
+    # "21 strategies tested" for 3 (two canned example strategies an account), and its feed listed the example's
+    # canned lines written at each sign-up. Each reads by a customer's rules now, fleet-wide.
+    class FleetCursor:
+        def __init__(self):
+            self.queries, self.rows, self.one = [], [], {'n': 0}
+
+        def execute(self, sql, params=()):
+            self.queries.append((sql, tuple(params)))
+            self.rows, self.one = [], {'n': 0}
+            research = "kind='research'" in sql and 'random_walk' in params
+            if 'FROM app_agent_runs' in sql and 'GROUP BY status' in sql:
+                self.rows = ([{'status': 'running', 'c': 1}, {'status': 'queued', 'c': 1}, {'status': 'paused', 'c': 1},
+                              {'status': 'succeeded', 'c': 44}, {'status': 'failed', 'c': 6}, {'status': 'cancelled', 'c': 3}]
+                             if research else
+                             [{'status': 'running', 'c': 2}, {'status': 'queued', 'c': 1}, {'status': 'paused', 'c': 1},
+                              {'status': 'succeeded', 'c': 56}, {'status': 'failed', 'c': 6}, {'status': 'cancelled', 'c': 3}])
+            elif 'FROM app_strategies' in sql:
+                self.one = {'c': 3 if 'direction<>%s' in sql and params == ('random_walk',) else 21}
+
+        def fetchone(self):
+            return self.one
+
+        def fetchall(self):
+            return self.rows
+
+    cur = FleetCursor()
+    ctx = context(admin=True)
+    ctx.conn.cursor = lambda: cur
+    nodes = server.admin_system(ctx)['nodes']
+    assert nodes['agents'] == {'running': 1, 'queued': 1, 'done': 53}
+    assert nodes['backtest'] == {'strategies': 3}
+    feed_sql, feed_params = next(q for q in cur.queries if 'FROM app_agent_events' in q[0])
+    assert 'r.direction<>%s' in feed_sql and feed_params == ('random_walk',) and 'user_id=%s' not in feed_sql
+    # The newest events by id, each one's run by its key: never every run read first and their events sorted.
+    assert 'STRAIGHT_JOIN app_agent_runs' in feed_sql and 'ORDER BY e.id DESC LIMIT 14' in feed_sql
+
+
+@pytest.mark.parametrize('listed,total', [(9, 9), (100, 1234)])
+def test_admin_says_how_many_accounts_there_are_beside_the_newest_hundred_it_lists(listed, total):
+    # "100 shown" said nothing of how many accounts there are. The total is counted only when the list is full.
+    class Cur:
+        def __init__(self):
+            self.queries, self.rows, self.one = [], [], None
+
+        def execute(self, sql, params=()):
+            self.queries.append(sql)
+            self.rows, self.one = [], {'n': 0}
+            if 'FROM app_users u ORDER BY' in sql:
+                self.rows = [{'id': i, 'email': 'u%d@example.invalid' % i, 'name': '', 'created_at': None, 'balance': 1}
+                             for i in range(listed, 0, -1)]
+            elif sql.strip() == 'SELECT COUNT(*) AS n FROM app_users':
+                self.one = {'n': total}
+            elif 'FROM app_deployments' in sql:
+                self.one = {'users': 0}
+
+        def fetchone(self):
+            return self.one
+
+        def fetchall(self):
+            return self.rows
+
+    cur = Cur()
+    ctx = context(admin=True)
+    ctx.conn.cursor = lambda: cur
+    out = server.admin_overview(ctx)
+    assert len(out['users']) == listed and out['users_total'] == total
+    assert any(q.strip() == 'SELECT COUNT(*) AS n FROM app_users' for q in cur.queries) == (listed >= 100)
+
+
 def _ap_ctx(monkeypatch, autopilot=1):
     # Minimal Ctx + repo stubs for the autopilot_status handler (deployments/pnl/actions mocked out).
     ctx = server.Ctx(

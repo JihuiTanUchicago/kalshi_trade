@@ -30,6 +30,12 @@ def admin_overview(ctx: Ctx):
                    FROM app_users u ORDER BY u.id DESC LIMIT 100""")
     users = [{"id": r["id"], "email": r["email"], "name": r["name"], "created_at": r["created_at"],
               "balance": round(float(r["balance"]), 2)} for r in cur.fetchall()]
+    # How many accounts there are in all: the table lists the newest 100, and "100 shown" said nothing of the
+    # rest. Counted only when the list is full (a count of the primary key otherwise says what the list does).
+    users_total = len(users)
+    if users_total >= 100:
+        cur.execute("SELECT COUNT(*) AS n FROM app_users")
+        users_total = int((cur.fetchone() or {}).get("n") or 0)
     # Waitlist and users are mutually exclusive: hide anyone who already has an account
     # (case/space-insensitive — Google emails and typed waitlist emails can differ in case).
     cur.execute("""SELECT w.email, w.note, w.status, w.created_at FROM app_waitlist w
@@ -38,7 +44,7 @@ def admin_overview(ctx: Ctx):
                    ORDER BY (w.status='approved'), w.id DESC LIMIT 200""")
     waitlist = cur.fetchall()
     # Open positions whose strategy was deleted: the engine no longer settles or flattens them.
-    return {"users": users, "waitlist": waitlist, "orphaned_open": repo.orphaned_open_positions(cur),
+    return {"users": users, "users_total": users_total, "waitlist": waitlist, "orphaned_open": repo.orphaned_open_positions(cur),
             # Broken pages: browser error reports from the last 24h, grouped by message and page.
             "client_errors": repo.client_error_groups(cur)}
 
@@ -169,25 +175,29 @@ def admin_system(ctx: Ctx):
     # own), and a small fleet's figures say what other users run. Each is one count through the user's own
     # index (idx_runs_user, idx_strat_user, idx_dep_user), the seeded example left out as their Research and
     # Strategies pages leave it out; a finished session of theirs is done however it ended.
+    # The operator's boxes count by the same rules, fleet-wide: research sessions only (every chat reply and
+    # autopilot review is a run too, and "N done" was mostly those), the example every account is seeded with
+    # left out (its two canned strategies a user read as "strategies tested"), and a stopped session done
+    # (it counted succeeded and failed only, so a stopped one was neither running nor done).
     if is_admin:
-        cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs GROUP BY status")
+        cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs WHERE kind='research'"
+                    " AND (direction IS NULL OR direction<>%s) GROUP BY status", (repo.DEMO_DIRECTION,))
         runs = {r["status"]: int(r["c"]) for r in cur.fetchall()}
-        done = runs.get("succeeded", 0) + runs.get("failed", 0)
         cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE status='running' GROUP BY mode")
         running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
-        strategies = scalar("SELECT COUNT(*) c FROM app_strategies")
+        strategies = scalar("SELECT COUNT(*) c FROM app_strategies WHERE direction<>%s", repo.DEMO_DIRECTION)
         mine = {}
     else:
         cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs WHERE user_id=%s AND kind='research'"
                     " AND (direction IS NULL OR direction<>%s) GROUP BY status", (ctx.uid, repo.DEMO_DIRECTION))
         runs = {r["status"]: int(r["c"]) for r in cur.fetchall()}
-        done = sum(n for s, n in runs.items() if s not in ("running", "queued", "paused"))
         cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE user_id=%s AND status='running' GROUP BY mode",
                     (ctx.uid,))
         running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
         strategies = scalar("SELECT COUNT(*) c FROM app_strategies WHERE user_id=%s AND direction<>%s",
                             ctx.uid, repo.DEMO_DIRECTION)
         mine = {"mine": True}
+    done = sum(n for s, n in runs.items() if s not in ("running", "queued", "paused"))
 
     def safe_scalar(q, *a):
         try:
@@ -217,11 +227,15 @@ def admin_system(ctx: Ctx):
                         "demo": running.get("demo", 0), **mine},
     }
     # Recent activity feed: fleet-wide for the operator, but a normal user only ever
-    # sees their OWN agent events — never another user's private strategy names.
+    # sees their OWN agent events — never another user's private strategy names. The operator's leaves out
+    # the seeded example's canned lines, written at every sign-up ("VOID — Todd's random walk…" read as an
+    # agent at work). STRAIGHT_JOIN: the newest events by id, each one's run read by its key; the planner otherwise
+    # read every run first and sorted all their events for the 14.
     if is_admin:
         cur.execute("""SELECT e.run_id, r.user_id, e.kind, e.message, e.data_json, e.created_at
-                       FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
-                       ORDER BY e.id DESC LIMIT 14""")
+                       FROM app_agent_events e STRAIGHT_JOIN app_agent_runs r ON r.id=e.run_id
+                       WHERE r.direction IS NULL OR r.direction<>%s
+                       ORDER BY e.id DESC LIMIT 14""", (repo.DEMO_DIRECTION,))
     else:
         cur.execute("""SELECT e.run_id, r.user_id, e.kind, e.message, e.data_json, e.created_at
                        FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id

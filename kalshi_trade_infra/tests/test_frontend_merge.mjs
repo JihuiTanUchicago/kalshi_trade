@@ -5,6 +5,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 import {bundleSource, exposing} from './bundle_source.mjs';
 import {pageFileCases} from './page_files_frontend_cases.mjs';
+import {adminFigureCases} from './admin_figures_frontend_cases.mjs';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
@@ -239,6 +240,7 @@ deployActionCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, post
 stopReasonCases({name: 'Tau', frontend});
 trustGlitchCases({name: 'Tau', frontend});
 bellCases({name: 'Tau', frontend});
+adminFigureCases({name: 'Tau', frontend});
 communityCases({name: 'Tau', frontend});
 researchPollCases({name: 'Tau', frontend});
 runPageCases({name: 'Tau', frontend});
