@@ -1788,7 +1788,8 @@ body.landing-body .apf { display: none; }
 .apf-head { flex: none; display: flex; align-items: center; gap: 9px; padding: 13px 16px; border-bottom: 1px solid var(--rule); }
 .apf-head b { font-size: 14px; letter-spacing: .01em; }
 .apf.open.live .apf-head b { color: var(--signal); }
-.apf-x { margin-left: auto; background: none; border: 0; padding: 2px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+/* 24px with a mouse too (WCAG 2.5.8; it was 22px): the margin takes the extra back, so the header keeps its height. */
+.apf-x { margin: -1px 0 -1px auto; background: none; border: 0; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
 .apf-x:hover { color: var(--ink); }
 .apf-x svg { width: 18px; height: 18px; }
 .apf-top { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: var(--stock); }
@@ -1837,6 +1838,8 @@ body.landing-body .apf { display: none; }
 .apf-session-head .say-kind { margin: 0; color: var(--ink); font-size: 10.5px; }
 .apf-session-sub { font-size: 11.5px; color: var(--ink-3); }
 .apf .log.stream.apf-log { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 16px 10px; font-size: 13.5px; }
+/* The feed takes focus to scroll by keyboard (page-autopilot.js): its ring sits inside, where the panel doesn't clip it. */
+.apf .log.stream.apf-log:focus-visible { outline-offset: -2px; }
 .apf-log .say { font-size: 13.5px; line-height: 1.6; color: var(--ink-2); }
 .apf-log .say-title { color: var(--ink); }
 .apf-md > :first-child { margin-top: 0; } .apf-md > :last-child { margin-bottom: 0; }

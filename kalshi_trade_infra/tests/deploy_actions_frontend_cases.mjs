@@ -229,7 +229,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     // The dashboard's "since your last visit" names it in the same words, not the stored "stopped too".
     const strip = f.sinceStrip({since: {books: {}}, deployments: [dep({id: 2, mode: 'demo', status: 'paused', status_why: why,
       status_reason: 'Its paper strategy is no longer running, so the demo copy stopped too.'})]}, '#dash-deps');
-    assert.match(strip, /is paused<span class="since-sub">: Waiting on its paper deployment, which is paused/);
+    assert.match(strip, /is paused on demo<span class="since-sub">: Waiting on its paper deployment, which is paused/);
     assert.doesNotMatch(strip, /stopped too/);
   });
 

@@ -2798,7 +2798,11 @@
     needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3).map((x) => {
       const why = x.status_why || x.status_reason;
       const said = why && !(keyNeed && x.mode === 'demo' && /demo \(sandbox\) key/.test(why));
-      return `<a href="${pausedHref}">${esc(x.title)}</a> is paused${said ? `<span class="since-sub">: ${fundsLinked(esc(shortReason(why)))}</span>` : ''}`;
+      // Which book is paused: the daily loss stop pauses a strategy's live run while its paper and demo copies trade on,
+      // and "Fade tails is paused" sat beside the autopilot card counting it on paper (walk 2026-10-31).
+      // A reason that already names it ("… to run this on live money") isn't followed by it twice.
+      const book = said && /\bon (?:paper|demo|live money)\b/.test(why) ? '' : { paper: ' on paper', demo: ' on demo', live: ' on live money' }[x.mode] || '';
+      return `<a href="${pausedHref}">${esc(x.title)}</a> is paused${book}${said ? `<span class="since-sub">: ${fundsLinked(esc(shortReason(why)))}</span>` : ''}`;
     }));
     const pausedN = d.deployments.filter((x) => x.status === 'paused').length;
     if (pausedN > 3) needs.push(`<a href="${pausedHref}">${num(pausedN - 3)} more paused</a>`);
@@ -2940,7 +2944,7 @@
       host.className = 'apcard'; repainted.delete(host);
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
-        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. ${liveOpen() ? 'Real money stays off until you turn it on separately.' : 'Real money stays off: live trading isn\u2019t open yet.'}</p>${apCostLine()}${apOffCost(d, 'apcard-cost')}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. ${liveOpen() ? 'Real money stays off until you turn it on separately.' : 'Real money stays off: live trading isn\u2019t open yet.'}</p>${apOffRunning(d)}${apCostLine()}${apOffCost(d, 'apcard-cost')}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
@@ -2966,8 +2970,10 @@
     // Its realized figure is the live book's while a live strategy places orders, or while one settled a trade today
     // (today_live_pnl). Live trading closed with nothing live realized today, the only live strategy waits: "Live
     // realized today (UTC) $0.00" read as live money at work, so it shows the paper book, as with no live strategy.
-    // One book either way, never the two summed.
-    const liveFig = !!d.live_running && (liveOpen() || !!+d.today_live_pnl);
+    // One book either way, never the two summed. A live trade settled today keeps the live figure after the daily loss
+    // stop or Kill paused every live strategy: the card went back to paper's day, and the real money lost today wasn't
+    // anywhere on it (walk 2026-10-31).
+    const liveFig = !!+d.today_live_pnl || (!!d.live_running && liveOpen());
     // Each book by name, as the panel's Running figure says it: "Strategies running 2" didn't say which money they trade.
     const running = [[(+d.live_running || 0) - liveIdle, 'live'], [+d.demo_running || 0, 'demo'], [+d.paper_running || 0, 'paper']]
       .filter(([n]) => n > 0).map(([n, book]) => `${num(n)}\u00a0${book}`).join(SEP);
@@ -3037,7 +3043,8 @@
   function apLastHtml(la) {
     const text = apMoveText(la);
     if (!text || !la.at) return '';
-    return `<p class="ap-last">Last move <time datetime="${esc(la.at)}" title="${esc(settleAt(la.at))}">${sinceMin(la.at)}</time>: ${esc(text)}.</p>`;
+    // A move cut at 90 characters ends on its ellipsis, without a period after it ("on quiet days….", walk 2026-10-31).
+    return `<p class="ap-last">Last move <time datetime="${esc(la.at)}" title="${esc(settleAt(la.at))}">${sinceMin(la.at)}</time>: ${esc(text)}${text.endsWith('\u2026') ? '' : '.'}</p>`;
   }
   function apMarketName(n) {
     const s = String(n || '');
@@ -3158,6 +3165,14 @@
   const apStillTrading = (d) => {
     const n = (liveOpen() ? +d.live_running || 0 : 0) + (+d.demo_running || 0) + (+d.paper_running || 0);  // live places no orders while closed
     return n ? ` ${n === 1 ? 'The strategy already running keeps' : `The ${num(n)} strategies already running keep`} trading.` : '';
+  };
+  // Off, the card said only what turning it on does, while what it had put on paper went on trading (walk 2026-10-31:
+  // switched off an hour before, a strategy still trading on paper and nothing on the card about it). Each book by
+  // name, as the on card counts it; a live one while live trading is closed places no orders and isn't counted.
+  const apOffRunning = (d) => {
+    const parts = d ? [[liveOpen() ? +d.live_running || 0 : 0, 'live'], [+d.demo_running || 0, 'demo'], [+d.paper_running || 0, 'paper']]
+      .filter(([n]) => n > 0).map(([n, book]) => `${num(n)}\u00a0${book}`) : [];
+    return parts.length ? `<p class="apcard-still">Already running, and still trading with it off: ${parts.join(SEP)}. <a href="/deploy">Deploy</a> pauses or removes ${parts.length === 1 && /^1\u00a0/.test(parts[0]) ? 'it' : 'them'}.</p>` : '';
   };
   // Beside the week's spend: what is left, how long it lasts at that pace (the Billing page's runway),
   // and the only limit there is. Autopilot has no spending budget of its own: it researches until the

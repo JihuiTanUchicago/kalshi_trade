@@ -308,7 +308,7 @@ window.TauPage('autopilot', (T) => {
       </div>
       <div class="apf-session">
         <div class="apf-session-head"><span class="say-kind">Activity feed</span>${tau ? '<span class="apf-session-sub">everything the autopilot does, end to end</span>' : ''}</div>
-        <ol class="log stream apf-log" id="apf-messages" aria-label="Autopilot activity" aria-live="polite"></ol>
+        <ol class="log stream apf-log" id="apf-messages" aria-label="Autopilot activity" aria-live="polite" tabindex="0"></ol>
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
       <form class="composer apf-composer-row" id="apf-composer">
@@ -517,7 +517,9 @@ window.TauPage('autopilot', (T) => {
     // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.
     // Live trading closed with nothing live realized today (today_live_pnl), nothing live places orders: "Live realized
     // today (UTC) $0.00" read as live money at work, so the paper book shows, as on the dashboard's card. One book, never summed.
-    const liveInPlay = !!(d.autopilot_live || d.live_running) && (liveOpen() || !!+d.today_live_pnl);
+    // A live trade settled today shows even with nothing live armed or running: after the daily loss stop or Kill the
+    // panel showed paper's day, under a feed that said live had just stopped on a loss (walk 2026-10-31).
+    const liveInPlay = !!+d.today_live_pnl || (!!(d.autopilot_live || d.live_running) && liveOpen());
     const pnl = (liveInPlay ? d.today_live_pnl : d.today_paper_pnl) || 0;
     // The live loss budget stops live trading; while live trading is closed nothing live trades, so it isn't shown
     // (a live position still settling counts in Live realized today).

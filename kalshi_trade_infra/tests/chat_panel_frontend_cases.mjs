@@ -178,6 +178,13 @@ export function chatPanelCases({name, frontend, storageFor}) {
     // The line under the panel's pulse, as painted.
     p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []}, last_action: {text: KEPT(SPIKE), at: AT, titles: [SPIKE]}});
     assert.match(p.box.querySelector('#apf-last').textContent, new RegExp(`: I left ${SPIKE} running\\.$`));
+    // A move cut at 90 characters ends on its ellipsis alone: the line read "…on quiet days…." (walk 2026-10-31).
+    const LONG = 'Fade cheap far-strike YES in the last 2 hours on quiet days';
+    p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []},
+      last_action: {text: `Paused your paper strategy ${LONG} automatically: it lost $9.40, more than its $8.00 loss guard.`, at: AT}});
+    const last = p.box.querySelector('#apf-last').textContent;
+    assert.match(last, /quiet days…$/, last);
+    assert.doesNotMatch(last, /…\.$/);
   });
 
   test(`${name}: "Furthest on paper" ends its net before the instant-fill note, never running one into the other`, async () => {
