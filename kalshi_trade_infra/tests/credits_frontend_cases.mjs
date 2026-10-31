@@ -145,6 +145,31 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     f.S.ap = status; f.paintDashAp();
     return f;
   };
+  test(`${name}: an autopilot that is on but whose status didn't load says so on the dashboard card, with Try again`, async () => {
+    // Failure walk 2026-10-31: the card stayed empty for good (it waits for a status that never came), with no word why.
+    let up = false;
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return up ? response({...apStatus, week}) : response({error: 'Something went wrong on our side.'}, 500);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 25.71, min_run_balance: 1};
+    f.S.me.user.autopilot = true; f.S.ap = null; f.S.apAt = 0;
+    await f.viewDashboard(); await flush(); await flush();
+    const card = () => f.root.querySelector('#dash-ap');
+    assert.match(card().textContent, /Autopilot is on, but its latest status didn’t load\. Tau keeps trying\./);
+    assert.doesNotMatch(card().textContent, /Autopilot off|Turn on autopilot/);
+    assert.match(card().innerHTML, /role="status"/);
+    const again = f.root.querySelector('#dash-ap [data-apcard="again"]');
+    assert.ok(again, 'a Try again button on the card');
+    up = true;
+    await again.onclick(); await flush(); await flush();
+    assert.doesNotMatch(card().textContent, /didn’t load/);
+    assert.ok(f.root.querySelector('#dash-ap .ap-week'), 'the card draws the status once it is back');
+    f.clearTimers();
+  });
   const week = {research_credits: 100.01, tested: 3, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
     checkin_credits: 0.09, credits_left: 25.71, runway_days: 1.7, reload_days: 1.4, pace_days: 7};
 
