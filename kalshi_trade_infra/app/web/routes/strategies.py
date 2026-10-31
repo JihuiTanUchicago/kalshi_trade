@@ -33,6 +33,17 @@ from trading_core.domain.money import cents
 from trading_core.domain.slippage import paper_estimate
 
 
+def _shared_from(s: Dict) -> Optional[str]:
+    """Who shared this copy, as the community shows a person: their name, or their @handle when the name is unset
+    or is an email address. It was the sharer's raw name, so a Google profile named by its address showed that
+    address to the recipient ("Shared by dana.private@example.com"), and a sharer with no name dropped the
+    "Shared by" line altogether (walked 2026-10-31). A sharer whose account is gone reads "another trader"."""
+    if not s.get("shared_from_user_id"):
+        return None
+    handle = s.get("shared_from_username")
+    return customer_text.display_name(s.get("shared_from_name"), "@" + handle if handle else "another trader")
+
+
 def _strategy_card(s: Dict) -> Dict:
     res = s.get("result") or {}
     return {
@@ -48,7 +59,7 @@ def _strategy_card(s: Dict) -> Dict:
         # mode, so the pages offer no deploy button for it (they did, and every tap failed).
         **({"kind": "code", "research_only": True} if specmod.is_code_spec(s["spec"]) else {}),
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
-        "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
+        "shared_from": _shared_from(s),
         "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session
         # Found in a session the autopilot started (its run's brief flag, as the research list reads it).
         **({"by_autopilot": True} if s.get("by_autopilot") else {}),

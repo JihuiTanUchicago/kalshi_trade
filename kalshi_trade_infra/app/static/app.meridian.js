@@ -1071,9 +1071,14 @@
     const me = S.me || {}, u = me.user || {};
     const keys = `${me.kalshi_connected ? 'Live key connected' : 'No live key'}${SEP}${me.kalshi_dev_connected ? 'demo key connected' : 'no demo key'}`;
     const row = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+    // What other people see in its place, when that isn't the Google name: none is set, or it is an email address
+    // (never shown to anyone else). The row said "Not set" or the address alone, and nothing said that the feed,
+    // replies and shares read "Trader @handle" instead (walk 2026-10-31).
+    const pub = u.public_name, shownAs = pub && pub !== String(u.name || '').trim()
+      ? `<span class="acct-sub">Others see you as ${esc(pub)}${u.username ? ' @' + esc(u.username) : ''}${u.name ? ': Tau never shows an email address to other people' : ''}.</span>` : '';
     return `<section class="sect account-settings"><div class="section-head"><h2>Account</h2><p>Signed in with Google</p></div>
         <dl class="acct-rows">
-          ${row('Name', u.name ? esc(u.name) : 'Not set')}
+          ${row('Name', (u.name ? esc(u.name) : 'Not set') + shownAs)}
           ${row('Email', u.email ? esc(u.email) : 'Not set')}
           ${u.username ? row('Community name', '@' + esc(u.username)) : ''}
           ${row('Kalshi keys', `<span>${keys}</span><a href="/funds#connect-kalshi">Manage keys on Funds</a>`)}

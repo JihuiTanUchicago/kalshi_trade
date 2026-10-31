@@ -205,3 +205,29 @@ def test_a_null_pnl_sorts_last_and_a_search_matches_its_words_literally(conn):
         assert titles(out) == want, q
         # The counts read the same clause, so the chips count what the search lists.
         assert out["counts"]["total"] == len(want), q
+
+
+def test_a_shared_copy_names_its_sharer_as_the_community_does_never_by_email(conn):
+    """Walk 2026-10-31: a sharer whose Google name is their email address showed that address to the recipient on the
+    list and the page ("Shared by dana.private@example.com"), and a sharer with no name had no "Shared by" at all.
+    Both reads (the list's and the page's) carry the sharer's @handle for that."""
+    from app import repository as repo
+    from app.trading import spec as specmod
+    from app.web.routes.strategies import _strategy_card
+
+    cur = conn.cursor()
+    tag = uuid.uuid4().hex[:8]
+    to = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "to-%s@example.invalid" % tag, "To", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 1}})
+    want = {}
+    for name in ("dana-%s@example.invalid" % tag, None, "Pat Named"):
+        sender = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "s%d-%s@example.invalid" % (len(want), tag), name, None)
+        src = repo.insert_strategy(cur, sender["id"], None, None, "btc15m", "momentum", "shared %d" % len(want), "t", spec,
+                                   "passed", _result(1.0))
+        copy = repo.share_strategy(cur, src, sender["id"], to)
+        want[copy] = name if name == "Pat Named" else "@" + sender["username"]
+    listed = {s["id"]: _strategy_card(s)["shared_from"] for s in repo.list_strategies(cur, to) if s["id"] in want}
+    assert listed == want
+    for copy, shown in want.items():
+        assert _strategy_card(repo.get_strategy(cur, to, copy))["shared_from"] == shown
+    assert not any("@example.invalid" in v for v in listed.values())

@@ -25,6 +25,9 @@ def me(ctx: Ctx):
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
             "username": ctx.user.get("username"), "ui_theme": ctx.user.get("ui_theme") or "tau",
+            # The name other people see on this account's posts, replies and shares (community._post_out): Settings
+            # says when it isn't the Google name (none is set, or it is an email address, which is never shown).
+            "public_name": customer_text.display_name(ctx.user.get("name"), "Trader"),
             "email_opt_out": bool(ctx.user.get("email_opt_out")),  # Settings' email switch reads this
             "picture": ctx.user["picture_url"], "autopilot": bool(ctx.user["autopilot"]),
             "autopilot_live": bool(ctx.user.get("autopilot_live")),
