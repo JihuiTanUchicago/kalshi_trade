@@ -2123,6 +2123,42 @@ test('a settled market shows its result in place of a live price', async () => {
   assert.match(f.root.innerHTML, /Settled\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
+// Walk 2026-10-31: a voided market, or one Kalshi lists as settled with no Yes or No, read "Settled" over a live-looking
+// "≈ 41% chance of Yes" and "Result expected" a day gone, and never said there was no result.
+test('a voided market, or one settled with no result, says so in place of a live price', async () => {
+  const v = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'void', close_time: '2026-10-20T21:00:00Z', settles_at: '2026-10-20T21:05:00Z'});
+  await v.ready;
+  assert.match(v.root.innerHTML, /Result<\/dt><dd><span class="fig ">Voided<\/span><\/dd><dd class="sub-fig">Kalshi voided this market: no Yes or No result/);
+  assert.match(v.root.querySelector('.deck').innerHTML, /Voided\u00a0· <span class="kalshi-ref">/);
+  assert.match(v.root.innerHTML, /<h2>How it settles<\/h2><p>Voided, no result<\/p>/);
+  assert.doesNotMatch(v.root.innerHTML, /chance of Yes|Result expected|Bitcoin vs the/);
+  const n = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: '', close_time: '2026-10-20T21:00:00Z', settles_at: '2026-10-20T21:05:00Z'});
+  await n.ready;
+  assert.match(n.root.innerHTML, /Result<\/dt><dd><span class="fig ">—<\/span><\/dd><dd class="sub-fig">Kalshi lists it as settled but sent no Yes or No result/);
+  assert.match(n.root.innerHTML, /<h2>How it settles<\/h2><p>Settled, no result sent<\/p>/);
+  assert.doesNotMatch(n.root.innerHTML, /chance of Yes|Result expected|Bitcoin vs the/);
+});
+
+// Walk 2026-10-31: a price nobody quotes read as the book's ("≈ 62% chance of Yes · as of 09:11"), a count Kalshi didn't
+// send read "0", 98,765,432,100 ran out of its figure on a phone, a snapshot with no status said "Market", and a market
+// closed before its time read "Closed 17:00" at 15:00.
+test('a market page says a price is the last trade, a missing count is —, a long one is set smaller, no status names none, and an early close says so', async () => {
+  const f = OPEN_MARKET({...MARKET_PAGE, status: undefined, yes_bid: '0', yes_ask: '0', last: '0.62', volume_24h: null, open_interest: '98765432100',
+    close_time: '2099-01-01T00:00:00Z'});
+  await f.ready;
+  assert.match(f.root.innerHTML, /≈\u00a062% chance of Yes, from the last trade\u00a0· no bid or ask/);
+  assert.match(f.root.innerHTML, /24h volume<\/dt><dd><span class="fig ">—<\/span>/);
+  assert.match(f.root.innerHTML, /<div class="m fig-long"><dt class="lab">Open interest<\/dt><dd><span class="fig ">98,765,432,100</);
+  const deck = f.root.querySelector('.deck').innerHTML;
+  assert.doesNotMatch(deck, /\bMarket\b/); assert.doesNotMatch(deck, /^\u00a0·/);
+  const quoted = OPEN_MARKET({...MARKET_PAGE});
+  await quoted.ready;
+  assert.match(quoted.root.innerHTML, /≈\u00a056% chance of Yes\u00a0· bid/); assert.doesNotMatch(quoted.root.innerHTML, /from the last trade|fig-long/);
+  const early = OPEN_MARKET({...MARKET_PAGE, status: 'closed', close_time: '2099-01-01T00:00:00Z'});
+  await early.ready;
+  assert.match(early.root.innerHTML, /Closed<\/dt><dd><span class="fig ">Early<\/span><\/dd><dd class="sub-fig">was due /);
+});
+
 // Every page the server serves the app shell for (app/server.py SPA_ROUTES). A path with no route
 // fell back to the dashboard, so Meridian's /settings/billing opened Tau's dashboard after a theme switch.
 const SPA_PATHS = ['/', '/dashboard', '/research', '/research/1', '/strategies', '/strategies/1', '/deploy', '/community',

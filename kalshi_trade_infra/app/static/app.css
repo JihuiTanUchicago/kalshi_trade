@@ -1851,6 +1851,8 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
    edge, so the whole page scrolled sideways. The market page's buttons wrap inside the column instead. */
 .mk-next .btn { white-space: normal; max-width: 100%; }
 .m.fig-behind .sub-fig { color: var(--loss-ink); }
+/* A market page's count of ten digits or more (98,765,432,100 contracts) ran out of its figure on a phone: set smaller there. */
+@media (max-width: 760px) { .m.fig-long .fig { font-size: 16px; } }
 .mk-spot-note { max-width: 72ch; margin-top: 10px; }
 .mk-rules { max-width: 72ch; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 /* A market page's way back to the list, at the top as well as the foot; a phone's thumb gets a 32px-tall target. */
