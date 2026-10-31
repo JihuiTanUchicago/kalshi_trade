@@ -319,7 +319,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // With a key (or from an /api/me that doesn't say), the figure is shown.
     for (const key of [true, undefined]) {
       html = await board(key);
-      assert.match(html, /\$4,321\.00 capital/, String(key));
+      assert.match(html, /\$4,321\.00 starting capital/, String(key));
       assert.doesNotMatch(html, /No demo key/, String(key));
     }
     // Funds: the same, in its figures and its demo panel (no balance, no reload, until a key is in).

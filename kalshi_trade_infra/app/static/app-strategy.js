@@ -7,7 +7,7 @@ window.TauPage('strategy', (T) => {
   const {
     actionLink, announce, api, ApiError, closeClock, liveClose, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, busy,
     cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, dateFmt, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
-    depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
+    depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, FEES_NET, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
@@ -445,7 +445,9 @@ window.TauPage('strategy', (T) => {
       const ds = deps.filter((d) => d.mode === m);
       const { trades: n, pnl, instant, slip } = bookTotal(s, m, ds);
       // Before its first close a book has no realized P&L: "0 closed trades · $0.00 realized" read as a result.
-      const stats = !n && !+pnl ? 'no closed trades yet' : `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
+      // Each says what its realized is net of, as its Since deploying line does: paper's "after Kalshi fees and the spread"
+      // sat over a demo rung's bare "−$0.29 realized" (walk 2026-10-31).
+      const stats = !n && !+pnl ? 'no closed trades yet' : `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${n ? `, ${m === 'paper' ? PAPER_NET : FEES_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats}${SEP}${demoHealthLine(s.demo_health)}</p>`;
       const runs = ds.some((d) => d.status === 'running');

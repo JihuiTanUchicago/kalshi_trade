@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    announce, api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, errText, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, olderRows, openCost, pageAssets, PAPER_NET,
+    announce, api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoCapital, demoKeyless, demoNoClose, demoSpan, errText, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, olderRows, openCost, pageAssets, PAPER_NET,
     paint, painted, poll, refreshed, root, S, SEP, settleAt, shell, slipEst, tone, usd, when
   } = T;
 
@@ -272,7 +272,7 @@ window.TauPage('funds', (T) => {
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : liveOpen() ? '' : '.') : cf ? `${cf[1]}${livePnl(k)}${liveLeft(k)}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)}${liveLeft(k)}` }) +
-        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'}${SEP}${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : `needs a demo key${SEP}`}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox: ${DEMO_SANDBOX}` })) +
+        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${demoCapital(dm)}${SEP}${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : `needs a demo key${SEP}`}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox: ${DEMO_SANDBOX}` })) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash${SEP}${openAt(d.paper, inBalance(d.paper))}${bookPnl(d.paper, 'paper')}practice money${paperSlip(d.paper)}` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
       // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
@@ -300,7 +300,7 @@ window.TauPage('funds', (T) => {
       const demoSec = `<section class="${sub}">
           <h2>Kalshi demo (sandbox) account</h2>
           ${!demoNone ? `
-          <dl class="kv"><dt>${DEMO_BOOK}</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
+          <dl class="kv"><dt>${DEMO_BOOK}</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${demoNoClose(dm) ? 'None yet' : usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is simulated. Reloading changes Tau’s demo book only and starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
             <label class="field"><span>Reload to</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="1000"></label>

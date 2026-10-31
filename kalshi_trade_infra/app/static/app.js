@@ -20,7 +20,7 @@
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
     spotSect, closeLeft, closeWords, closeData, liveClose, glueTarget, compactCondition, marketSpot, MKT_GONE, vsHtml, spotListNote,
     EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips, exploreNoBtc, hotWhen, hotSpotNote,
-    waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip,
+    waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip,
     sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER, apPillLabel, apAgo, apEvery, FOCUS_WORDS,
     creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount, exitWord, AP_FOCUS, KIND_LABEL, runwayLabel,
     paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode, sessionNo, olderRows
@@ -2047,7 +2047,7 @@
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, LIVE_IDLE())].filter(Boolean).join(SEP)) : ['Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> ' + (liveOpen() ? 'to trade real money' : 'to see your real cash at Kalshi. Live trading isn\u2019t open yet, so Tau places no live trades'), mSub(lv, '')].filter(Boolean).join(SEP)) + tradesCsv('live', lv) })}
-          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${num(d.demo.open_positions)} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}, after Kalshi fees` : `${usd(d.demo.capital)} capital${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
+          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl || d.demo.closed_trades) ? `${demoCapital(d.demo)}${SEP}${num(d.demo.open_positions)} open${SEP}${demoPnl(d.demo, d.demo.realized_pnl)}` : `${demoCapital(d.demo)}${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash${hasOpen(p) ? `${SEP}${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''}` : ''}${SEP}${hasClosed(p) ? `${pnlWin('all')} <span class="amt">${usd(p.realized_pnl, true)}</span> ${gl('realized', 'realized')}, ${tradesCsv('paper', p, 'paperfills', PAPER_NET)}${slipEstGl(p.slippage_estimate)}` : PAPER_NO_CLOSE}` : `${usd(p.cash)} of practice money${SEP}no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
@@ -2539,7 +2539,7 @@
       const b = s.books[m] || { pnl: 0, trades: 0 };
       // The book's name and its signed amount never break apart (a phone wraps the rest of the line).
       return `<span class="since-book" data-book="${m}">${b.trades
-        ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : ''}`
+        ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${sinceNote(m)}`
         : `<b>${label}</b>: no trades closed yet`}</span>`;
     }).join('<span class="sep">·</span>') + sinceSlip(s.books) + sinceSplit(d, books) : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
@@ -3553,7 +3553,7 @@
     apMarketNames, apQueued, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE, LOG_STAMP, closeClock, liveClose,
-    clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig,
+    clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, demoCapital, demoNoClose, demoPnl, FEES_NET, inBalance, openBasis, openCost, openFig,
     demoSpan, DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
