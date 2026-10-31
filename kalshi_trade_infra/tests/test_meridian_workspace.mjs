@@ -51,6 +51,7 @@ import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {badConnectionCases} from './bad_connection_frontend_cases.mjs';
+import {accountSwitchCases} from './account_switch_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
@@ -6806,6 +6807,7 @@ writeWaitCases({name: 'Meridian', frontend, billingPage, cardedBilling, postRequ
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});
 flakyNetworkCases({name: 'Meridian', frontend});
 badConnectionCases({name: 'Meridian', frontend});
+accountSwitchCases({name: 'Meridian', frontend});
 deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});

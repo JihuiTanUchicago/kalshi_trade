@@ -18,6 +18,7 @@ function loadApi(file) {
     pick(/const reportBroken = [^\n]*/),
     pick(/const apiBroke = [^\n]*/),
     pick(/async function api\(path, body, cfg\) \{[\s\S]*?\n  \}\n/),
+    pick(/function accountMoved\(res, write\) \{[\s\S]*?\n  \}\n/),  // api() drops a reply read as another account
     'globalThis.api = api;',
   ].join('\n');
   const calls = [];

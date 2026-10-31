@@ -359,7 +359,7 @@
         let parsed = null;
         try { parsed = await res.json(); } catch (e) { /* CloudFront's error page */ }
         if (!parsed || typeof parsed !== 'object') { await sleep(RETRY_MS[attempt]); continue; }
-        res = {ok: res.ok, status: res.status, json: async () => parsed};
+        res = {ok: res.ok, status: res.status, headers: res.headers, json: async () => parsed};
       }
       break;
     }
@@ -371,6 +371,10 @@
     // A session that ended mid-use says so on the sign-in page (a write: that it wasn't saved), instead of
     // dropping the reader on the landing page with no word why.
     if (res.status === 401 && path !== '/api/me') { if (S.me) S.sessionEnded = body !== undefined ? 'write' : 'read'; S.me = null; if (location.pathname !== '/signin') go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
+    // Signed in as someone else in another tab: the session cookie is the browser's, so this tab's reads now come
+    // back as that account (the server names it on each reply). None paints under this tab's name: every reply from
+    // here on is dropped, and the tab reloads into the account now signed in and says why there.
+    if (S.accountMoved || accountMoved(res, body !== undefined)) return STALE();
     const said = data && typeof data === 'object' && typeof data.error === 'string' && data.error;
     if (!res.ok) {
       if (res.status >= 500) apiBroke(path, body !== undefined, `failed (${res.status})`);
@@ -383,6 +387,40 @@
       throw new ApiError(res.status, body !== undefined ? failText(0, true) : 'Tau’s reply didn’t come through whole. Try again.');
     }
     return data;
+  }
+
+  // The reply came back as another account than this tab shows (X-Tau-Account, app/server.py _send_json): note why
+  // for the reload, and reload. A write Tau took was made as the account now signed in, so the note says so; one it
+  // refused wasn't made; one it failed on (5xx) may or may not have been.
+  function accountMoved(res, write) {
+    const mine = S.me && S.me.user && S.me.user.id;
+    const said = res && res.headers && typeof res.headers.get === 'function' ? res.headers.get('X-Tau-Account') : null;
+    if (mine == null || !said || said === String(mine)) return false;
+    S.accountMoved = true;
+    clearTimers();
+    try {
+      // This tab's unsent words were the old account's (forgetDrafts' per-tab ones): they don't follow it over.
+      sessionStorage.removeItem('tau_research_draft'); sessionStorage.removeItem('tau_post_draft');
+      sessionStorage.setItem('tau_account_moved', !write ? 'read' : res.ok ? 'saved' : res.status >= 500 ? 'unconfirmed' : 'unsaved');
+    } catch (e) { /* private mode: the reload still shows the right account, only without the note */ }
+    location.reload();
+    return true;
+  }
+  const MOVED = 'You signed in to a different account in another tab, so this tab switched to it too.';
+  const MOVED_WHY = {
+    read: MOVED,
+    saved: MOVED + ' Your last change was saved to this account, not the one the tab showed before.',
+    unsaved: MOVED + ' Your last change wasn\u2019t saved.',
+    unconfirmed: MOVED + ' Tau didn\u2019t confirm your last change, so check this account before you try it again.',
+  };
+  // Said once, at the top of the first page after that reload.
+  function accountMovedNote() {
+    const why = S.movedNote; S.movedNote = null;
+    const m = why && MOVED_WHY[why] && root.querySelector('#main');
+    if (!m) return;
+    const n = document.createElement('div'); n.id = 'account-flash';
+    if (m.prepend) m.prepend(n); else m.appendChild(n);
+    flash(n, MOVED_WHY[why]);
   }
 
   // ---------- router ----------
@@ -676,6 +714,7 @@
         return bootFail();
       }
       if (splashTid) clearTimeout(splashTid);
+      try { S.movedNote = sessionStorage.getItem('tau_account_moved'); } catch (e) { /* private mode */ }
       // Adopt the account's saved theme on a fresh device (server wins), reloading once into it.
       const server = (S.me.user && S.me.user.ui_theme) || 'tau';
       let local = 'tau'; try { local = localStorage.getItem('tau_ui') || 'tau'; } catch (e) {}
@@ -703,6 +742,7 @@
     if (gen !== S.gen) return;  // the user moved on while this page loaded
     root.setAttribute('aria-busy', 'false');
     pageArrived(path, was);
+    if (S.movedNote) { try { sessionStorage.removeItem('tau_account_moved'); } catch (e) { /* private mode */ } accountMovedNote(); }
     pagePrefetch();
     paymentGate().catch(() => {});
   }
