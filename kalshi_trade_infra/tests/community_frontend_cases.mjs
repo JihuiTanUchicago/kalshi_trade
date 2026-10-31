@@ -75,6 +75,18 @@ export function communityCases({name, frontend}) {
     assert.ok(f.root.querySelector('.post[data-id="11"]'));
   });
 
+  // Walk 2026-10-31: a name starting with an emoji put half of its surrogate pair in the avatar, a broken-glyph box.
+  test(`${name}: an avatar's placeholder letter is the name's first character whole, an emoji as itself`, async () => {
+    const f = community([post(13, {author: '🦊 Fox Mulder', username: 'fox'}), post(12, {author: 'مريم', username: 'maryam'}),
+      post(11, {author: 'ada', username: 'ada'})]);
+    await f.viewCommunity(); await settle();
+    const letter = id => f.root.querySelector(`.post[data-id="${id}"] .pfp.ph`).textContent;
+    assert.equal(letter(13), '🦊');
+    assert.equal(letter(12), 'م');
+    assert.equal(letter(11), 'A');
+    for (const id of [13, 12, 11]) assert.doesNotMatch(letter(id), /[\uD800-\uDFFF]/u);
+  });
+
   test(`${name}: a signed-out link to a post signs in back to that post, and the feed opens it from ?post=`, async () => {
     const out = frontend({fetchImpl: path => path === '/api/me' ? response({error: 'Please sign in.'}, 401) : response({})});
     out.S.me = null; out.location.pathname = '/community'; out.location.hash = '#post-11';

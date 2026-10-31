@@ -76,8 +76,15 @@ window.TauPage('community', (T) => {
   }
   // Who a post's strategy card belongs to, when it isn't the viewer's own.
   const snapOwner = (p) => (p.mine ? '' : p.username ? '@' + p.username : p.author || 'its author');
+  // The placeholder's letter is the name's first character whole: [0] took half of an emoji's surrogate pair, so a
+  // name starting "🦊" showed a broken-glyph box in every reader's feed (walk 2026-10-31). An emoji reads as itself.
+  const firstChar = (s) => {
+    const t = String(s || '').trim() || '?';
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) { for (const g of new Intl.Segmenter().segment(t)) return g.segment; }
+    return Array.from(t)[0];
+  };
   function avatar(pic, name) {
-    const initial = esc((name || '?').trim()[0].toUpperCase());
+    const initial = esc(firstChar(name).toUpperCase());
     return pic ? `<img class="pfp" src="${esc(pic)}" alt="" referrerpolicy="no-referrer">` : `<span class="pfp ph" aria-hidden="true">${initial}</span>`;
   }
   // Reactor tooltip: names (+ @handles) are preloaded in the feed payload (reactions_for),

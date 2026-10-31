@@ -228,6 +228,26 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
     assert.doesNotMatch(second, /Community name/);
   });
 
+  // Walk 2026-10-31: an account with no Google name, or one whose name is its email address, read "Not set" or the
+  // address on Settings, and nothing said that every other reader sees "Trader @handle" in its place.
+  test(`${name}: Settings says what other people see when it isn't the Google name`, async () => {
+    const acct = async (user) => {
+      const f = frontend({fetchImpl: path => { throw new Error('Settings reads nothing on open: ' + path); }});
+      Object.assign(f.S.me.user, user);
+      await f.viewSettings();
+      return f.root.querySelector('.account-settings').innerHTML;
+    };
+    const unnamed = await acct({name: null, email: 'fresh@example.invalid', username: 'fresh', public_name: 'Trader'});
+    assert.match(unnamed, /<dt>Name<\/dt><dd>Not set<span class="acct-sub">Others see you as Trader @fresh\.<\/span><\/dd>/);
+    const address = await acct({name: 'dana@example.invalid', email: 'dana@example.invalid', username: 'dana', public_name: 'Trader'});
+    assert.match(address, /<dt>Name<\/dt><dd>dana@example\.invalid<span class="acct-sub">Others see you as Trader @dana: Tau never shows an email address to other people\.<\/span><\/dd>/);
+    // A name others see as it is: no sub-line (and none from a reply without public_name).
+    const named = await acct({name: 'Ada <b>L</b>', email: 'ada@example.invalid', username: 'ada', public_name: 'Ada <b>L</b>'});
+    assert.match(named, /<dt>Name<\/dt><dd>Ada &lt;b&gt;L&lt;\/b&gt;<\/dd>/);
+    const older = await acct({name: null, email: 'old@example.invalid', username: 'old'});
+    assert.match(older, /<dt>Name<\/dt><dd>Not set<\/dd>/);
+  });
+
   for (const [what, reply, out] of [
     ['Tau confirmed', () => response({ok: true}), true],
     ['the session had already ended (401)', () => response({error: 'Please sign in.'}, 401), true],

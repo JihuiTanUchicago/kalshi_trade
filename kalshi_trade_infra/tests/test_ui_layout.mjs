@@ -789,3 +789,24 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.equal(icon + 2 * pad + top + bottom, 22, 'it takes up the 22px it did');
   });
 }
+
+// Walk 2026-10-31 (390px, both themes): Settings' Account links ("Manage keys on Funds", "Billing") were 20px tall
+// taps, each alone in its cell, under WCAG 2.2's 24px. They are 24px, and the line under the name (what others see in
+// its place) sits on a line of its own.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: Settings' Account links are 24px taps, and the name's sub-line has its own line`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.acct-rows dd a', 'min-height'), '24px');
+    assert.equal(decl(all, '.acct-rows dd a', 'display'), 'inline-flex');
+    assert.equal(decl(all, '.acct-rows dd .acct-sub', 'flex-basis'), '100%');
+  });
+  // The same walk: a strategy page's "Shared by <a long name>" kept the badge's one line (.mk nowrap), ran past its
+  // column and widened the page on a phone. It wraps, its icon kept whole.
+  test(`${bundle}: a long "Shared by" name wraps inside its column`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.mk.shared', 'white-space'), 'normal');
+    assert.equal(decl(all, '.mk.shared', 'overflow-wrap'), 'anywhere');
+    assert.equal(decl(all, '.mk.shared', 'max-width'), '100%');
+    assert.equal(decl(all, '.mk.shared svg', 'flex'), 'none');
+  });
+}

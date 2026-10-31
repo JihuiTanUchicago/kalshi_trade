@@ -267,8 +267,9 @@ th .info { vertical-align: 0; }
 .bell-stale { margin: 0; padding: 6px 9px; font-size: 12px; line-height: 1.4; color: var(--ink-3); border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; }
 .bell-again, .stale-again { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .bell-again:hover, .stale-again:hover { color: var(--ink); }
-.mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; }
-.mk.shared svg { width: 12px; height: 12px; }
+/* A strategy page's "Shared by <name>" wraps inside its column: a long name ran past it, and off a phone (walk 2026-10-31). */
+.mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; white-space: normal; overflow-wrap: anywhere; max-width: 100%; text-align: start; }
+.mk.shared svg { width: 12px; height: 12px; flex: none; }
 .shared-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-family: var(--f-nar); font-size: 11px; color: var(--ink-3); vertical-align: middle; }
 .shared-flag svg { width: 11px; height: 11px; }
 .profile { position: relative; display: inline-flex; }
@@ -1605,7 +1606,10 @@ body.landing-body { background: #FBFBFA; }
 .acct-rows { display: grid; max-width: 480px; margin: 8px 0 0; }
 .acct-rows > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 2px 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
 .acct-rows dt { font-family: var(--f-ui); font-size: 13px; color: var(--ink-3); }
-.acct-rows dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.acct-rows dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+/* Its sub-line (what others see in place of the name) on a line of its own; its links a 24px tap on a phone. */
+.acct-rows dd .acct-sub { flex-basis: 100%; color: var(--ink-3); font-size: 13px; }
+.acct-rows dd a { display: inline-flex; align-items: center; min-height: 24px; }
 .acct-hint { max-width: 480px; margin: 10px 0 0; line-height: 1.5; }
 @media (max-width: 560px) { .acct-rows > div { grid-template-columns: minmax(0, 1fr); } }
 .theme-mark circle { display: none; }

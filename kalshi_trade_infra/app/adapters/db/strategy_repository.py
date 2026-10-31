@@ -161,6 +161,7 @@ def list_strategies(
             fparams.extend(int(i) for i in ids)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
+                    su.username AS shared_from_username,
                     r.brief AS by_autopilot, """ + VOID_NO_RECORD_SQL + """ AS void_no_record,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps,
@@ -288,7 +289,8 @@ def share_strategy(cur, src_id: int, from_uid: int, to_uid: int) -> Optional[int
 def get_strategy(cur, user_id: int, strategy_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
-                  s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name
+                  s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
+                  su.username AS shared_from_username
            FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
                 LEFT JOIN app_users su ON su.id=s.shared_from_user_id
            WHERE s.id=%s AND s.user_id=%s""",
