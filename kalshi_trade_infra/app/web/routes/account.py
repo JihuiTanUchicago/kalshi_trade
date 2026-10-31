@@ -93,10 +93,14 @@ def unsubscribe(ctx: Ctx):
     except ValueError:
         uid = 0
     ok = bool(uid) and notify.unsubscribe_token_valid(uid, ctx.query.get("t") or "") and repo.set_email_opt_out(ctx.cur, uid, True)
+    # While the server's live switch is closed that email says the strategy waits on paper (notify.live_ready_notice):
+    # named here as it names itself, never "ready for live trading".
+    ready = ("is ready for live trading" if engine.LIVE_TRADING_ENABLED
+             else "cleared every paper-to-live check")
     msg = ("You're unsubscribed from Tau's optional email: new community posts, replies, mentions, and "
-           "notices that a paper strategy is ready for live trading. Safety alerts about a Bitcoin perps "
+           "notices that a paper strategy %s. Safety alerts about a Bitcoin perps "
            "account you trade through Tau still come, because they protect real money. You can turn "
-           "optional email back on in <a href='/settings' style='color:#1a66c9'>Settings</a>." if ok
+           "optional email back on in <a href='/settings' style='color:#1a66c9'>Settings</a>." % ready if ok
            else "This unsubscribe link isn't valid. If you keep getting emails, reply to one and we'll remove you.")
     page = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
             "<title>Tau</title><body style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;color:#191B16'>"

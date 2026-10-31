@@ -218,14 +218,22 @@ def test_perps_safety_alerts_ignore_the_switch(monkeypatch):
 # -- the unsubscribe link agrees with Settings ------------------------------------------
 
 
-def test_unsubscribe_page_says_what_stopped_and_points_to_settings(monkeypatch):
+@pytest.mark.parametrize("live_open", [True, False])
+def test_unsubscribe_page_says_what_stopped_and_points_to_settings(monkeypatch, live_open):
     writes = []
     monkeypatch.setattr(server.repo, "set_email_opt_out", lambda cur, uid, off: writes.append((uid, off)) or True)
+    monkeypatch.setattr(account_routes.engine, "LIVE_TRADING_ENABLED", live_open)
     kind, page = server.unsubscribe(ctx(None, query={"u": "7", "t": notify.unsubscribe_token(7)}))
     assert kind == "html" and writes == [(7, True)]  # the same field Settings' switch writes
-    for said in ("new community posts", "replies", "mentions", "ready for live trading",
+    # While the live switch is closed the live-ready email says the strategy waits on paper (its subject: "cleared
+    # every paper-to-live check"), so the page names it that way, never "ready for live trading".
+    ready = ("notices that a paper strategy is ready for live trading" if live_open
+             else "notices that a paper strategy cleared every paper-to-live check")
+    for said in ("new community posts", "replies", "mentions", ready,
                  "Safety alerts about a Bitcoin perps account", "href='/settings'"):
         assert said in page
+    if not live_open:
+        assert "ready for live" not in page
 
 
 def test_community_email_carries_a_link_that_flips_the_same_switch(monkeypatch):

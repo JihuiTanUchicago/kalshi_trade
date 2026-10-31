@@ -151,4 +151,24 @@ export function fundsWalkCases({name, frontend, fundsData}) {
     assert.match(open.live, /A live key trades your real money\./);
     assert.doesNotMatch(open.figs + open.live, /isn’t open yet/);
   });
+
+  test(`${name}: Funds' connected live box says live trading isn't open yet while it is closed, as the figure above it does`, async () => {
+    // Walked 2026-10-31 with the server's live switch closed and a live key saved: Meridian's live box said only "Funds
+    // stay in your Kalshi account…" under a figure that said live trading isn't open; a key there reads the cash and
+    // places nothing. Tau's box already said so. Open, each box reads as before.
+    const box = async (open) => {
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), kalshi: {connected: true, key_id: 'LIVEK…1234', balance: 80, balance_at: new Date().toISOString(), closed_trades: 0, open_positions: 0, funding_url: 'https://kalshi.com/portfolio'}}) : response({})});
+      f.S.me.live_trading_available = open;
+      f.location.pathname = '/funds'; f.location.hash = '';
+      await f.viewFunds(); await settle();
+      const text = f.root.querySelector('#disconnect').closest('section').querySelector('.lede').textContent;
+      f.clearTimers();
+      return text;
+    };
+    const closed = await box(false);
+    assert.match(closed, /Live trading isn’t open yet, so Tau places no trades here/);
+    const open = await box(true);
+    assert.doesNotMatch(open, /isn’t open yet/);
+    assert.match(open, /Funds stay in your Kalshi account|we never hold your money/);
+  });
 }

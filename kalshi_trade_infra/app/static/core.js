@@ -431,9 +431,14 @@
   // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
   // community emails also sets; the server checks it before every optional email. Perps safety
   // alerts and the failed auto-reload email never read it, and the copy says so.
-  const emailState = (off) => off
-    ? 'Off. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or a paper strategy that’s ready for live trading. The bell in Tau still shows replies, mentions and ready-for-live notices.'
-    : 'On. Tau emails you about replies to your posts, mentions of your @name, new community posts (at most one email every 4 hours), and a paper strategy that’s ready for live trading.';
+  // `open` is the server's live switch (liveOpen): closed, that email says the strategy waits on paper, so the line
+  // names it as the email does ("cleared every paper-to-live check"), never "ready for live trading".
+  const emailState = (off, open = true) => {
+    const ready = open ? 'a paper strategy that’s ready for live trading' : 'a paper strategy that clears every paper-to-live check';
+    return off
+      ? `Off. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or ${ready}. The bell in Tau still shows replies, mentions and ${open ? 'ready-for-live notices' : 'those paper-to-live notices'}.`
+      : `On. Tau emails you about replies to your posts, mentions of your @name, new community posts (at most one email every 4 hours), and ${ready}.`;
+  };
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
   // Its sub-line ("paper money, not real") is a second <dd> of the same term: as a bare <div> in the <dl>
@@ -645,7 +650,9 @@
   const ROAD_EVENTS_TIP = 'Trades on strikes of one event count as one bet, so the record needs trades from 20+ separate events';
   // When, in words (also the strategy page's Road to live).
   const roadDays = (d) => d < 1 ? 'under a day' : d < 1.5 ? 'about a day' : `about ${Math.round(d)} days`;
-  const roadLine = (d) => {
+  // `open` is the server's live switch (the bundle's liveOpen()): closed, a live deployment places no orders, so a
+  // record that clears every check says live trading isn't open yet, never that deploying it is all that's left.
+  const roadLine = (d, open) => {
     const r = d.road;
     if (!r) return '';
     const parts = [[r.trades, r.trades_needed, 'trades'], [r.events, r.events_needed, 'separate\u00a0events'], [Math.floor(r.span_hours), r.span_needed_hours, 'hours']]
@@ -655,7 +662,7 @@
     let text;
     if (parts.length) text = parts.join('\u00a0· ') + (!r.running ? '\u00a0· paused, so not growing' : r.eta_days != null ? `\u00a0· enough in ${roadDays(r.eta_days)} at its pace` : '');
     else if (!r.failing) text = 'trades, events and hours are in';
-    else if (!r.failing.length) text = 'every check cleared. Live money only if you deploy it there';
+    else if (!r.failing.length) text = open ? 'every check cleared. Live money only if you deploy it there' : 'every check cleared, but live trading isn’t open yet';
     else {
       const names = [...new Set(r.failing.map((k) => ROAD_FAILING[k] || esc(k.replace(/_/g, ' '))))];
       text = `trades, events and hours are in; ${names.length} check${names.length === 1 ? '' : 's'} left: ${names.join(', ')}`;

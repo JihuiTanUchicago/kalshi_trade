@@ -62,6 +62,36 @@ export function bellCases({name, frontend}) {
     assert.match(gm.querySelector('.bell-empty').textContent, /It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can’t charge your card\./);
   });
 
+  test(`${name}: with live trading closed the bell's summary and empty line name a live-ready notice as the notice does, never "ready for live"`, async () => {
+    // The server's live switch closed (/api/me's live_trading_available): a strategy that clears every check waits on
+    // paper, and its notice says "cleared every paper-to-live check". The summary over the list said "2 ready for live".
+    const items = [1, 2, 3, 4].map((i) => ({id: i, kind: i < 3 ? 'live_ready' : 'paused', body: `Notice ${i}.`, link: null, created_at: ago(i * 60e3), read: false, more: 0}));
+    const sum = async (open) => {
+      const f = dashboard({unread: 4, items, unread_kinds: {live_ready: 2, paused: 2}});
+      f.S.me.live_trading_available = open; f.location.pathname = '/';
+      await f.render(); await settle();
+      const el = f.root.querySelector('.bell-sum');
+      f.clearTimers && f.clearTimers();
+      return el ? el.textContent : '';
+    };
+    const shut = await sum(false);
+    assert.match(shut, /2 cleared every paper-to-live check/);
+    assert.doesNotMatch(shut, /ready for live/);
+    assert.match(await sum(true), /2 ready for live/);  // open: as before
+    const empty = async (open) => {
+      const g = dashboard({unread: 0, items: []});
+      g.S.me.live_trading_available = open; g.location.pathname = '/';
+      await g.render(); await settle();
+      const el = g.root.querySelector('.bell-empty');
+      g.clearTimers && g.clearTimers();
+      return el.textContent;
+    };
+    const closedEmpty = await empty(false);
+    assert.match(closedEmpty, /It rings when a strategy goes on paper or is paused, passes its paper test or clears every paper-to-live check, and if auto-reload can’t charge your card\./);
+    assert.doesNotMatch(closedEmpty, /ready for live/);
+    assert.match(await empty(true), /passes its paper test or is ready for live, and/);
+  });
+
   test(`${name}: a notice about a strategy no longer in the list says so as text, and a big count is grouped`, async () => {
     // Walk 2026-10-31: a shared strategy the user later deleted, and a forward-test pass of one deleted since,
     // linked to "Not found". The server marks them gone; the line says so and opens nothing.

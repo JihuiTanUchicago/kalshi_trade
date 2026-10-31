@@ -131,6 +131,28 @@ export function researchPollCases({name, frontend}) {
     const top = f.root.querySelector('#rfigs').innerHTML + ((f.root.querySelector('#rstatus .said') || {}).innerHTML || '');
     assert.doesNotMatch(top, /[Hh]ypothes/);
     f.clearTimers();
+    // Strategies that clear every paper-to-live check: open, "ready for live"; with the server's live switch closed they
+    // wait on paper, as their bell notice says, so the line names them that way, never "ready for live".
+    const ready = async (open) => {
+      const g = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/runs')) return response({runs: [run({id: 8})], counts, policy: null, totals: {tried: 21, passed: 3}, v: 'v1'});
+        if (path.startsWith('/api/research/scoreboard')) return response({...board, paper: {...board.paper, total: {...board.paper.total, live_ready: 2}}});
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path === '/api/research/context') return response({markets: []});
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        return response({});
+      }});
+      g.S.me.user.autopilot = false; g.S.me.live_trading_available = open;
+      g.location.pathname = '/research';
+      await g.viewResearch(); await settle();
+      const html = g.root.querySelector('#rsimo').innerHTML;
+      g.clearTimers();
+      return html;
+    };
+    const shut = await ready(false);
+    assert.match(shut, /net −\$16\.60, losing money where the backtest expected a profit\u00a0· 2 cleared every paper-to-live check\./);
+    assert.doesNotMatch(shut, /ready for live/);
+    assert.match(await ready(true), /\u00a0· 2 ready for live\./);
   });
   test(`${name}: each session row's Created date carries its day, clock and zone`, async () => {
     // Walked 2026-10-31: the rows read "Oct 28" in no zone, beside session pages whose clocks name theirs.

@@ -279,7 +279,7 @@ window.TauPage('funds', (T) => {
           <h2>Kalshi account (live money)</h2>
           ${k.connected ? `
             <div data-cash="live-ok">${keyLine(k, 'live')}</div><dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd data-cash="live-cell">${cashCell(k)}</dd></dl>
-            <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account. Manage deposits and withdrawals at Kalshi. To change keys, disconnect and connect the new one.</p>
+            <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account.${liveOpen() ? '' : ' Live trading isn\u2019t open yet, so Tau places no trades here.'} Manage deposits and withdrawals at Kalshi. To change keys, disconnect and connect the new one.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
