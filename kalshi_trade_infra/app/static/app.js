@@ -2197,8 +2197,12 @@
             <section class="panel"><h3>Closed lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
-      keepApCard(() => paint(root.querySelector('#boardbody'), board));  // the 15s poll repaints only what changed
-      paint(root.querySelector('#main'), main);
+      // The 15s poll repaints only what changed, and keyboard focus on a control it redrew goes to the same control in
+      // the new markup (paintKeep), as on Deploy: a trade closing or an open position's mark moving rewrote the board or
+      // the lists, and focus on a strategy link, a Pause, a contract link, Billing or a CSV link fell to the page's body
+      // every 15 seconds (walk 2026-10-31, a morning after 30 closed overnight).
+      keepApCard(() => paintKeep(root.querySelector('#boardbody'), board));
+      paintKeep(root.querySelector('#main'), main);
       S.dashPaper = p;
       S.dashPaused = d.deployments.filter((x) => x.status === 'paused').length;
       paintDashAp();
@@ -2752,10 +2756,12 @@
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
     // Until a card was ever charged (the server's card_charged) every credit spent was a free one, and
     // "real money" beside a new user's first cents read as a charge to their card.
-    const paid = creditsPaid(spent && spent.card_charged);
     // A card charged while they were away (the server's charges, reloads of them auto-reload's): the time
     // away's real-money moment, which only Billing's statement told. Credits bought, never netted with spent.
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
+    // Who paid is said only beside something spent or bought, as the autopilot's week says it (apWeekSpent): "No credits
+    // spent · real money" read as real money spent while away (walk 2026-10-31).
+    const paid = spent && (+spent.since >= 0.01 || spent.since_under_cent || charges) ? creditsPaid(spent.card_charged) : '';
     const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : charges === 2 ? 'twice' : num(charges) + ' times'} for`
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
     const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : spent.since_under_cent ? '<b>Under $0.01</b> of credits spent' : 'No credits spent'}${bought}<span class="since-sub">${paid ? SEP + paid : ''}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
@@ -2827,12 +2833,16 @@
     if (repainted.get(host) === out) return;
     const a = document.activeElement, mine = a && a !== host && host.contains && host.contains(a) ? a : null;
     const ds = (mine && mine.dataset) || {};
+    // A link goes back to the link to the same place: the card's "Furthest on paper" link changes its words as a trade
+    // closes ("31 realistic paper trades" to "32"), and focus on it fell to the page's body (walk 2026-10-31).
+    const href = mine && mine.tagName === 'A' ? mine.getAttribute('href') : null;
     const sel = !mine ? '' : how && mine === how.querySelector('summary') ? '.ap-week-how summary'
-      : ds.glo ? `[data-glo="${ds.glo}"]` : ds.apcard ? `[data-apcard="${ds.apcard}"]` : '';
-    const nth = sel ? [...host.querySelectorAll(sel)].indexOf(mine) : -1;
+      : ds.glo ? `[data-glo="${ds.glo}"]` : ds.apcard ? `[data-apcard="${ds.apcard}"]` : href ? 'a' : '';
+    const same = (els) => (href && !ds.glo && !ds.apcard ? els.filter((x) => x.getAttribute('href') === href) : els);
+    const nth = sel ? same([...host.querySelectorAll(sel)]).indexOf(mine) : -1;
     repainted.set(host, out);
     host.innerHTML = out;
-    const back = nth >= 0 && [...host.querySelectorAll(sel)][nth];
+    const back = nth >= 0 && same([...host.querySelectorAll(sel)])[nth];
     if (back && back.focus) back.focus({ preventScroll: true });
   }
   // The card itself sits in a block a poll rewrites whole when anything in it moved (Tau's board, Meridian's #main).
