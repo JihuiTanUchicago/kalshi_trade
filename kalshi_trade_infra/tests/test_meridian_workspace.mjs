@@ -4328,7 +4328,7 @@ test('a returning user reads what happened since the last visit at the top of th
   assert.match(text, /4 strategies passed: <span class="since-links"><a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a><\/span>/);
   assert.match(text, /3 research sessions started/);
   assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
-  assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
+  assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused on paper<span class="since-sub">: lost \$12\.00<\/span>/);
   assert.match(text, /<a href="\/research">1 research session failed<\/a>/);
   const host = f.root.querySelector('#main').innerHTML;
   assert.ok(host.indexOf('id="dash-since"') >= 0 && host.indexOf('id="dash-since"') < host.indexOf('id="dash-ap"'));
@@ -4858,12 +4858,18 @@ test('the since strip says a demo book paused for its demo key once, beside the 
     action: {label: 'Add it on the Funds page', href: '/funds#connect-kalshi'}};
   const html = await strip([dep(4, 'Fade <tails>', 'demo', KEY), dep(5, 'Live one', 'live', LIVE)], health);
   // The demo key is said once, on the demo line with its link; the paused row only names the strategy.
-  assert.match(html, />Fade &lt;tails&gt;<\/a> is paused<br>/);
+  assert.match(html, />Fade &lt;tails&gt;<\/a> is paused on demo<br>/);
   assert.equal((html.match(/demo \(sandbox\) key|your Kalshi demo key/g) || []).length, 1, html);
   assert.match(html, /Demo can’t trade: it needs your Kalshi demo key\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a>/);
   // Another reason that sends someone to Funds links "the Funds page", as its Deploy row does.
   assert.match(html, />Live one<\/a> is paused<span class="since-sub">: Add your live Kalshi key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on live money<\/span>/);
   // With no demo-key line to say it (an older server), the row keeps its reason, linked.
+  // The daily loss stop pauses the live run while its paper copy trades on: the row names the book it paused
+  // (walk 2026-10-31), and a reason that already names it isn't followed by it twice (the live key row above).
+  const stop = await strip([dep(6, 'Fade', 'live', 'Autopilot daily loss limit hit'), dep(7, 'Rain', 'paper', null)], null);
+  assert.match(stop, />Fade<\/a> is paused on live money<span class="since-sub">: /);
+  assert.match(stop, />Rain<\/a> is paused on paper</);
+  assert.doesNotMatch(stop, /on live money on live money/);
   const alone = await strip([dep(4, 'Fade', 'demo', KEY)], null);
   assert.match(alone, />Fade<\/a> is paused<span class="since-sub">: Add your Kalshi demo \(sandbox\) key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on demo<\/span>/);
 });

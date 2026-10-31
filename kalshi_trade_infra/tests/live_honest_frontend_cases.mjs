@@ -229,6 +229,35 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     f.clearTimers();
   });
 
+  // Walk 2026-10-31: the daily loss stop turned live autopilot off and paused the only live strategy. Nothing live was
+  // armed or running, so the card and the panel went back to paper's day (+$7.23) under a feed saying live had just
+  // stopped on a $52.60 loss: the real money lost today was nowhere in the figures. It stays, in its own book.
+  test(`${name}: after the daily loss stop pauses live, the autopilot card and panel still show today's live loss`, async () => {
+    for (const open of [true, false]) {
+      const status = {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 0, passed_7d: 0}, live_running: 0, paper_running: 1,
+        demo_running: 0, today_live_pnl: -52.6, today_paper_pnl: 7.23, loss_headroom: 0, daily_loss_limit: 50, autopilot_live: false,
+        live_enabled: open, story: []};
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(dashboard());
+        if (path === '/api/autopilot/status') return response(status);
+        return response({messages: [], models: []});
+      }});
+      f.S.me.live_trading_available = open; f.S.me.user.autopilot = true;
+      await f.viewDashboard(); await settle();
+      f.S.ap = status; f.paintDashAp();
+      const card = f.root.querySelector('#dash-ap').innerHTML;
+      assert.match(card, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$52\.60<\/span> <small>real money, after Kalshi fees<\/small>/, String(open));
+      assert.doesNotMatch(card, /paper P&amp;L, <span class="nobr">realized/);
+      const box = new (f.root.constructor)('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
+      await f.apUpdate(box, status); await settle();
+      const stats = box.querySelector('#apf-stats').innerHTML;
+      assert.match(stats, /<dt>Live realized today \(UTC\)<\/dt><dd class="neg">−\$52\.60 <small class="apf-note">real money, after Kalshi fees<\/small>/, stats);
+      // One book: never paper's day beside it as the same figure, and never the two summed (−$45.37).
+      assert.doesNotMatch(stats, /\$7\.23|\$45\.37|paper <span class="nobr">realized/);
+      f.clearTimers();
+    }
+  });
+
   test(`${name}: the dashboard's autopilot-off card never says real money can be turned on while live trading is closed`, async () => {
     const card = async (open) => {
       const f = frontend({fetchImpl: (path) => {
@@ -247,6 +276,33 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     assert.match(shut, /Every move shows up in its activity feed\. Real money stays off: live trading isn’t open yet\.<\/p>/);
     assert.doesNotMatch(shut, /until you turn it on/);
     assert.match(await card(true), /Real money stays off until you turn it on separately\.<\/p>/);
+  });
+
+  // Walk 2026-10-31 (switched off an hour before, its strategy still trading on paper): the off card said only what
+  // turning it on does. It says what keeps trading with it off, each book by name; a live one that places no orders
+  // while live trading is closed isn't counted, and nothing running says nothing.
+  test(`${name}: the autopilot-off card says which strategies keep trading with it off`, async () => {
+    const card = async (status, open = false) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(dashboard());
+        if (path === '/api/autopilot/status') return response(status);
+        return response({messages: [], models: []});
+      }});
+      f.S.me.live_trading_available = open; f.S.me.user.autopilot = false;
+      await f.viewDashboard(); await settle();
+      f.S.ap = status; f.paintDashAp();
+      const el = f.root.querySelector('#dash-ap');
+      f.clearTimers();
+      return el.innerHTML;
+    };
+    const off = {autopilot: false, mode: 'off'};
+    assert.match(await card({...off, paper_running: 1, demo_running: 0, live_running: 0}),
+      /<p class="apcard-still">Already running, and still trading with it off: 1\u00a0paper\. <a href="\/deploy">Deploy<\/a> pauses or removes it\.<\/p>/);
+    assert.match(await card({...off, paper_running: 2, demo_running: 1, live_running: 1}),
+      /still trading with it off: 1\u00a0demo\s·\s2\u00a0paper\. <a href="\/deploy">Deploy<\/a> pauses or removes them\./);
+    assert.match(await card({...off, paper_running: 0, demo_running: 0, live_running: 1}, true), /still trading with it off: 1\u00a0live\./);
+    assert.doesNotMatch(await card({...off, paper_running: 0, demo_running: 0, live_running: 1}), /apcard-still/);
+    assert.doesNotMatch(await card(off), /apcard-still/);
   });
 
   // The panel's Running figure shares its row with another figure (two to a row on a phone): "1 live, placing

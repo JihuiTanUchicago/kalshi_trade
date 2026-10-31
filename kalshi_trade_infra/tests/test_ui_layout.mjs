@@ -776,3 +776,16 @@ test('a money page\'s figures hold room while its first read is out, less than t
     for (const f of files) assert.match(read(f), new RegExp(`id="${id}"[^>]*></dl>`), `${f}: #${id} starts empty`);
   }
 });
+
+
+// Walk 2026-10-31 (1366px, Meridian; Tau has the same rule): the open autopilot panel's close button was 22px square
+// with a mouse (an 18px icon in 2px of padding), under WCAG 2.2's 24px. It is 24px, its margin giving the extra back.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: the autopilot panel's close button is 24px with a mouse, the header's height left alone`, () => {
+    const all = rules(read(file));
+    const pad = px(decl(all, '.apf-x', 'padding')), icon = px(decl(all, '.apf-x svg', 'width'));
+    assert.ok(icon + 2 * pad >= 24, `${icon}px icon in ${pad}px of padding`);
+    const [top, , bottom] = decl(all, '.apf-x', 'margin').split(/\s+/).map(px);
+    assert.equal(icon + 2 * pad + top + bottom, 22, 'it takes up the 22px it did');
+  });
+}

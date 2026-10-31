@@ -341,6 +341,9 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     const msgs = box.querySelector('#apf-messages');
     assert.equal(msgs.tag, 'ol'); assert.equal(msgs.getAttribute('role'), null);
     assert.equal(msgs.getAttribute('aria-live'), 'polite'); assert.equal(msgs.getAttribute('aria-label'), 'Autopilot activity');
+    // The feed scrolls on its own and most of its lines hold nothing focusable (axe scrollable-region-focusable on the
+    // desktop panel, walk 2026-10-31): Tab reaches it, so the keyboard can scroll back through what it did.
+    assert.equal(msgs.getAttribute('tabindex'), '0');
   });
 
   test(`${name}: every column of Explore's market table has a header a screen reader says, the Kalshi link column too`, async () => {

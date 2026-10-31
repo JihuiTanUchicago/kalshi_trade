@@ -178,6 +178,13 @@ export function chatPanelCases({name, frontend, storageFor}) {
     // The line under the panel's pulse, as painted.
     p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []}, last_action: {text: KEPT(SPIKE), at: AT, titles: [SPIKE]}});
     assert.match(p.box.querySelector('#apf-last').textContent, new RegExp(`: I left ${SPIKE} running\\.$`));
+    // A move cut at 90 characters ends on its ellipsis alone: the line read "…on quiet days…." (walk 2026-10-31).
+    const LONG = 'Fade cheap far-strike YES in the last 2 hours on quiet days';
+    p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []},
+      last_action: {text: `Paused your paper strategy ${LONG} automatically: it lost $9.40, more than its $8.00 loss guard.`, at: AT}});
+    const last = p.box.querySelector('#apf-last').textContent;
+    assert.match(last, /quiet days…$/, last);
+    assert.doesNotMatch(last, /…\.$/);
   });
 
   test(`${name}: "Furthest on paper" ends its net before the instant-fill note, never running one into the other`, async () => {
@@ -311,6 +318,42 @@ export function chatPanelCases({name, frontend, storageFor}) {
     await box2.box.querySelector('#apf-messages').listeners.get('click')({target: approve});
     for (let i = 0; i < 8; i++) await flush();
     assert.equal(reads, 1, 'an approved pause reads the status at once');
+  });
+
+  // Walk 2026-10-31: Approve locked (blurring it) and went with the feed's repaint, so focus fell to the page under the
+  // panel. It lands on the decided proposal's line, which says what was decided; a failed decision, on the same button.
+  test(`${name}: after a decision focus lands on that proposal's line, or back on the button when it failed`, async () => {
+    const focusedOn = (f, el) => !!el && (el.focused === true || f.document.activeElement === el);
+    const ask = {id: 4, role: 'system', content: 'Asks to pause.', created_at: AT, proposal_id: 11, proposal_kind: 'pause', proposal_status: 'pending', deployment_mode: 'paper'};
+    let lines = [ask];
+    const ok = await panel({autopilot: true, chat: () => lines, status: () => ({autopilot: true, mode: 'paper', research: {active: []}}),
+      decide: () => response({ok: true})});
+    // Approve is described by the line that says what it does, in which book.
+    assert.equal(ok.box.querySelector('[data-decide="approve"]').getAttribute('aria-describedby'), 'apf-ask-11');
+    assert.match(ok.box.querySelector('#apf-ask-11').textContent, /^Approve pauses this strategy, which runs on paper/);
+    lines = [{...ask, proposal_status: 'applied'}];
+    await ok.box.querySelector('#apf-messages').listeners.get('click')({target: ok.box.querySelector('[data-decide="approve"]')});
+    for (let i = 0; i < 8; i++) await flush();
+    const line = ok.box.querySelector('[data-prop-line="11"]');
+    assert.ok(line && /Applied/.test(line.innerHTML), ok.box.querySelector('#apf-messages').innerHTML);
+    assert.ok(focusedOn(ok.f, line), 'the decided line has focus');
+    assert.equal(line.getAttribute('tabindex'), '-1');
+    lines = [ask];
+    const bad = await panel({autopilot: true, chat: () => lines, status: () => ({autopilot: true, mode: 'paper', research: {active: []}}),
+      decide: () => response({error: 'That proposal is no longer valid.'}, 400)});
+    await bad.box.querySelector('#apf-messages').listeners.get('click')({target: bad.box.querySelector('[data-decide="reject"]')});
+    for (let i = 0; i < 8; i++) await flush();
+    const decline = bad.box.querySelector('[data-prop-line="11"] [data-decide="reject"]');
+    assert.ok(focusedOn(bad.f, decline), 'focus is back on Decline, beside the reason');
+    assert.match(bad.box.querySelector('#apf-err').textContent, /no longer valid/);
+    // Declined, it is headed by what it asked: "Paused" over "Declined" read as if it had been paused.
+    lines = [{...ask, proposal_status: 'rejected'}, {...ask, id: 5, proposal_id: 12, proposal_kind: 'deploy', proposal_status: 'rejected'}];
+    const gone = await panel({autopilot: true, chat: () => lines});
+    const said = gone.box.querySelector('[data-prop-line="11"]').innerHTML;
+    assert.match(said, /<span class="say-kind">Asked to pause<\/span>/);
+    assert.match(said, /Declined/);
+    assert.doesNotMatch(said, /<span class="say-kind">Paused/);
+    assert.match(gone.box.querySelector('[data-prop-line="12"]').innerHTML, /<span class="say-kind">Asked to put on paper<\/span>/);
   });
 
   // Walk 2026-10-28 (a full load with /api/autopilot/status, then /api/chat, failing): the open panel said
