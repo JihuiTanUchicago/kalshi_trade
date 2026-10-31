@@ -290,6 +290,39 @@ window.TauPage('explore', (T) => {
       if (!Number.isFinite(+value)) return '—';
       return +value > 0 ? cents(+value) : `<span title="${none}"><span aria-hidden="true">—</span><span class="vh">${none}</span></span>`;
     };
+    // A row's Yes price, as its market page says it: with both sides quoted it is their midpoint; with one side or none
+    // it is the last trade, which may be hours old (a closed contract's), and it says so, as the page's "≈ 62% chance of
+    // Yes, from the last trade" does. Tau's row showed a closed 15-minute window's last 62¢ as if Kalshi quoted it now.
+    const yesPrice = (m) => {
+      const mid = midOf(m);
+      if (mid == null) return '—';
+      return +m.bid > 0 && +m.ask > 0 ? cents(mid) : `${cents(mid)}<div class="sub-fig">last trade</div>`;
+    };
+    // A count the feed didn't send reads "—", as the market page's 24h volume and open interest do: a row with no
+    // volume read "0", a figure that never came, and sorted with the markets nobody traded.
+    const countCell = (v) => (v == null || v === '' || !Number.isFinite(+v) ? '<span title="Not sent"><span aria-hidden="true">—</span><span class="vh">Not sent</span></span>' : num(Math.round(+v)));
+    // A poll that redraws the rows keeps the row the reader is on where it was on screen: the hottest-first order moves
+    // as volumes change, and a market that climbed past the ones above the reader pushed the whole list a row down under
+    // them (walk 2026-10-31). The row held is the one with focus, else the first one in view; only on a poll, and only
+    // once the page is scrolled (at the top the list starts where it starts). A row the poll took off the page holds nothing.
+    const rowsOf = () => { const tb = body.querySelector('#xrows'); return tb ? [...tb.children] : []; };
+    const rowKey = (tr) => { const a = tr && tr.querySelector && tr.querySelector('a'); return a ? a.getAttribute('href') : null; };
+    const readingRow = () => {
+      if (!(window.scrollY > 0) || typeof window.scrollBy !== 'function') return null;
+      const rows = rowsOf().filter((tr) => typeof tr.getBoundingClientRect === 'function');
+      const a = document.activeElement, mine = a && a.closest ? rows.find((tr) => tr.contains(a)) : null;
+      const vh = window.innerHeight || 0;
+      const inView = (tr) => { const r = tr.getBoundingClientRect(); return r.bottom > 0 && (!vh || r.top < vh); };
+      const tr = mine && inView(mine) ? mine : rows.find(inView);
+      const key = tr && rowKey(tr);
+      return key ? { key, top: tr.getBoundingClientRect().top } : null;
+    };
+    const holdRow = (held) => {
+      const tr = rowsOf().find((x) => rowKey(x) === held.key);
+      if (!tr || typeof tr.getBoundingClientRect !== 'function') return;
+      const dy = Math.round(tr.getBoundingClientRect().top - held.top);
+      if (dy) window.scrollBy(0, dy);  // at once (the page has no smooth scrolling), so the row never seems to move
+    };
     const sync = () => { exploreKeep(f); history.replaceState(null, '', '/explore?' + exploreParams(f)); };
     exploreKeep(f);
     // "Live now" was the hottest markets the list carries, not what's live; Matching shows only when a
@@ -338,6 +371,11 @@ window.TauPage('explore', (T) => {
       staleNote.hidden = false;
       paintFigs(d);
       if (typed && f.q) announce(d.markets.length ? `${num(d.matched)} ${+d.matched === 1 ? 'market matches' : 'markets match'} “${f.q}”.` : `No markets match “${f.q}”.`);
+      // A page past the list's end (a link kept from a longer list, or the last page while a refresh shortened the list)
+      // read "No markets to show yet … hasn't come in yet" with the feed in and hundreds of markets matching, and no
+      // pager to get back: it shows the list's last page instead.
+      const lastPage = Math.max(0, Math.ceil(+d.matched / (+d.per || 40)) - 1);
+      if (!d.markets.length && +d.matched > 0 && f.page > lastPage) { f.page = lastPage; sync(); return load(cfg, typed); }
       if (!d.markets.length) {
         // No search and no markets is the feed not having arrived yet, not a search that missed. With the feed in,
         // an empty Bitcoin list is no Bitcoin market open, and says so.
@@ -347,13 +385,16 @@ window.TauPage('explore', (T) => {
           const again = body.querySelector('[data-xretry]');
           if (again) again.onclick = reread;
           body.querySelector('[data-xall]').onclick = () => setShow(false);
-        } else if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2><p>Try a broader search, or clear it to see the hottest markets.</p></div>`);
+        } else if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2><p>Try a broader search, or clear it to see the hottest markets.</p><button class="btn sm" type="button" data-xclear>Clear search</button></div>`);
         else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = reread; }
+        // A search that missed said "clear it" with nothing to press: Clear search empties the box, keeps the reader in
+        // it to type again, and brings the list back.
+        const clear = body.querySelector('[data-xclear]');
+        if (clear) clear.onclick = () => { const box = root.querySelector('#xq'); if (box) { box.value = ''; box.focus(); } clearTimeout(t); f.q = ''; f.page = 0; sync(); return load(); };
         return;
       }
       shown = d;
       const rows = d.markets.map((m) => {
-        const mid = midOf(m);
         if (tau) {
           // The market as the app names it and when the contract closes (`ct`, read from a timed event's
           // ticker), never the raw event key: that's what tells "every strike of Bitcoin at 5pm" apart from
@@ -362,7 +403,7 @@ window.TauPage('explore', (T) => {
           const short = contractShort(m.t);
           const tag = [short ? `<span class="nobr">${esc(short)}</span>` : '', m.ct ? liveClose(m.ct, 'chip', { cls: 'nobr' }) : ''].filter(Boolean).join(SEP);
           return [m.t, `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${tag ? ` <span class="mk quiet">${tag}</span>` : ''}${vsHtml(m)}</td>
-          <td class="num" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
+          <td class="num" data-lab="Yes price">${yesPrice(m)}</td><td class="num" data-lab="24h volume">${countCell(m.v24)}</td><td class="num" data-lab="Open interest">${countCell(m.oi)}</td>
           <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
         }
         // Meridian's row: the event and its condition, its Context column, and the Yes bid and ask.
@@ -384,12 +425,13 @@ window.TauPage('explore', (T) => {
         const spoken = conditionDisplay !== separateCondition ? `<span class="vh"> (${esc(separateCondition)})</span>` : '';
         const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span> <strong>${esc(conditionDisplay)}</strong>${spoken}</span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? ` <span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${m.ct ? ' ' + liveClose(m.ct, 'chip', { cap: true, cls: 'market-close' }) : ''}</a>${vsHtml(m)}`;
         return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(SEP))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
-          <td class="num yes-price" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid, 'No bid')}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask, 'No ask')}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
+          <td class="num yes-price" data-lab="Yes price">${yesPrice(m)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid, 'No bid')}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask, 'No ask')}</td><td class="num market-volume" data-lab="24h volume">${countCell(m.v24)}</td><td class="num market-interest" data-lab="Open interest">${countCell(m.oi)}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
       });
       const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot, d.markets);
       const sortHead =(key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = !tau && body.querySelector('[data-sort]:focus')?.dataset.sort;
+      const held = cfg ? readingRow() : null;
       keepFocus(body, () => {
         paint(body, tau ? '<div id="xnote"></div><div class="sheet"><table class="stack t-explore"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open interest</th><th class="num"><span class="vh">Link</span></th></tr></thead><tbody id="xrows"></tbody></table></div><div id="xpager"></div>'
           : `<div id="xnote"></div><div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num"><span class="vh">Link</span></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody id="xrows"></tbody></table></div><div id="xpager"></div>`);
@@ -397,7 +439,17 @@ window.TauPage('explore', (T) => {
         paintRows(body.querySelector('#xrows'), rows);
         paint(body.querySelector('#xpager'), pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       });
-      body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
+      if (held) holdRow(held);
+      // Next or Prev takes the reader to the top of the new page, and focus goes with them, to its first market: the
+      // pager was drawn again and focus fell on the first button there, "← Prev" from page 1's Next, so a keyboard
+      // user's second Enter went back to the page they had left (walk 2026-10-31).
+      body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => {
+        f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() });
+        return load().then(() => {
+          const a = document.activeElement, first = body.querySelector('#xrows a');
+          if (first && (!a || a === document.body || a.isConnected === false || (body.contains(a) && a.matches && a.matches('[data-pg]')))) first.focus({ preventScroll: true });
+        });
+      });
       if (!tau) {
         body.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; sync(); load(); });
         if (sortFocused) Array.from(body.querySelectorAll('[data-sort]')).find(b => b.dataset.sort === sortFocused)?.focus({ preventScroll: true });

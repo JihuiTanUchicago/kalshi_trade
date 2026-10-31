@@ -63,6 +63,11 @@ INTERNAL = {
     "internal infrastructure": (
         r"\bMySQL\b|information_schema|\b(?:the|on|collector) box\b|\bprod\b|\bDDL\b|\b[0-9a-f]{7,40}\b",
         "Deployed to the collector box (restarted clean)"),
+    # Walk 2026-10-31: none on the page; kept off it as the hosting vendor is. A host's name or address says where
+    # Tau runs, which no customer needs.
+    "an internal host name or address": (
+        r"\b(?:[a-z0-9-]+\.)+(?:internal|local|amazonaws\.com)\b|\bip-\d{1,3}(?:-\d{1,3}){3}\b|\b(?:\d{1,3}\.){3}\d{1,3}\b"
+        r"|\blocalhost\b|:\d{4,5}/", "the web server moved to ip-10-0-1-23.ec2.internal"),
     "what Tau pays for a model or adds on top": (
         r"list price|\bmargins?\b|mark-?up|× ?2\b|raw model cost|\bour cost|what (?:Tau|we) pays?|\$[\d.]+ ?/ ?M\b"
         r"|per million tokens", "Billing: customers charged list price × 2 (100% margin)"),
