@@ -823,7 +823,7 @@ test('Overview offers each mode its own trades CSV only when that mode has close
     // Paper (or live, once real money runs) sits in the account band; the other accounts in the menu.
     const html = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#main').innerHTML;
     for (const mode of ['paper', 'demo', 'live']) {
-      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
+      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)<span class="vh"> for the ${mode} book</span></a>`;
       assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
     }
   }

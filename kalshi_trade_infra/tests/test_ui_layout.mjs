@@ -195,6 +195,16 @@ for (const [bundle, file, extra] of [['Tau', 'app.css', ['.ri-why a']], ['Meridi
     }
     assert.ok(24 + 2 * px(decl(all, 'a.apcard-alt', 'padding-block', COARSE)) >= 40);  // "or research by hand", 24px tall
     assert.equal(decl(all, '.dispatch-go .ex-run', 'min-height', COARSE), '44px');
+    // Settings' Account links, alone in a 20px line (walked 2026-10-31 at 390px), within the rows' 10px padding.
+    const acct = decl(all, '.acct-rows dd > a', 'padding-block', COARSE);
+    assert.ok(acct && 20 + 2 * px(acct) >= 40, `.acct-rows dd > a: padding-block ${acct}`);
+    assert.equal(px(decl(all, '.acct-rows dd > a', 'margin-block', COARSE)), -px(acct));
+    assert.ok(px(acct) <= px(decl(all, '.acct-rows > div', 'padding').split(/\s+/)[0]), 'inside the row: two rows’ links never meet');
+    if (bundle === 'Meridian') {
+      // A session's strategy row's next step ("Already deployed: see it on Deploy"), an 18px link: 26px, as Tau's is.
+      assert.ok(18 + 2 * px(decl(all, '.slip-next > a:first-child', 'padding-block', COARSE)) >= 26);
+      assert.equal(decl(all, '.slip-next > a:first-child', 'display', COARSE), 'inline-block');
+    }
   });
 }
 

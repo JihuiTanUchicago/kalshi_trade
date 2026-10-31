@@ -7,7 +7,7 @@
 window.TauPage('strategies', (T) => {
   'use strict';
   const {
-    api, apNudge, boardTitle, bulkDeployable, busy, catOrder, depSaid, depWrite, errText, esc, fig, flash, gl, go, ICON, loadFail,
+    announce, api, apNudge, boardTitle, bulkDeployable, busy, catOrder, depSaid, depWrite, errText, esc, fig, flash, gl, go, ICON, loadFail,
     loading, marketShort, num, pageLede, paperShown, pct, registry, retried, root, S, SEP, shell, smooth, strategySlip, strategyTable, theme
   } = T;
   // Each theme heads the list its own way and says an empty list in its own words; the filters, figures, rows and
@@ -28,6 +28,16 @@ window.TauPage('strategies', (T) => {
   };
 
   // ---------- strategies ----------
+  // A chip, the market or sort select, Deployed or a search draws the list again in silence: a screen reader heard the
+  // chip's "pressed" and nothing of what the list now holds, where Explore's search says how many match (walked
+  // 2026-10-31). The read that follows a filter says how many strategies it lists, once (not on a page load or a page turn).
+  let filtered = false;
+  const sayListed = (d) => {
+    if (!filtered) return;
+    filtered = false;
+    const n = +d.matched || 0;
+    announce(n ? `${num(n)} strateg${n === 1 ? 'y' : 'ies'} listed.` : 'No matching strategies.');
+  };
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
     const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '', sort: q.get('sort') === 'best' ? 'best' : '' };
@@ -46,6 +56,7 @@ window.TauPage('strategies', (T) => {
       <div id="bulkbar" class="bulkbar" hidden></div>
       <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
     const applyFilters = () => {
+      filtered = true;
       const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
       if (!f.status) p.set('status', '');
       go('/strategies?' + p.toString(), true);
@@ -150,6 +161,7 @@ window.TauPage('strategies', (T) => {
           : `<div class="empty"><h2>${noneKept ? 'No strategy has passed yet' : missed ? 'No matching strategies' : 'No strategies yet'}</h2>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : missed ? `<p>${missText}</p>` : apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : '<p>Every strategy a research session writes lands here, with its test on data it never saw. Start a session to find your first.</p>'}${missed && !noneKept ? clearBtn : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
         const clear = slipsEl.querySelector('[data-clear-filters]');
         if (clear) clear.onclick = () => { Object.assign(f, { status: '', market: '', q: '', deployed: '' }); applyFilters(); };
+        sayListed(d);
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -173,6 +185,7 @@ window.TauPage('strategies', (T) => {
       });
       wireBulk();
       focusPaged();
+      sayListed(d);
     };
     // Multi-select deploy (paper only; live stays per-strategy behind the typed-LIVE gate).
     // Selection is per page — ponytail: cross-page selection is YAGNI for a 50-row page.

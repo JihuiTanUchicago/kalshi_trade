@@ -2744,6 +2744,12 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
   .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
   .bell-stale { padding-block: 14px; }
   .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
+  /* Settings' Account links (Manage keys on Funds, Billing), alone in their row, were 20px tall to a thumb: 40px, inside
+     the row's own padding, so the rows keep their height and no two links' reach meets (walked 2026-10-31 at 390px). */
+  .acct-rows dd > a { padding-block: 10px; margin-block: -10px; }
+  /* A session's strategy row says what is next under its name: "Already deployed: see it on Deploy", an 18px link to a
+     thumb. 26px, as Tau's is, its line keeping its height. */
+  .slip-next > a:first-child { display: inline-block; padding-block: 4px; margin-block: -4px; }
   .market-control .hot-tab { width: 44px; }
   /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
   .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }

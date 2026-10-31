@@ -564,6 +564,31 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.equal(g.root.querySelectorAll('#slips h3').length, 0);
   });
 
+  // Keyboard and screen-reader walk 2026-10-31: a chip, a select or a search drew the list again in silence (the chip's
+  // "pressed" was all a screen reader said). The read after a filter says how many it lists, once; a page load says nothing.
+  test(`${name}: a filter says how many strategies it lists, once, and a page load says nothing`, async () => {
+    let matched = 3;
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/strategies')
+      ? response({counts: {total: 3, passed: 3, deployed: 0, examples: {}}, matched, pages: matched ? 1 : 0,
+        strategies: Array.from({length: matched}, (_, i) => detailStrategy({id: 60 + i, title: 'Listed ' + i}))})
+      : response({}))});
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.render(); await flush(); await flush();
+    const said = () => { f.elapse(100); const el = f.document.getElementById('sr-status'); return el ? el.textContent : ''; };
+    assert.equal(said(), '', 'nothing on the first read');
+    matched = 1;
+    f.root.querySelector('[data-f="status"][data-v="passed"]').onclick(); await flush(); await flush();
+    assert.equal(said(), '1 strategy listed.');
+    matched = 0;
+    const sq = f.root.querySelector('#strat-q'); sq.value = 'zzz'; sq.onchange(); await flush(); await flush();
+    assert.equal(said(), 'No matching strategies.');
+    // Drawing the view again with no filter pressed (a return to the page) says nothing more.
+    const el = f.document.getElementById('sr-status'); el.textContent = '';
+    await f.render(); await flush(); await flush();
+    assert.equal(said(), '');
+    f.clearTimers && f.clearTimers();
+  });
+
   // Where a keyboard user is left: the fake DOM records focus() (Tau's as `focused`, Meridian's as the document's
   // activeElement).
   const hasFocus = (f, el) => !!el && (el.focused === true || f.document.activeElement === el);

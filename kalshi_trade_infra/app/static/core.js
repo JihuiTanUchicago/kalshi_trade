@@ -1172,8 +1172,11 @@
   // check its P&L line by line. The server never mixes modes in one file.
   // `before`, the text ahead of it, and `info`, the key of a glossary button after that text: the button comes first,
   // glued to its last word and the separator (gloSep).
+  // Tau's dashboard shows a link per book, all three reading "Download trades (CSV)": a screen reader's list of links
+  // gave three alike, so each says its book after the words it shows (walked 2026-10-31).
   function tradesCsv(mode, b, info = '', before = '') {
-    const has = b && b.closed_trades > 0, link = has ? `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>` : '';
+    const has = b && b.closed_trades > 0;
+    const link = has ? `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)<span class="vh"> for the ${mode} book</span></a>` : '';
     if (info) return (has ? gloSep(info, before) : before + glo(info)) + link;
     return before + (has ? SEP : '') + link;
   }

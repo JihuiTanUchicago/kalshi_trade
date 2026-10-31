@@ -590,7 +590,7 @@ window.TauPage('autopilot', (T) => {
     const pulseEl = idleEl && box.querySelector('#apf-pulse'), idleSay = pulseEl && apIdleLine(box, true), sayEl = pulseEl && pulseEl.querySelector('.vh');
     if (sayEl && pulseEl.apSaid !== idleSay) { pulseEl.apSaid = idleSay; sayEl.textContent = idleSay; }
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
-    const week = box.querySelector('#apf-week'); if (week) repaintKeep(week, (open) => d.autopilot ? apWeek(d.week, d, open) : apOffCost(d, 'ap-week-left'));
+    const week = box.querySelector('#apf-week'); if (week) repaintKeep(week, (open) => d.autopilot ? apWeek(d.week, d, open, true) : apOffCost(d, 'ap-week-left'));
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);
     const fsel = box.querySelector('#apf-focus');
