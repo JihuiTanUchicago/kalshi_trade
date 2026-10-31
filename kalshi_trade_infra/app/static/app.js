@@ -1551,7 +1551,10 @@
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
   // A deployment's sizing on its Deploy row. A spec stored without sizing sends stake and max_positions
   // as null: the row says the stake is not set and leaves out the cap, instead of "$ a trade, up to  open".
-  const depSizing = (d) => [d.stake != null ? `$${esc(d.stake)} a trade` : gl('Stake not set', 'stake'),
+  // The stake is money: whole dollars as "$25", anything else to the cent as every amount is ("$7.5 a trade" read
+  // beside "$7.50"s, walk 2026-10-31). A value that isn't a number is shown as stored, escaped.
+  const stakeFig = (v) => (Number.isFinite(+v) ? (Number.isInteger(+v) ? '$' + num(+v) : usd(+v)) : `$${esc(v)}`);
+  const depSizing = (d) => [d.stake != null ? `${stakeFig(d.stake)} a trade` : gl('Stake not set', 'stake'),
     d.max_positions != null ? `up to ${esc(d.max_positions)} open` : ''].filter(Boolean).join(', ');
   // A demo copy the demo-copy sync paused waits on its paper deployment: Resume would be paused again
   // at the sync's next pass, so it is offered disabled with the server's reason (resume_block), which

@@ -6092,6 +6092,16 @@ test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', a
   assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
 });
 
+test('a Deploy row writes a stake to the cent unless it is whole dollars', async () => {
+  // Walk 2026-10-31: a $7.50 stake read "$7.5 a trade, up to 4 open" on Deploy and the dashboard's Deployed table.
+  const html = await deployBoard([nullStakeDep({id: 1, title: 'Half', stake: 7.5, max_positions: 4}),
+    nullStakeDep({id: 2, title: 'Whole', stake: 25, max_positions: 4}), nullStakeDep({id: 3, title: 'Odd', stake: 12.125})]);
+  assert.match(html, /Half<\/a>\s*<div class="sub-fig">\$7\.50 a trade, up to 4 open<\/div>/);
+  assert.match(html, /Whole<\/a>\s*<div class="sub-fig">\$25 a trade, up to 4 open<\/div>/);
+  assert.match(html, /Odd<\/a>\s*<div class="sub-fig">\$12\.13 a trade<\/div>/);
+  assert.doesNotMatch(html, /\$7\.5 |\$12\.125|NaN/);
+});
+
 test('Tau: a research session the autopilot started says so on the list and on its page', async () => {
   const ap = {id: 15, status: 'running', market: 'btc15m', direction: null, by_autopilot: 1, example: false, prompt: 'Order-flow imbalance',
     hypotheses_tried: 1, strategies_passed: 0, spent_usd: 1.41, created_at: '2026-10-26T17:36:00Z'};

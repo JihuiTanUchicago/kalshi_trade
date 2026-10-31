@@ -275,5 +275,8 @@ def test_describe_groups_large_numbers_in_thousands():
     lines = specmod.describe(spec)
     assert any("1–1,500 minutes before settlement" in line for line in lines), lines
     assert any(line.startswith("Stakes $2,500 per trade") for line in lines), lines
+    # A stake is money: to the cent unless whole ("$7.5 per trade" read beside Deploy's "$7.50", walked 2026-10-31).
     spec["sizing"]["stake"] = 2.5
-    assert any(line.startswith("Stakes $2.5 per trade") for line in specmod.describe(spec))
+    assert any(line.startswith("Stakes $2.50 per trade") for line in specmod.describe(spec))
+    spec["sizing"]["stake"] = 1234.5
+    assert any(line.startswith("Stakes $1,234.50 per trade") for line in specmod.describe(spec))

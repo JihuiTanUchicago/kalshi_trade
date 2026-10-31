@@ -57,6 +57,20 @@ def test_under_ten_trades_is_too_early_to_tell(n):
     assert bc.book_check("live", _stats([0.1] * 10), bc.backtest_figures(OOS, 5.0))["verdict"] != "early"
 
 
+def test_a_count_in_the_thousands_reads_with_its_separator():
+    # Walk 2026-10-31: Deploy's row said "On paper: 1200 trades across all its paper runs" beside its own Trades
+    # column's "1,200" (both themes). The line writes a count as every figure on the page does.
+    bt = bc.backtest_figures(OOS, 5.0)
+    c = bc.book_check("paper", _stats(_alternating(1200, 0.15, 0.5)), bt)
+    assert c["line"].startswith("On paper: 1,200 trades across all its paper runs, realistic fills only:"), c["line"]
+    assert "1200" not in c["line"]
+    behind = bc.book_check("live", _stats(_alternating(12000, -0.10, 0.2)), bt)
+    assert "on live: 12,000 trades across" in behind["line"] and "Below the usual range for 12,000 trades" in behind["line"]
+    ahead = bc.book_check("demo", _stats(_alternating(2000, 0.40, 0.2)), bt)
+    assert "on demo: 2,000 trades across" in ahead["line"] and "Above the usual range for 2,000 trades" in ahead["line"]
+    assert bc.book_check("paper", _stats([0.1] * 9), bt)["line"].startswith("On paper: 9 completed trades so far")
+
+
 def test_a_demo_line_says_its_thin_book_is_no_evidence_of_the_edge():
     # Demo proves the order path; its sandbox book is thin, so ahead or behind is not edge evidence.
     bt = bc.backtest_figures(OOS, 5.0)

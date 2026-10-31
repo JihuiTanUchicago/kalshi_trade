@@ -1618,7 +1618,10 @@
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
   // A deployment's sizing on its Deploy row and monitor card. A spec stored without sizing sends stake and
   // max_positions as null: it says the stake is not set and leaves out the cap, instead of "$ / trade".
-  const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : gl('Stake not set', 'stake');
+  // The stake is money: whole dollars as "$25", anything else to the cent as every amount is ("$12.5 / trade" read
+  // beside "$12.50"s, walk 2026-10-31). A value that isn't a number is shown as stored, escaped.
+  const stakeFig = (v) => (Number.isFinite(+v) ? (Number.isInteger(+v) ? '$' + num(+v) : usd(+v)) : `$${esc(v)}`);
+  const depStake = (d) => d.stake != null ? `${stakeFig(d.stake)} / trade` : gl('Stake not set', 'stake');
   const depCap = (d) => d.max_positions != null ? `Max ${esc(d.max_positions)} open` : '';
   // A running deployment's state: "Running", or what it is waiting on when it places no orders (depIdle).
   const depState = (d, live) => d.status !== 'running' ? mark(d.status, live)

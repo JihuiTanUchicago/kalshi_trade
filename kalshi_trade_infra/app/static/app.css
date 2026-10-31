@@ -2368,11 +2368,13 @@ body.landing-body .apf { display: none; }
   /* The strip's links follow one another line after line ("4 strategies passed: A, B, C, 1 more", a paused
      strategy over "Add it on the Funds page"), and 44px boxes set on a 21px line reached 26px into the next
      line's link (walked 2026-10-28, 360-768px): a thumb on one title could open the next. Each link's 44px is
-     inside its own line now, so no two touch: a list of titles stacks one under another (its commas, the list's
-     only text, take no room) and a lone link is a box in its line. A long title still wraps inside its box. */
+     inside its own line now, so no two touch: each link is a box in its line. A long title still wraps inside its box. */
   .since-row dd a { display: inline-block; max-width: 100%; padding-block: 12px; margin-block: 0; }
-  .since-links { display: flex; flex-direction: column; align-items: flex-start; font-size: 0; }
-  .since-links > a { font-size: 14.5px; }
+  /* A list of titles ("8 strategies passed: A, B, C, 5 more.") runs on as a line of text, its commas and closing
+     period with it: each link is a box its line grows to hold, so two boxes never meet, and the period can't break
+     from the box before it. Stacked one under another (flex column), every title took a line of its own and the
+     period was left alone on the last (walked 2026-10-31, 390px, both themes). */
+  .since-links { display: inline; font-size: inherit; }
   /* A link right after a glossary (i) ("…and the spread (i) · Download trades (CSV)"): the (i)'s 44px reached 25px
      into it on the next line. The link keeps its 44px and starts clear of the (i)'s. */
   .nobr:has(> .info) + a.csv-link { display: inline-block; margin-top: 13px; }

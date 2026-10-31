@@ -1328,7 +1328,10 @@ def describe(spec: Dict) -> List[str]:
 
     def stakes() -> str:
         s = spec["sizing"]
-        return "Stakes $%s per trade, at most %d open at once." % (_grouped(s["stake"]), s["max_positions"])
+        # Money: whole dollars as "$25", anything else to the cent ("$7.50", not "$7.5"), as Deploy writes it.
+        v = float(s["stake"])
+        stake = _grouped(v) if v.is_integer() else "{:,.2f}".format(v)
+        return "Stakes $%s per trade, at most %d open at once." % (stake, s["max_positions"])
 
     if is_perpetual_spec(spec):
         say(lambda: "Bitcoin perpetual %s research, %s directions." % (spec["perpetual"]["signal"], spec["perpetual"]["side"]))

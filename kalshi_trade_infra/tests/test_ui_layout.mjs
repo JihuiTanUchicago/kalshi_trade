@@ -613,7 +613,7 @@ for (const [bundle, file, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'ap
   const all = rules(read(file));
   const src = read(js);
 
-  test(`${bundle}: the since strip's links are each 44px to a thumb inside their own line, a list of them stacked`, () => {
+  test(`${bundle}: the since strip's links are each 44px to a thumb inside their own line, a list of them run on as text`, () => {
     // "4 strategies passed: A, B, C, 1 more": 44px boxes on a 21px line reached 26-27px into the next line's link.
     assert.equal(decl(all, '.since-row dd a', 'display', COARSE), 'inline-block');
     assert.equal(decl(all, '.since-row dd a', 'margin-block', COARSE), '0', 'no negative margin: the line holds the box');
@@ -621,11 +621,11 @@ for (const [bundle, file, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'ap
     const line = px(decl(all, '.since-row dd', 'font-size')) * parseFloat(decl(all, '.since-row dd', 'line-height'));
     assert.ok(line + 2 * pad >= 44, `${line}px line + 2 x ${pad}px`);
     assert.equal(decl(all, '.since-row dd a', 'max-width', COARSE), '100%', 'a long title wraps inside its box');
-    // Two or more links in a row stack one under another; their commas (the list's only text) take no room.
-    assert.equal(decl(all, '.since-links', 'display', COARSE), 'flex');
-    assert.equal(decl(all, '.since-links', 'flex-direction', COARSE), 'column');
-    assert.equal(decl(all, '.since-links', 'font-size', COARSE), '0');
-    assert.equal(decl(all, '.since-links > a', 'font-size', COARSE), decl(all, '.since-row dd', 'font-size'));
+    // Two or more links in a row run on as a line of text, commas and closing period with them (walk 2026-10-31,
+    // 390px): stacked in a flex column, each title took a line of its own and the "." was left alone on the last.
+    assert.equal(decl(all, '.since-links', 'display', COARSE), 'inline');
+    assert.equal(decl(all, '.since-links', 'font-size', COARSE), 'inherit', 'its commas and period show');
+    assert.ok(!all.some((r) => /since-links/.test(r.sel) && /flex|column|font-size:\s*0/.test(r.body)), 'never a flex column again');
     assert.ok(!all.some((r) => r.media !== COARSE && /since-links/.test(r.sel)), 'a mouse reads the line as before');
     assert.match(src, /const sinceLinks = \(links\) => \(links\.length > 1 \? `<span class="since-links">\$\{links\.join\(', '\)\}<\/span>` : links\.join\(''\)\);/);
     assert.match(src, /passed: \$\{sinceLinks\(\[\.\.\.pass\.items\.map\(/);
