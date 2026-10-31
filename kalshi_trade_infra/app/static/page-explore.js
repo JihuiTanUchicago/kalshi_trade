@@ -88,8 +88,14 @@ window.TauPage('explore', (T) => {
       // A failed read names what didn't load (it said only "Something went wrong on our side."), unless Tau's own words do.
       const why = s.failed && (/didn\u2019t load/.test(s.failed) ? s.failed : `Bitcoin\u2019s latest stored price didn\u2019t load. ${s.failed}`) + ' Everything else on this page did.';
       el.innerHTML = s.failed ? `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
+      // One read a press (a double tap asked twice), and focus goes into what came in, or to the new Try again; the
+      // repaint dropped it to the page's body (walk 2026-10-31).
       const b = el.querySelector('[data-spot-retry]');
-      if (b) b.onclick = () => spotRead(ticker).then(show);
+      if (b) b.onclick = () => {
+        if (b.disabled) return;
+        b.disabled = true;
+        return spotRead(ticker).then(show).then(() => { const box = root.querySelector('#mk-spot-body'); if (box) retried(box, box.querySelector('[data-spot-retry]')); });
+      };
     };
     first.then(show);
     // One poll per page, though a retry of the market draws the page again; a failed poll keeps the last figures.
@@ -101,6 +107,10 @@ window.TauPage('explore', (T) => {
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
     const spotReq = BTC_CONTRACT.test(ticker || '') ? spotRead(ticker) : null;
+    // Try again (the market, or its price history) draws the whole page again, and focus fell to the page's body: it
+    // goes to the market's heading, or to the new Try again when the read failed again (walk 2026-10-31).
+    const again = () => viewMarketDetail(ticker)
+      .then(() => retried(root.querySelector('main'), root.querySelector('#mk-retry') || root.querySelector('main h1')));
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
     catch (e) {
@@ -108,7 +118,7 @@ window.TauPage('explore', (T) => {
       // from the link ("Kalshi has no market KXNOPE-…"), and offers only the way back to Explore.
       const gone = e.status === 404;
       root.querySelector('#main').innerHTML = notice(gone ? MKT_GONE : e.message, 'bad') + `<p style="margin-top:12px">${gone ? '' : '<button class="btn sm" type="button" id="mk-retry">Try again</button> '}<a class="btn sm" href="${esc(exploreBackHref())}">← Back to Explore</a></p>`;
-      if (!gone) root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
+      if (!gone) root.querySelector('#mk-retry').onclick = again;
       return;
     }
     const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });
@@ -161,7 +171,7 @@ window.TauPage('explore', (T) => {
         <span class="xpage-acts"><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
         <a class="btn sm" href="${kalshiLink}" target="_blank" rel="noopener">View on Kalshi ↗</a></span></div>`);
     const retry = root.querySelector('#mk-retry');
-    if (retry) retry.onclick = () => viewMarketDetail(ticker);
+    if (retry) retry.onclick = again;
     closeClock();
     if (spotReq && !settled) mountSpot(ticker, spotReq, d);
     const pts = d.points.slice().reverse();  // newest first

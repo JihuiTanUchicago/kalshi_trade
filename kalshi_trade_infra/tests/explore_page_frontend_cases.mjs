@@ -307,6 +307,45 @@ export function explorePageCases({name, frontend}) {
     assert.doesNotMatch(html, /on the (Yes|No) side/);
   });
 
+  // Walk 2026-10-31: a double tap on the spot's Try again asked twice, and the section drawn again dropped focus to the
+  // page's body. One read a press; focus goes into what came in, or to the new Try again.
+  test(`${name}: the spot's Try again asks once a press and puts focus into what came in`, async () => {
+    let calls = 0, release = null;
+    const {f, body} = await openSpot(() => (++calls === 1 ? response({error: 'Bitcoin’s latest price didn’t load. Try again in a moment.'}, 503)
+      : new Promise((ok) => { release = () => ok(response(SPOT)); })));
+    const again = body().querySelector('[data-spot-retry]');
+    f.document.activeElement = again;
+    again.onclick(); again.onclick(); await settle();
+    assert.equal(calls, 2, 'the second tap while the read is out asks nothing');
+    assert.equal(again.disabled, true);
+    release(); await settle();
+    assert.match(body().innerHTML, /\+\$420\.01/);
+    assert.ok(body().focusOptions && body().focusOptions.preventScroll === true, 'focus goes into the section');
+    f.clearTimers && f.clearTimers();
+  });
+
+  // Walk 2026-10-31: the market's own Try again draws the whole page again, and focus fell to the page's body.
+  test(`${name}: a market read's Try again puts focus on the market's heading, or on the new Try again when it fails again`, async () => {
+    let calls = 0;
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?')
+      ? (++calls < 3 ? response({error: 'Kalshi didn’t send this market just now. Try again in a minute.'}, 502) : response(page()))
+      : response({}))});
+    f.location.pathname = '/explore'; f.location.search = '?m=KXFEDDECISION-26DEC-H0';
+    await f.viewExplore(); await settle();
+    let again = f.root.querySelector('#mk-retry');
+    f.document.activeElement = again;
+    await again.onclick(); await settle();
+    const still = f.root.querySelector('#mk-retry');
+    assert.ok(still && still !== again, 'failed again: a new Try again');
+    assert.ok(still.focusOptions && still.focusOptions.preventScroll === true, 'focus on the new Try again');
+    f.document.activeElement = still;
+    await still.onclick(); await settle();
+    assert.equal(f.root.querySelector('#mk-retry'), null);
+    const head = f.root.querySelector('main h1');
+    assert.ok(head.focusOptions && head.focusOptions.preventScroll === true, 'the market back: its heading takes focus');
+    f.clearTimers && f.clearTimers();
+  });
+
   test(`${name}: the rest of a Bitcoin market's page draws while its spot read is still out`, async () => {
     const {f, body} = await openSpot(() => new Promise(() => {}));
     assert.match(f.root.innerHTML, /How it settles/); assert.ok(f.root.querySelector('#rawsect'));

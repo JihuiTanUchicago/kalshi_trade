@@ -170,6 +170,7 @@ window.TauPage('community', (T) => {
     : 'Share a strategy an agent found or how your book is doing. It shows up here.';
   const EMPTY_ALL = tau ? 'Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.'
     : 'Be the first. Share a strategy an agent found, an idea worth researching, or how your paper book is doing.';
+  const POST_DRAFT = 'tau_post_draft';  // the composer's unsent post, this tab (app.js forgetDrafts names it too)
   async function viewCommunity() {
     const lede = 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.';
     const filter = '<div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>';
@@ -214,6 +215,22 @@ window.TauPage('community', (T) => {
     const growTa = () => { ta.style.height = 'auto'; ta.style.height = Math.min(180, ta.scrollHeight) + 'px'; };
     ta.addEventListener('input', growTa);
     attachMention(ta);  // @-mention autocomplete in the composer
+    // A post typed before the session ran out is kept for this tab and put back when the same account comes back to
+    // the feed: a 401 (a poll's, or Post's own) sends the reader to sign in, and the box came back empty (walk
+    // 2026-10-31). It goes once it posts or the box is cleared; signing out forgets it (forgetDrafts).
+    const uid = S.me && S.me.user ? S.me.user.id : null;
+    try {
+      const d = JSON.parse(sessionStorage.getItem(POST_DRAFT) || 'null');
+      if (d && d.uid === uid && typeof d.text === 'string' && d.text.trim() && !ta.value) {
+        ta.value = d.text.slice(0, 2000); growTa();
+        const fold = ta.closest('details'); if (fold) fold.open = true;  // a folded New post opens to show it
+      }
+    } catch (e) { /* storage off or unreadable: no draft */ }
+    const keepPost = () => {
+      try { if (ta.value.trim()) sessionStorage.setItem(POST_DRAFT, JSON.stringify({ uid, text: ta.value })); else sessionStorage.removeItem(POST_DRAFT); }
+      catch (e) { /* private mode or full: the box still works */ }
+    };
+    ta.addEventListener('input', keepPost);
     // photo attach
     let pendingImage = null;
     const photoInput = root.querySelector('#photo-input');
@@ -252,7 +269,7 @@ window.TauPage('community', (T) => {
         await busy(kind === 'pnl' ? share : btn, async () => {
           try {
             const r = await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
-            root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa();
+            root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa(); keepPost();
             pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
             // The feed reads again unless a reply is being written in it (an open thread with no words in it closes): the
             // refresh skipped every time a thread was open, so the post didn't show at all (walked 2026-10-31).

@@ -889,6 +889,53 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     d.clearTimers();
   });
 
+  // Walk 2026-10-31 (the server down, then back): the Strategies list's Try again drew the list over its button and
+  // focus fell to <body>; Research's "Your research results" Try again did the same. Back, focus goes into what came in.
+  test(`${name}: the Strategies list's and Research results' Try again put focus into what came in`, async () => {
+    const settle = async () => { for (let i = 0; i < 8; i++) await flush(); };
+    const focused = (el) => !!(el && el.focusOptions && el.focusOptions.preventScroll === true);
+    const rows = [detailStrategy({id: 61, title: 'Cleared pass', status: 'passed', out_of_sample: {pnl: 3.1, trades: 40, win_rate: 0.6, days: 9}})];
+    let up = false;
+    const st = frontend({fetchImpl: (path) => (path.startsWith('/api/strategies')
+      ? (up ? response({counts: {total: 1, passed: 1}, matched: 1, pages: 1, strategies: rows}) : response({error: 'Something went wrong on our side.'}, 500))
+      : response({}))});
+    st.S.me.markets = [{key: 'btc15m', category: 'Crypto'}];
+    st.location.pathname = '/strategies'; st.location.search = '';
+    await st.viewStrategies(); await settle();
+    const slips = st.root.querySelector('#slips');
+    let again = slips.querySelector('[data-retry]');
+    st.document.activeElement = again;
+    await again.onclick(); await settle();
+    const still = slips.querySelector('[data-retry]');
+    assert.ok(still && still !== again && focused(still), 'failed again: focus on the new Try again');
+    st.document.activeElement = still; up = true;
+    await still.onclick(); await settle();
+    assert.equal(slips.querySelector('[data-retry]'), null);
+    assert.match(slips.textContent, /Cleared pass/);
+    assert.ok(focused(slips), 'the list back: focus goes into it');
+    assert.equal(slips.getAttribute('tabindex'), '-1');
+    st.clearTimers();
+
+    const BOARD = {total: {runs: 2, explored: 10, gated: 3, passed: 1, cost_usd: 2, gate_reach_rate: 0.3, pipeline_death_share: 0.2}};
+    let boardUp = false;
+    const r = frontend({fetchImpl: (path) => {
+      if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}], default: 'opus'});
+      if (path.startsWith('/api/research/scoreboard')) return boardUp ? response(BOARD) : response({error: 'Something went wrong on our side.'}, 500);
+      if (path.startsWith('/api/runs')) return response({runs: [], counts: {research_running: 0, research_queued: 0}, totals: {tried: 4, passed: 1}});
+      return response({});
+    }});
+    r.S.me.user.autopilot = false;
+    r.location.pathname = '/research';
+    await r.viewResearch(); await settle();
+    const host = r.root.querySelector('#rsimo');
+    again = host.querySelector('[data-retry]');
+    r.document.activeElement = again; boardUp = true;
+    await again.onclick(); await settle();
+    assert.match(host.textContent, /Is research getting better\?/);
+    assert.ok(focused(host), 'the results back: focus goes into them');
+    r.clearTimers();
+  });
+
   test(`${name}: a session's working spinner is hidden from a screen reader, not named "in process"`, async () => {
     // A <span aria-label> with no role is a name nothing reads (axe aria-prohibited-attr): the word beside it says it.
     const f = frontend();

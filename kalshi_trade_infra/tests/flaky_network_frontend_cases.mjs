@@ -126,6 +126,52 @@ export function flakyNetworkCases({name, frontend}) {
     }
   });
 
+  // Walk 2026-10-31 (the server down, then back): the page's own Try again drew Research again with "Your research
+  // results didn't load" still on it, from the failed read kept for the minute. Opening the page asks again.
+  test(`${name}: Research opened again after its results failed asks for them again, not the failure kept for the minute`, async () => {
+    const BOARD = {total: {runs: 2, explored: 10, gated: 3, passed: 1, cost_usd: 2, gate_reach_rate: 0.3, pipeline_death_share: 0.2}};
+    let down = true, asked = 0;
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}], default: 'opus'});
+      if (path.startsWith('/api/research/scoreboard')) { asked++; return down ? response({error: 'Something went wrong on our side. It’s been logged.'}, 500) : response(BOARD); }
+      if (path.startsWith('/api/runs')) return response({runs: [], counts: {research_running: 0, research_queued: 0}, totals: {tried: 4, passed: 1}});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    assert.match(f.root.querySelector('#rsimo').textContent, /Your research results didn’t load/);
+    down = false; f.clearTimers();
+    await f.viewResearch(); await settle();
+    assert.equal(asked, 2, 'asked once more as the page opened');
+    const host = f.root.querySelector('#rsimo');
+    assert.match(host.textContent, /Is research getting better\?/);
+    assert.doesNotMatch(host.textContent, /didn’t load/);
+    // A board that came back is still read at most once a minute: the page opened again doesn't ask.
+    f.clearTimers();
+    await f.viewResearch(); await settle();
+    assert.equal(asked, 2);
+    f.clearTimers();
+  });
+
+  // Walk 2026-10-31: Dev Logs that didn't load put the bare words under its heading, with no Try again but a reload.
+  test(`${name}: Dev Logs that didn't load say so with Try again, as every page does`, async () => {
+    let up = false;
+    const f = frontend({fetchImpl: (path) => (path === '/api/devlog' ? (up ? response({shipped: [{date: '2026-10-30', title: 'Faster pages'}], planned: []}) : response({error: 'Something went wrong on our side. It’s been logged.'}, 500)) : response({}))});
+    f.location.pathname = '/devlog';
+    await f.render(); await settle();
+    assert.match(f.root.innerHTML, /This page didn’t load/);
+    assert.match(f.root.textContent, /Something went wrong on our side\. It’s been logged\./);
+    const again = f.root.querySelector('[data-retry]');
+    assert.ok(again, 'Try again');
+    up = true;
+    await again.onclick(); await settle();
+    for (let i = 0; i < 4; i++) await settle();  // the page drawn again from the router
+    assert.match(f.root.querySelector('#main').innerHTML, /Faster pages/);
+    assert.equal(f.root.querySelector('[data-retry]'), null);
+    f.clearTimers();
+  });
+
   // A refresh that failed with a board up kept the board and said nothing, so it read as current. One quiet line
   // above it says so, as the bell's does ("Couldn’t refresh. Showing … from N min ago." with Try again), and the
   // next read that comes back takes it away.

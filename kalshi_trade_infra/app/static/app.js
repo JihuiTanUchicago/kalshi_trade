@@ -1001,8 +1001,9 @@
   }
   async function viewDevLog() {
     shell('/devlog', boardTitle('Dev Logs', 'What we’ve shipped, and what’s next. Updated as we build.'), loading(260));
-    let d;
-    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('#main').innerHTML = notice(e.message, 'bad'); return; }
+    // A read that failed is the page's (the router's "This page didn't load", with Try again): it put the bare words
+    // under the heading with no way to ask again but a reload (walk 2026-10-31).
+    const d = await api('/api/devlog');
     const planned = (d.planned || []).map((p) => `<li class="dl-item planned">
         <span class="dl-dot" aria-hidden="true"></span>
         <div class="dl-body"><h3 class="dl-what">${esc(p.title)}</h3>${p.detail ? `<p class="dl-detail">${mdLite(p.detail)}</p>` : ''}</div>
@@ -1355,11 +1356,12 @@
     forgetDrafts();
     return true;
   }
-  // Signing out leaves nothing of the reader's own words on the device: the research idea not yet started
-  // (page-research.js, this tab) and the autopilot message not yet sent (page-autopilot.js, kept per account).
+  // Signing out leaves nothing of the reader's own words on the device: the research idea not yet started and the
+  // community post not yet sent (page-research.js, page-community.js, this tab) and the autopilot message not yet
+  // sent (page-autopilot.js, kept per account).
   // A session that ended by itself keeps them, so signing back in finds them where they were.
   function forgetDrafts() {
-    try { sessionStorage.removeItem('tau_research_draft'); } catch (e) { /* private mode */ }
+    try { sessionStorage.removeItem('tau_research_draft'); sessionStorage.removeItem('tau_post_draft'); } catch (e) { /* private mode */ }
     try {
       const mine = [];
       for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('tau_ap_draft:') === 0) mine.push(k); }
