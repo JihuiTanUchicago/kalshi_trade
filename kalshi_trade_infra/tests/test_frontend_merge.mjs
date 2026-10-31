@@ -5582,6 +5582,19 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   // Something else passed too: the list first, the forward test after it.
   const both = await strip({since: {...since, passed: {n: 1, items: [{id: 9, title: 'Fade'}]}}});
   assert.match(both, /1 strategy passed: <a href="\/strategies\/9">Fade<\/a>.*\. <a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live\./);
+  // A milestone is named by its own title, from its strategy row (the server's names), before its deployment's; one
+  // with no deployment listed read "Strategy 10", an internal id. One whose title is gone (deleted) is "a strategy".
+  assert.match(await strip({since: {...since, names: {232: 'ETH drift'}}}), /<dt>New results<\/dt><dd><a href="\/strategies\/232">ETH drift<\/a> passed/);
+  const gone = {...since, milestones: {passed: [232, 10], live_ready: [10]}};
+  const own = await strip({deployments: [], since: {...gone, names: {232: 'ETH <i>drift</i>', 10: 'BTC fade'}}});
+  assert.match(own, /<dt>New results<\/dt><dd><span class="since-links"><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a>, <a href="\/strategies\/10">BTC fade<\/a><\/span> passed their paper forward test: candidates for live/);
+  assert.match(own, /<dt>Needs you<\/dt><dd><a href="\/strategies\/10">BTC fade<\/a> is ready for live trading\./);
+  const bare = await strip({deployments: [], since: {...gone, names: {232: 'ETH drift'}}});
+  assert.match(bare, /<a href="\/strategies\/232">ETH drift<\/a>, a strategy<\/span> passed their paper forward test/);
+  assert.match(bare, /<dt>Needs you<\/dt><dd>A strategy is ready for live trading\./);
+  const none = await strip({deployments: [], since: {...since, milestones: {passed: [10], live_ready: []}}});
+  assert.match(none, /<dt>New results<\/dt><dd>A strategy passed its paper forward test: a candidate for live/);
+  for (const html of [own, bare, none]) assert.doesNotMatch(html, /Strategy \d/);
 });
 
 test('the last move says the forward test verdict and drops the live-ready marker, and a credits pause says what keeps trading', async () => {

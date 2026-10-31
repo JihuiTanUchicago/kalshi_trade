@@ -615,10 +615,12 @@ def activity_since(cur, user_id: int, since) -> Dict:
     free one, and the strip says so), the credits bought with a card charge since then (`bought`: the
     credits, the number of charges and how many of those auto-reload made: a card charged while the
     user was away is the first thing the time away cost), and the strategies whose bell said they
-    passed the paper forward gate or became ready for live (`milestones`: {kind: [strategy ids]}).
-    Those passes happen days after the strategy was created, so passed_since never sees them. The
-    strategies paused automatically to stop a loss (`auto_paused`, from their bell notices too): the
-    engine's guards write no proposal, so `autopilot` never counted them."""
+    passed the paper forward gate or became ready for live (`milestones`: {kind: [strategy ids]}),
+    each with its own title (`titles`: {strategy id: title}, from its strategy row, joined by primary key
+    in the same read; a deleted strategy has none). Those passes happen days after the strategy was
+    created, so passed_since never sees them. The strategies paused automatically to stop a loss
+    (`auto_paused`, from their bell notices too): the engine's guards write no proposal, so `autopilot`
+    never counted them."""
     week = now_utc() - timedelta(days=7)
     cur.execute(
         "SELECT 'ap' AS src, kind AS k, COUNT(*) AS n FROM app_proposals "
@@ -633,8 +635,10 @@ def activity_since(cur, user_id: int, since) -> Dict:
         "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
         "UNION ALL SELECT 'spent' AS src, 'week' AS k, COALESCE(-SUM(amount_usd),0) AS n FROM app_credit_ledger "
         "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
-        "UNION ALL SELECT 'note' AS src, CONCAT(kind, ' ', COALESCE(link, '')) AS k, COUNT(*) AS n FROM app_notifications "
-        "WHERE user_id=%s AND kind IN ('passed','live_ready','paused') AND created_at>=%s GROUP BY kind, link "
+        "UNION ALL SELECT 'note' AS src, CONCAT(nt.kind, ' ', COALESCE(nt.link, ''), CHAR(9), COALESCE(MAX(st.title), '')) AS k, "
+        "COUNT(*) AS n FROM app_notifications nt LEFT JOIN app_strategies st ON nt.kind IN ('passed','live_ready') "
+        "AND nt.link LIKE '/strategies/%%' AND st.id=CAST(SUBSTRING(nt.link, 13) AS UNSIGNED) AND st.user_id=nt.user_id "
+        "WHERE nt.user_id=%s AND nt.kind IN ('passed','live_ready','paused') AND nt.created_at>=%s GROUP BY nt.kind, nt.link "
         "UNION ALL SELECT 'paid' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_credit_ledger "
         "WHERE user_id=%s AND kind IN ('topup','autoreload') LIMIT 1) p "
         "UNION ALL SELECT 'bought' AS src, kind AS k, COUNT(*) AS n FROM app_credit_ledger "
@@ -646,7 +650,7 @@ def activity_since(cur, user_id: int, since) -> Dict:
     )
     out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                            "spent": {"since": 0.0, "week": 0.0}, "bought": {"usd": 0.0, "charges": 0, "auto": 0},
-                           "milestones": {"passed": [], "live_ready": []}, "auto_paused": []}
+                           "milestones": {"passed": [], "live_ready": []}, "titles": {}, "auto_paused": []}
     bought = Decimal(0)  # top-ups and auto-reloads summed exact; the page rounds credits half up (credit_cents)
     for r in cur.fetchall():
         if r["src"] == "bought":
@@ -662,11 +666,14 @@ def activity_since(cur, user_id: int, since) -> Dict:
         elif r["src"] == "spent":
             out["spent"][r["k"]] = float(r["n"] or 0)  # exact: the page rounds credits half up (credit_cents)
         elif r["src"] == "note":
-            kind, _, link = str(r["k"]).partition(" ")
+            kind, _, rest = str(r["k"]).partition(" ")
+            link, _, title = rest.partition("\t")
             m = re.match(r"^/strategies/(\d+)$", link)
             ids = out["auto_paused"] if kind == "paused" else out["milestones"].get(kind)
             if m and ids is not None and int(m.group(1)) not in ids:
                 ids.append(int(m.group(1)))
+            if m and ids is not None and kind != "paused" and title:
+                out["titles"][int(m.group(1))] = title
         else:
             out["autopilot" if r["src"] == "ap" else "runs"][r["k"]] = int(r["n"])
     out["bought"]["usd"] = float(bought)

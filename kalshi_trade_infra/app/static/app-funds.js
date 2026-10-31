@@ -221,8 +221,9 @@ window.TauPage('funds', (T) => {
     // "Show older entries": the next page before the oldest entry the history holds, kept under the newest page, then
     // the history drawn again from the answer shown (load's `got`: no other read). Asked once per click (busy); one that
     // fails says so under the history and leaves the button to try again; one that no longer joins (the history was
-    // reset while it was out) is dropped. Focus stays on the button and a screen reader hears how many came in (the rows
-    // arrived in silence); past the last page the button goes, and focus goes to the line that says so, not the page top.
+    // reset while it was out) is dropped. A screen reader hears how many came in (the rows arrived in silence), and focus
+    // goes to the first entry just listed, as Research's "Show older sessions" does: it stayed on the button, which the
+    // new rows pushed below the screen. Past the last page the button goes, and focus goes to the line that says so.
     const showOlder = (btn) => holdFocus(null, () => busy(btn, async () => {
       const base = shown ? shown.paper.ledger.concat(older) : [], last = base[base.length - 1];
       if (!last || last.id == null) return;
@@ -236,9 +237,13 @@ window.TauPage('funds', (T) => {
         const fl = root.querySelector('#lflash'); if (fl) fl.innerHTML = '';
         await load(null, shown);
         if (olderMore && added > 0) announce(`${num(added)} older ${added === 1 ? 'entry' : 'entries'} shown.`);
-        // Brought into view as it takes focus: it sits under the rows just added, off the screen.
+        // Brought into view as it takes focus: the line sits under the rows just added, off the screen; while more remain,
+        // the first entry just listed (focusable for it, tabindex -1), and Tab goes on down the older ones to the button.
         const end = !olderMore && root.querySelector('.ledger-end'), a = document.activeElement;
-        if (end && end.focus && (a === btn || !a || a === document.body || !a.isConnected)) end.focus();
+        const free = a === btn || !a || a === document.body || !a.isConnected;
+        const row = olderMore && added > 0 && root.querySelectorAll('#ledger-rows tr')[shown.paper.ledger.length + older.length - added];
+        if (end && end.focus && free) end.focus();
+        else if (row && row.focus && free) { row.setAttribute('tabindex', '-1'); row.focus(); }
       } catch (err) { if (gen === S.gen) flash('#lflash', errText(err), 'bad'); }
     }));
     // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.

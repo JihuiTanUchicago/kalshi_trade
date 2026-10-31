@@ -43,6 +43,10 @@ export function fundsHistoryCases({name, frontend, fundsData}) {
   const ids = (f) => rows(f).map((tr) => +/#(\d+)\)/.exec(tr.innerHTML)[1]);
   const button = (f) => f.root.querySelector('#ledger-older-btn');
   const click = async (f) => { await f.root.querySelector('#ledger-older').onclick({target: button(f)}); await settle(); };
+  // A click hands focus to the first entry it listed, and the poll leaves Funds as it is while the reader is in it
+  // (as it did while focus sat on the button): the reader moves on before a poll is to redraw the history.
+  const focusedOn = (f, el) => el.focused === true || f.document.activeElement === el;
+  const away = (f) => { f.document.activeElement = f.document.body; };
 
   test(`${name}: Funds' paper history shows older entries on request, 50 at a time, to the first one`, async () => {
     const state = {top: 160, floor: 1, asked: []};
@@ -73,7 +77,12 @@ export function fundsHistoryCases({name, frontend, fundsData}) {
     // The figures come from their own read: an older page moves none of them.
     assert.equal(f.root.querySelector('#ffigs').innerHTML, figs);
 
+    // Focus is on the first entry just listed (#110), not left on the button the new rows pushed off the screen.
+    assert.ok(focusedOn(f, rows(f)[50]), 'focus is on the first older entry');
+    assert.equal(rows(f)[50].getAttribute('tabindex'), '-1');
+
     // The poll keeps them; new entries come in on top and the ones that slid off the newest page stay, once each.
+    away(f);
     const poll = await fundsPoll(f);
     assert.deepEqual(ids(f), page(160, 100).map((r) => r.id));
     state.top = 163; await poll(); await settle();
@@ -121,6 +130,7 @@ export function fundsHistoryCases({name, frontend, fundsData}) {
     assert.equal(rows(f).length, 100);
     assert.equal(f.root.querySelector('#lflash').innerHTML, '');
     // Reset: the ledger is wiped and restarts with one deposit; the older rows the page held are gone with it.
+    away(f);
     const poll = await fundsPoll(f);
     state.floor = state.top = 121; await poll(); await settle();
     assert.deepEqual(ids(f), [121]);
@@ -131,6 +141,7 @@ export function fundsHistoryCases({name, frontend, fundsData}) {
     assert.ok(button(f));
     await click(f);
     assert.equal(state.asked.at(-1), '/api/funds/ledger?before=251');
+    away(f);
     state.top = 400; await poll(); await settle();
     assert.deepEqual(ids(f), page(400, 50).map((r) => r.id));
     f.clearTimers();

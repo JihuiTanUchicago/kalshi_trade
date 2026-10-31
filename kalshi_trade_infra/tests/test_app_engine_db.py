@@ -846,7 +846,30 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                                                    "spent": {"since": 0.0, "week": 0.0},
                                                    "bought": {"usd": 0.0, "charges": 0, "auto": 0},
-                                                   "milestones": {"passed": [], "live_ready": []}, "auto_paused": []}
+                                                   "milestones": {"passed": [], "live_ready": []}, "titles": {},
+                                                   "auto_paused": []}
+
+
+def test_since_your_last_visit_names_each_milestone_by_its_own_strategy_title(conn, user):
+    """The strip's milestones carry their strategies' own titles, from the same read (the strategy row by
+    primary key): one with no deployment listed was named "Strategy 10". Only the user's own strategy's
+    title, never another account's whose id a link names, and none for a deleted strategy or a pause."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    mine = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", "ETH drift — v2", "t", {}, "passed", {})
+    theirs = repo.insert_strategy(cur, other["id"], None, None, "btc15m", "momentum", "Not yours", "t", {}, "passed", {})
+    gone = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", "Deleted", "t", {}, "passed", {})
+    repo.delete_strategy(cur, uid, gone)
+    for kind, sid in [("passed", mine), ("live_ready", mine), ("live_ready", theirs), ("passed", gone), ("paused", mine)]:
+        repo.add_notification(cur, uid, kind, "“X” moved.", "/strategies/%d" % sid)
+    act = repo.activity_since(cur, uid, since)
+    assert act["milestones"] == {"passed": sorted([mine, gone], reverse=True), "live_ready": sorted([mine, theirs], reverse=True)}
+    assert act["titles"] == {mine: "ETH drift — v2"}
+    assert act["auto_paused"] == [mine]
 
 
 def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn, user):

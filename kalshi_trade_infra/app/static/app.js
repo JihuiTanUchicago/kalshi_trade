@@ -2522,10 +2522,12 @@
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
     // A strategy that passed its paper forward test or became ready for live did so days after it was
     // created, so `passed` never lists it: the server reads those from the bell (`milestones`, strategy
-    // ids), and the page names each from its own deployments.
-    const ms = s.milestones || {}, named = (sid) => {
-      const dep = d.deployments.find((x) => +x.strategy_id === +sid);
-      return `<a href="/strategies/${encodeURIComponent(sid)}">${esc(dep ? dep.title : 'Strategy ' + sid)}</a>`;
+    // ids). Each is named by its own title (the server's `names`, from its strategy row, cut at its first
+    // " — " as the autopilot panel cuts one), else by its deployment's here: one with no deployment listed
+    // read "Strategy 10", an internal id. One with no title left (deleted) is "a strategy", with no link.
+    const ms = s.milestones || {}, names = s.names || {}, named = (sid, i) => {
+      const dep = d.deployments.find((x) => +x.strategy_id === +sid), title = names[sid] || (dep && dep.title);
+      return title ? `<a href="/strategies/${encodeURIComponent(sid)}">${esc(title)}</a>` : i ? 'a strategy' : 'A strategy';
     };
     const fwd = (ms.passed || []).slice(0, 3).map(named);
     const fwdText = `${sinceLinks(fwd)} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;

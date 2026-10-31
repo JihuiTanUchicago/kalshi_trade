@@ -88,6 +88,15 @@ test('every helper the core gives is one a bundle takes, and both bundles take t
   assert.deepEqual([...mer].filter((n) => !tau.has(n)), ['TARGET_IN', 'vsText', 'vsLab', 'rowVs']);
 });
 
+test('the core keeps no dead helper: each one it defines it gives, or calls itself', () => {
+  // rxTitle (a reaction chip's names, unescaped) and dirTag (an empty string) sat in the core with nothing
+  // calling them: a helper no bundle can take and the core never reads is code nobody runs.
+  const gives = new Set(Object.keys(core())), code = codeOnly(CORE);
+  const uses = (n) => (code.match(new RegExp(`(?<![\\w$.])${n}(?![\\w$]|:)`, 'g')) || []).length;
+  const dead = [...defined(CORE)].filter((n) => !gives.has(n) && uses(n) < 2);
+  assert.deepEqual(dead, [], `the core defines ${dead.join(', ')} and nothing uses it`);
+});
+
 // A bundle's code with its take from the core left out, comments and words blanked (codeOnly): where it reads a
 // name, and where it declares one of its own (a local or a parameter of that name is its own, not the core's).
 const own = (src) => codeOnly(src).replace(/\n {2}const \{\n[^}]*\n {2}\} = window\.TauCore;\n/, '\n');

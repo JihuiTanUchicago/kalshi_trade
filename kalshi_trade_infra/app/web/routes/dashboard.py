@@ -13,6 +13,7 @@ from app.services import book_memo, page_poll
 from app.trading import engine
 from app.web.caches import _TRACK_RECORD, _shared
 from app.web.http import Ctx
+from app.web.routes.chat import _short_title
 from app.web.routes.deployments import _paper_strategy_ids
 from app.web.routes.funds import kalshi_cash
 from app.web.routes.strategies import _later_verdicts, _stamp_row_instant_fills, _with_marks, _with_why
@@ -170,7 +171,9 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     charged in the meantime (auto-reload, mostly) rides with them. Their `card_charged` is the read's own
     answer, None when it has none: the page calls them real money only when it is True. `milestones` are
     the paper forward-gate passes and live-ready strategies since then, `auto_paused` the strategies
-    a loss guard paused (strategy ids).
+    a loss guard paused (strategy ids). `names` are the milestones' own titles, cut as the autopilot
+    panel cuts one (chat._short_title), from their strategy rows in activity_since's one read: the strip
+    named one with no deployment listed "Strategy 10". A deleted one has none, and the strip says "a strategy".
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
     pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it. A row
     whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
@@ -183,6 +186,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
                       **_bought(act.get("bought"))}
             if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
+            "names": {sid: _short_title(t) for sid, t in (act.get("titles") or {}).items() if (t or "").strip()},
             "auto_paused": act.get("auto_paused") or [],
             "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
 

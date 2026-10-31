@@ -1561,8 +1561,8 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_the_cookies_lif
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
                    "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
-                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "auto_paused": [],
-                   "by_deployment": {}}
+                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "names": {},
+                   "auto_paused": [], "by_deployment": {}}
     # Each book's figure split by the deployment that traded it, best first, books kept apart.
     split = server._since_visit(None, 1, now, False, {"paper": (-24.19, 19), "demo": (-1.0, 1)},
                                 {("paper", 4): (-53.0761, 7), ("paper", 3): (28.8867, 12), ("demo", 5): (-1.0, 1)})
@@ -1599,6 +1599,12 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     act["bought"] = {"usd": 0.0, "charges": 0, "auto": 0}
     assert "bought" not in server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
     assert out["milestones"] == {"passed": [232], "live_ready": [232]}
+    assert out["names"] == {}
+    # Each milestone's own title from its strategy row (activity_since's titles), cut as the autopilot panel
+    # cuts one: the strip named one with no deployment listed "Strategy 232". A blank title names none.
+    act["milestones"] = {"passed": [232, 10], "live_ready": [10, 7]}
+    act["titles"] = {232: "ETH drift — v2", 10: "BTC fade", 7: "  "}
+    assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["names"] == {232: "ETH drift", 10: "BTC fade"}
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"] is None
 

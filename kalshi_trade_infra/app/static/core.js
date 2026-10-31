@@ -99,13 +99,6 @@
   const authorLine = (name, uname) => `${esc(name || 'Trader')}${uname ? ` <span class="uhandle">@${esc(uname)}</span>` : ''}`;
 
   // ---------- money, shares and prices ----------
-  // Hover tooltip for a reaction chip: who reacted, with "and N others" when the list is capped.
-  const rxTitle = (rx) => {
-    const names = rx.names || [];
-    if (!names.length) return '';
-    const extra = (rx.count || 0) - names.length;
-    return extra > 0 ? `${names.join(', ')} and ${extra} other${extra > 1 ? 's' : ''}` : names.join(', ');
-  };
   const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmt0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   // An amount to `places` decimals, rounded half up from the decimal the server sent, as Billing rounds
@@ -447,7 +440,6 @@
   // it fell outside the list, and a screen reader read the figure without what kind of money it is.
   const fig = (label, value, opts = {}) =>
     `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<dd class="sub-fig">${opts.small}</dd>` : ''}</div>`;
-  const dirTag = () => '';
   // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
   // Tau's words that send someone to Funds ("... on the Funds page ...": an engine pause reason, a deploy
   // or live-autopilot refusal) name it as a link to Funds' Connect Kalshi; it was plain text, with nothing to

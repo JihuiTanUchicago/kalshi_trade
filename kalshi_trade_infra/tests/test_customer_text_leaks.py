@@ -281,6 +281,21 @@ def test_a_name_that_is_an_email_never_shows_in_the_community(monkeypatch):
     assert community.mention_candidates(_ctx(query={"q": "so"}))["users"] == [{"username": "someone", "name": "someone"}]
 
 
+def test_a_share_notice_never_names_the_sender_by_email(monkeypatch):
+    from app.web.routes import strategies as strategy_routes
+    notes = []
+    monkeypatch.setattr(repo, "get_strategy", lambda cur, uid, sid: {"id": sid, "title": "Fade"})
+    monkeypatch.setattr(repo, "user_by_email", lambda cur, email: {"id": 3})
+    monkeypatch.setattr(repo, "share_strategy", lambda cur, sid, uid, rid: 41)
+    monkeypatch.setattr(repo, "add_notification", lambda cur, uid, kind, body, link=None: notes.append((uid, body)))
+    for name, said in ((OTHER, "A friend"), ("  ", "A friend"), (None, "A friend"), ("Dana Q.", "Dana Q.")):
+        notes.clear()
+        monkeypatch.setattr(repo, "get_user", lambda cur, uid, name=name: {"id": 7, "name": name})
+        assert strategy_routes.share_strategy(_ctx(("5",), body={"email": "pal@example.net"})) == {"ok": True}
+        assert notes == [(3, "%s shared the strategy “Fade” with you." % said)]
+        _no_leak(notes[0][1])
+
+
 def test_a_comment_notice_never_names_the_commenter_by_email(monkeypatch):
     sent, notes = [], []
     monkeypatch.setattr(notify, "_send", lambda to, subject, body, reply_to=None: sent.append((to, subject, body)) or True)
