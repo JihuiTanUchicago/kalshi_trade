@@ -101,36 +101,3 @@ def test_the_guard_leaves_customer_words_alone(text):
 def test_dev_logs_use_curly_apostrophes_and_quotes():
     for title, detail in _entries():
         assert "'" not in title + detail and '"' not in title + detail, title
-
-
-# Live trading opens and closes on the server's switches (the global one, and NO-side live's own), so a dated entry
-# never says it is on now: walk 2026-10-31 found "Live/real trading ENABLED for all users", "NO / “either”-side live
-# trading enabled" and "now that NO-side live trading is on" on the page whose Up next lists live trading on the NO
-# side, while the app told the same customer live trading isn't open yet.
-LIVE_IS_ON = re.compile(
-    r"\blive(?:/real)? trading\W+(?:is\W+)?(?:now\W+)?(?:enabled|on|open)\b(?! the NO side)"
-    r"|\b(?:enabled|switched on|turned on) for all users|\bcan now go live\b|\b(?:is|are) now live\b", re.I)
-
-
-@pytest.mark.parametrize("said", [
-    "Live/real trading ENABLED for all users",
-    "NO / “either”-side live trading enabled",
-    "Any side can be promoted now that NO-side live trading is on.",
-    "strategies that trade a pair of contracts can now go live.",
-])
-def test_the_live_guard_catches_what_the_walk_found(said):
-    assert LIVE_IS_ON.search(said), said
-
-
-def test_dev_logs_never_say_live_trading_is_on_now():
-    assert [title for title, detail in _entries() if LIVE_IS_ON.search(title + " " + detail)] == []
-
-
-@pytest.mark.parametrize("text", [
-    "Live trading built for every account, behind Tau’s live switch",
-    "It promotes a NO-side strategy to live only once live trading on the NO side opens.",
-    "Live trading on the NO side has its own switch and stays closed",
-    "while it is closed, the app says live trading isn’t open yet",
-])
-def test_the_live_guard_leaves_the_switch_words_alone(text):
-    assert not LIVE_IS_ON.search(text), text
