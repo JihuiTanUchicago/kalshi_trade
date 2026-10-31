@@ -6202,7 +6202,7 @@ pastCloseCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboa
 moneyPagesWalkCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 staleMarkCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
-slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
+slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: () => funds()});
 
 test('on a phone the dashboard book figures put their chip above the name, so "Tau’s demo book" reads on one line', () => {
   // At 390px the half-width figure had ~164px for "DEMO TAU’S DEMO BOOK" (~179px on one line): "BOOK" wrapped.

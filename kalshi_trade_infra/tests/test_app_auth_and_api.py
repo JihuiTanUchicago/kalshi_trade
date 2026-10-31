@@ -428,7 +428,8 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     monkeypatch.setattr(server.repo, "user_positions", lambda cur, uid, status: [])
     from app.services import book_memo  # Funds' realized P&L read, answered without a database
     monkeypatch.setattr(book_memo, "closed_book_totals",
-                        lambda memo, day, visit=None: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {}, {}))
+                        lambda memo, day, visit=None, fills=False: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {}, {})
+                        + (({},) if fills else ()))
     reads = []
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: reads.append(uid) or 25000.0)
     demo_twins._BALANCE_CACHE.clear()

@@ -429,7 +429,9 @@ export function runPageCases({name, frontend}) {
         in_sample: {pnl: 14.2, trades: 60}, out_of_sample: {pnl: 8.52, trades: 30, days: 12}, deployed: true,
         books: ['paper', 'demo'], real}]);
     const html = list(f).replace(/⁠/g, '');
-    assert.match(html, /<a href="\/deploy">Already deployed: see it on Deploy<\/a><span class="ri-paper">\u00a0· <b>Paper since deploying:<\/b> <span class="[^"]*">\+\$3\.20<\/span> · 14 trades, 2 of them instant fills, left out of the track record · after Kalshi fees and the spread<\/span>/);
+    assert.match(html, /<a href="\/deploy">Already deployed: see it on Deploy<\/a><span class="ri-paper">\u00a0· <b>Paper since deploying:<\/b> <span class="[^"]*">\+\$3\.20<\/span> · 14 trades, 2 of them instant fills, left out of the track record · after Kalshi fees and the spread<span class="slip-est">≈\u00a0\+\$2\.85 after typical live slippage \(estimate: 0\.5¢ a contract each time an order fills\)<\/span><\/span>/);
+    // Walk 2026-10-31: the line said the paper money with the server's estimate in its data and none beside it. Once.
+    assert.equal(html.match(/after typical live slippage/g).length, 1);
     // Said once: Meridian's Status cell keeps the demo line and leaves the paper figure to the line above.
     assert.equal(html.match(/\+\$3\.20/g).length, 1);
     if (html.includes('data-lab="Status"')) assert.match(html, /Demo: <span class="gain">\+\$0\.50<\/span>/);

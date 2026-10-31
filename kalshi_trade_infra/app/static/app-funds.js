@@ -5,7 +5,7 @@ window.TauPage('funds', (T) => {
   'use strict';
   const {
     announce, api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, errText, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, olderRows, openCost, pageAssets, PAPER_NET,
-    paint, painted, poll, refreshed, root, S, SEP, settleAt, shell, tone, usd, when
+    paint, painted, poll, refreshed, root, S, SEP, settleAt, shell, slipEst, tone, usd, when
   } = T;
 
   // ---------- funds ----------
@@ -81,6 +81,9 @@ window.TauPage('funds', (T) => {
   const BOOK_NET = { paper: PAPER_NET, demo: 'after Kalshi fees', live: 'after Kalshi fees' };
   const bookPnl = (b, mode, pnl = b.realized_pnl, span = 'all time') => b.closed_trades == null ? ''
     : b.closed_trades ? `${usd(pnl, true)} realized ${span}, ${BOOK_NET[mode]}${SEP}` : `P&amp;L shows once a ${mode} trade closes${SEP}`;
+  // The paper figure's estimate after typical live slippage (the server's, the dashboard's for the same realized P&L)
+  // under its line, as the dashboard's paper figure says it: Funds said the paper money alone. Never live or demo.
+  const paperSlip = (b) => (b.closed_trades ? slipEst(b.slippage_estimate) : '');
   // With live trading closed (the server's live switch, liveOpen) "shows once a live trade closes" read as if one could.
   const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time, ${BOOK_NET.live}.`
     : k.connected ? (liveOpen() ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : ' Live trading isn\u2019t open yet, so Tau places no live trades.') : '';
@@ -270,7 +273,7 @@ window.TauPage('funds', (T) => {
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : liveOpen() ? '' : '.') : cf ? `${cf[1]}${livePnl(k)}${liveLeft(k)}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)}${liveLeft(k)}` }) +
         (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} capital${SEP}${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : `needs a demo key${SEP}`}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox: ${DEMO_SANDBOX}` })) +
-        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash${SEP}${openAt(d.paper, inBalance(d.paper))}${bookPnl(d.paper, 'paper')}practice money` }));
+        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash${SEP}${openAt(d.paper, inBalance(d.paper))}${bookPnl(d.paper, 'paper')}practice money${paperSlip(d.paper)}` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
       // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
       // with a key keeps live, demo, paper.

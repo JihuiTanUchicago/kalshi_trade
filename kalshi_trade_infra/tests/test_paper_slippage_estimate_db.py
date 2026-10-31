@@ -138,6 +138,16 @@ def test_each_pages_estimate_agrees_with_the_positions_and_the_gates_never_see_i
     assert est < pnl
     for m in ("live", "demo"):
         assert "slippage_estimate" not in dash[m]
+    # The strip's paper book (its window, the last 24 hours on a first visit, holds every row here) and Funds' paper
+    # figure: the same rows, so the same estimate, summed in the reads they already make. Never on live or demo.
+    assert dash["since"]["books"]["paper"] == {"pnl": pnl, "trades": len(paper_closed),
+                                               "slippage_estimate": {"pnl": est, "per_fill_cents": 0.5}}
+    for m in ("live", "demo"):
+        assert "slippage_estimate" not in dash["since"]["books"][m]
+    funds = server.funds(ctx())
+    assert funds["paper"]["realized_pnl"] == pnl
+    assert funds["paper"]["slippage_estimate"] == {"pnl": est, "per_fill_cents": 0.5}
+    assert "slippage_estimate" not in funds["demo"] and "slippage_estimate" not in funds["kalshi"]
 
     # The strategy page's "Since deploying": the listed paper deployment's closed rows only.
     listed = [r for r in paper_closed if r["deployment_id"] == dep["paper"]]

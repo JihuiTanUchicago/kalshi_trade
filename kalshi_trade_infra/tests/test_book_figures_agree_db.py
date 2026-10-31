@@ -35,8 +35,11 @@ import io
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
+
+from trading_core.domain.money import cents
 
 pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="needs APP_TEST_MYSQL=1 and a MySQL")
 
@@ -297,8 +300,15 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
             assert fb["realized_pnl"] == bucket["realized_pnl"] == realized, mode
 
         # -- "Since your last visit": each book on its own, the CSV's rows since then --
-        assert dash["since"]["books"][mode] == {"pnl": csv_sum(lines, visit)[0], "trades": csv_sum(lines, visit)[1]}, mode
-        assert dash["since"]["books"][mode]["trades"] == len(b["visit"])
+        strip = dash["since"]["books"][mode]
+        assert {k: strip[k] for k in ("pnl", "trades")} == {"pnl": csv_sum(lines, visit)[0], "trades": csv_sum(lines, visit)[1]}, mode
+        assert strip["trades"] == len(b["visit"])
+        # Its paper book's estimate is its own window's rows' (the visit's), never live's or demo's.
+        visit_fills = sum(int(r["qty"]) * (1 if r["close_reason"] == "settled" else 2) for r in b["visit"])
+        assert strip.get("slippage_estimate") == (
+            {"pnl": cents(sum((Decimal(str(r["pnl"])) for r in b["visit"]), Decimal(0)) - Decimal("0.005") * visit_fills),
+             "per_fill_cents": 0.5}
+            if mode == "paper" else None), mode
 
         # -- the track record: completed round trips; a part-sold trade still open waits --
         t = record[mode]

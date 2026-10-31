@@ -311,8 +311,10 @@ window.TauPage('strategy', (T) => {
   function paperTop(s) {
     const ds = (s.deployments || []).filter((d) => d.mode === 'paper');
     if (researchOnly(s) || !ds.length) return '';
-    const { pnl, trades, instant } = bookTotal(s, 'paper', ds);
-    return `<p class="paper-top">${paperSince({ pnl, trades, instant_fills: instant })}${SEP}<a href="#since-deploying">Details below</a></p>`;
+    const { pnl, trades, instant, slip } = bookTotal(s, 'paper', ds);
+    // Its estimate after typical live slippage (the server's, as Since deploying's Paper line says it) closes the line,
+    // after the link: the head said the paper money with no estimate beside it.
+    return `<p class="paper-top">${paperSince({ pnl, trades, instant_fills: instant })}${SEP}<a href="#since-deploying">Details below</a>${trades ? slipEst(slip) : ''}</p>`;
   }
   // What the strategy has actually done since it was deployed, per mode (live, demo, paper), from
   // its deployments' realized P&L. The page otherwise shows only the backtest.

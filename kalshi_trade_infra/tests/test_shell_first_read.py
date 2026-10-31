@@ -213,8 +213,8 @@ def _funds_db(monkeypatch, live_key=True, demo_key=True):
     monkeypatch.setattr(r, "ledger_rows", lambda cur, uid: [{"memo": "Paper deposit", "amount": Decimal("1000"),
                                                              "created_at": datetime(2026, 10, 26, 8, 0)}])
     monkeypatch.setattr(r, "user_positions", lambda cur, uid, status: [{"mode": "live", "qty": 10, "entry_price": 0.4}])
-    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None: (
-        {"paper": (5.61, 0), "demo": (3.5, 0), "live": (-1.245, 0)}, {"paper": 2, "demo": 1, "live": 1}, {}))
+    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None, fills=False: (
+        {"paper": (5.61, 0), "demo": (3.5, 0), "live": (-1.245, 0)}, {"paper": 2, "demo": 1, "live": 1}, {}) + (({},) if fills else ()))
     for mod, name in ((kalshi_account, "balance"), (kalshi_account, "balance_cached"), (kalshi_account, "credentials_from_row"),
                       (kalshi_account, "verify"), (demo_twins, "_read_balance"), (demo_twins, "balance_cached")):
         monkeypatch.setattr(mod, name, kalshi)
