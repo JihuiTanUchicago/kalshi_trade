@@ -2285,6 +2285,12 @@
       };
       const bookHead = (rows) => { const c = bookCount(rows); return { n: c.n, book: c.book ? ` <span class="position-group-mode">${c.book}</span>` : '' }; };
       const openHead = bookHead(d.open_positions), closedHead = bookHead(d.recent_closed);
+      // The dashboard lists only the latest closed trades (the server's last 12): their split read "7 paper · 2 demo · 3 live"
+      // beside the track record's 14, 3 and 5 for the same books, as if those were the closed-trade counts. When the books
+      // hold more closed trades than the list shows, it says these are the latest. Display only: no count changes.
+      const closedAll = ['paper', 'demo', 'live'].reduce((a, m) => a + (+(d[m] || {}).closed_trades || 0), 0);
+      const shownN = num(d.recent_closed.length);
+      if (closedAll > d.recent_closed.length) closedHead.n = `latest ${closedHead.n === shownN ? shownN : `${shownN}: ${closedHead.n}`}`;
       const positionTable = (rows, closed) => {
         const onlyPaper = !!paperOnly(rows);
         const widths = closed ? [332, 100, 160, 88, 128] : [300, 92, 112, 80, 96, 128];
@@ -2305,8 +2311,10 @@
         return `<div class="sheet"><table class="t-positions" data-paper-only="${onlyPaper}"><colgroup>${widths.map(width => `<col style="width:${width / 808 * 100}%">`).join('')}</colgroup><thead><tr><th scope="col">Market / contract</th><th scope="col">Position</th><th scope="col">Expiry</th><th scope="col" class="num">Entry</th>${closed ? '' : '<th scope="col" class="num">Cost + fee</th>'}<th scope="col" class="num" title="${closed ? 'Realized result when it closed, at settlement or sold early' : 'Estimated from the latest stored bid'}">${closed ? 'Realized' : 'Unrealized'} P&amp;L</th></tr></thead>${bodies}</table></div>`;
       };
       const days = (p.daily || []).slice(-30);
-      let periodPnl = 0;
-      const periodCurve = days.map(day => [Date.parse(day.d + 'T12:00:00Z') / 1000, periodPnl += +day.pnl]);
+      // Each day's stored P&L summed exactly (sum4), as the server's realized figure is, then rounded once by usd(): the
+      // floats added day by day read -$0.1315 and -$0.6135 as -$0.74 beside the dashboard's and Funds' -$0.75.
+      const periodCurve = days.map((day, i) => [Date.parse(day.d + 'T12:00:00Z') / 1000, sum4(days.slice(0, i + 1).map((x) => x.pnl))]);
+      const periodPnl = periodCurve.length ? periodCurve[periodCurve.length - 1][1] : 0;
       // Its name reads the period in words ("from Oct 3 through Oct 31, 2026", not "2026-10-03") and the low and high
       // of the running total with their days, before where it ends: it said only the dates and the end.
       const paperDay = (d, year) => new Date(d + 'T12:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(year ? { year: 'numeric' } : {}), timeZone: 'UTC' });
@@ -2442,6 +2450,9 @@
         // A signed amount keeps its sign: at 390px "· −" ended one line and "$0.30 from 1 removed deployment" began the next.
         return `\u00a0· <span class="nobr">${usd(b.removed, true)}</span> from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, <span class="nobr">${usd(b.all, true)}</span> in all` : ''}`;
       };
+      // Paper's figure inside the Live tile keeps its removed deployments' note too, as the Paper tile says it: without it
+      // "−$0.75 on paper from the deployments listed" had no way back to the dashboard's and Funds' paper figure (−$0.45,
+      // a removed deployment's +$0.30 in it) once a live deployment was listed.
       const listedLab = (lab, xs) => (xs.length ? `${lab}, listed below` : lab);
       // A book with no closed trade yet, listed or removed, has no P&L: it says "None yet", never a $0.00 that reads
       // as trading flat. Its line keeps what the figure is (paper, not real; after fees and the spread) and no more: at
@@ -2466,7 +2477,7 @@
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', num(active.length), { small: `${num(d.deployments.length - running.length)} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
+          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed${removedNote('paper')}, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
           // Beside a Demo realized figure the paper one names its book: a bare "Realized" next to "Demo realized" read
           // as the board's total, demo included. Paper alone keeps "Realized".
           : paperDeps.length || !demoDeps.length ? fig(listedLab(demoDeps.length ? 'Paper realized' : 'Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +
