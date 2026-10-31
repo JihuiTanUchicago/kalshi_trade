@@ -33,6 +33,27 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.match(f.root.querySelector('#topup-flash').innerHTML, /Added \$19\.00 in credits\. You paid \$20\.05 — \$19\.00 plus the 5\.5% fee\. New balance is \$26\.42\./);
   });
 
+  test(`${name}: a saved-card list Stripe didn't answer is never "No card on file", and Try again reads it again`, async () => {
+    // Failure walk 2026-10-31: a customer with a saved card (charged by auto-reload) read "No card on file.
+    // Add one to buy credits" and "Add a card first." when Stripe's card list failed (cards: [], now cards_unread).
+    let data = cardedBilling({cards: [], cards_unread: true});
+    const f = billingPage(null, [], {[`/api/billing?tz=${new Date().getTimezoneOffset()}`]: () => response(data)});
+    await f.viewBilling(); await flush();
+    const main = () => f.root.querySelector('#main').textContent;
+    assert.doesNotMatch(main(), /No card on file|Add a card first/);
+    const cards = f.root.querySelector('#cards');
+    assert.match(cards.textContent, /Your saved cards didn’t load\. Try again in a moment\. Everything else on this page did\./);
+    assert.match(cards.innerHTML, /role="alert"/);
+    assert.match(main(), /Your saved cards didn’t load, so buying credits waits until they do\./);
+    assert.match(main(), /Add another card/);
+    const again = f.root.querySelector('#cards [data-retry]');
+    assert.ok(again, 'a Try again button for the card list');
+    data = cardedBilling();
+    await again.onclick(); await flush(); await flush();
+    assert.match(f.root.querySelector('#cards').textContent, /VISA •••• 4242/);
+    assert.doesNotMatch(main(), /didn’t load/);
+  });
+
   test(`${name}: Billing's week split adds up to the week shown, and a part under a cent says so instead of vanishing`, async () => {
     // Walk 2026-10-27: "$38.85 + $0.18 + $0.18" sat under "Spent, last 7 days $39.22", and $0.0004 of other agent
     // calls was left out. The server now sends the parts in cents that add up (credit_split) and names the one
@@ -124,6 +145,31 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     f.S.ap = status; f.paintDashAp();
     return f;
   };
+  test(`${name}: an autopilot that is on but whose status didn't load says so on the dashboard card, with Try again`, async () => {
+    // Failure walk 2026-10-31: the card stayed empty for good (it waits for a status that never came), with no word why.
+    let up = false;
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return up ? response({...apStatus, week}) : response({error: 'Something went wrong on our side.'}, 500);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 25.71, min_run_balance: 1};
+    f.S.me.user.autopilot = true; f.S.ap = null; f.S.apAt = 0;
+    await f.viewDashboard(); await flush(); await flush();
+    const card = () => f.root.querySelector('#dash-ap');
+    assert.match(card().textContent, /Autopilot is on, but its latest status didn’t load\. Tau keeps trying\./);
+    assert.doesNotMatch(card().textContent, /Autopilot off|Turn on autopilot/);
+    assert.match(card().innerHTML, /role="status"/);
+    const again = f.root.querySelector('#dash-ap [data-apcard="again"]');
+    assert.ok(again, 'a Try again button on the card');
+    up = true;
+    await again.onclick(); await flush(); await flush();
+    assert.doesNotMatch(card().textContent, /didn’t load/);
+    assert.ok(f.root.querySelector('#dash-ap .ap-week'), 'the card draws the status once it is back');
+    f.clearTimers();
+  });
   const week = {research_credits: 100.01, tested: 3, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
     checkin_credits: 0.09, credits_left: 25.71, runway_days: 1.7, reload_days: 1.4, pace_days: 7};
 

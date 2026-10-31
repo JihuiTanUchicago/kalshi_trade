@@ -158,12 +158,16 @@ def billing_state(ctx: Ctx):
     since = repo.now_utc() - timedelta(days=STATEMENT_DAYS)
     state, cust, totals, balance = _figures(ctx, since)
     cards: List[Dict] = []
+    # A card list Stripe didn't answer is not "no card on file": the page said that (and "Add a card first."
+    # under Buy credits) to a customer whose card was saved and charged by auto-reload. cards_unread tells the
+    # page the list didn't load, so it says so and offers Try again.
+    cards_unread = False
     if cust and billing.configured():
         try:
             cards = billing.list_cards(cust["stripe_customer_id"])
         except billing.StripeError:
-            cards = []
-    return dict(state, cards=cards, **_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance, ctx.user.get("created_at")))
+            cards, cards_unread = [], True
+    return dict(state, cards=cards, cards_unread=cards_unread, **_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance, ctx.user.get("created_at")))
 
 
 def billing_figures(ctx: Ctx):

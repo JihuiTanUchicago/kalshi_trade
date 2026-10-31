@@ -5,8 +5,8 @@
 window.TauPage('admin', (T) => {
   'use strict';
   const {
-    adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, logTime, num, phone, poll, root,
-    S, SEP, settleAt, shell, theme, usd, when
+    adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loadFail, loading, logTime, num, phone, poll,
+    root, S, SEP, settleAt, shell, theme, usd, when
   } = T;
   // Tau's pages have a line under each title, and its System map lists the database's largest tables; Meridian's
   // Admin has the waitlist.
@@ -361,12 +361,30 @@ window.TauPage('admin', (T) => {
       if (n) return e.data.title ? `${e.data.title}: ${n}` : n;
       return e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '');
     };
-    const load = async () => {
-      // A read that failed says so above the map (a 401 is already on its way to sign-in); the next good one clears it.
+    // A read that failed says so above the map (a 401 is already on its way to sign-in); the next good one clears it.
+    // It says so once per message: the 4s poll put the same words into the assertive live region on every tick, so a
+    // screen reader heard the error every 4 seconds for as long as it lasted, and the poll, which never saw the failure,
+    // kept asking every 4s instead of backing off (failure walk 2026-10-31). A map that never loaded offers Try again.
+    let sysSaid = null, sysOk = false;
+    const load = async (cfg) => {
       let d;
-      try { d = await api('/api/admin/system'); }
-      catch (err) { if (gen === S.gen && err.status !== 401) flash('#sys-error', err.message, 'bad'); return; }
+      try { d = await api('/api/admin/system', undefined, cfg); }
+      catch (err) {
+        if (gen === S.gen && err.status !== 401 && sysSaid !== err.message) {
+          sysSaid = err.message;
+          const box = root.querySelector('#sys-error');
+          if (sysOk) flash(box, err.message, 'bad');
+          else if (box) {
+            box.innerHTML = loadFail(err.message);
+            const again = box.querySelector('[data-retry]');
+            if (again) again.onclick = () => busy(again, () => { sysSaid = null; return load(); });
+          }
+        }
+        if (cfg) throw err;  // the poll's read: it backs off
+        return;
+      }
       if (gen !== S.gen) return;
+      sysSaid = null; sysOk = true;
       root.querySelector('#sys-error').innerHTML = '';
       S.sysLive = d.nodes;
       SYS_NODES.forEach((n) => {

@@ -2649,6 +2649,7 @@
     }
     catch (e) {
       S.apFailing = true; apPaintStale();
+      if (!S.ap) paintDashAp();  // the dashboard card, on with no status yet, says it didn't load
       // Never read: an open panel says the status didn't load (apUpdate), and its Try again is given back.
       if (!S.ap && box && apExpanded()) renderAutopilot(box, null);
       return false;
@@ -2873,6 +2874,7 @@
       if (now && now !== b) { now.classList.remove('busy'); now.disabled = false; }
     });
   }
+  const AP_CARD_UNREAD = 'Autopilot is on, but its latest status didn\u2019t load. Tau keeps trying.';
   function paintDashAp() {
     const host = document.getElementById('dash-ap');
     if (!S.me || !S.me.user) return;
@@ -2892,7 +2894,15 @@
       apBindFocus(host);
       return;
     }
-    if (!d) { host.className = 'apcard on'; repaintKeep(host, () => ''); return; }  // on, status still loading
+    // On with no status yet: still loading (an empty card), or its read failed. That card stayed empty for good,
+    // with nothing to say why or to try again (failure walk 2026-10-31); it says so now, with Try again (a read).
+    if (!d) {
+      host.className = 'apcard on';
+      repaintKeep(host, () => S.apFailing ? `<div class="apcard-main">${notice(AP_CARD_UNREAD)}<button type="button" class="btn sm" data-apcard="again">Try again</button></div>` : '');
+      const again = host.querySelector('[data-apcard="again"]');
+      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float')));
+      return;
+    }
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     // A live one while live trading is closed places no orders: counted apart, as Deploy counts it.
     const liveIdle = liveOpen() ? 0 : +d.live_running || 0;

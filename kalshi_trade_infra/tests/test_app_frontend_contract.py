@@ -153,13 +153,14 @@ def test_billing_figures_poll_reads_the_page_figures_without_stripe_or_the_state
     figures = server.billing_figures(context())
     assert asked == []
     assert 'cards' not in figures and 'ledger' not in figures and 'math' not in figures
-    assert figures == {k: v for k, v in full.items() if k not in ('cards', 'ledger', 'ledger_cut', 'math')}
+    assert full['cards_unread'] is False and 'cards_unread' not in figures
+    assert figures == {k: v for k, v in full.items() if k not in ('cards', 'cards_unread', 'ledger', 'ledger_cut', 'math')}
     assert figures['balance'] == pytest.approx(66.543211) and figures['default_pm'] == 'pm_fixture'
     # The balance moved since the page drew it: the statement comes with the figures, still without Stripe.
     moved = server.billing_figures(server.Ctx(SimpleNamespace(cursor=lambda: object()), context().user, (),
                                               {'statement': '1', 'tz': '240'}, {}, SimpleNamespace()))
     assert asked == ['statement'] and 'cards' not in moved
-    assert moved == {k: v for k, v in full.items() if k != 'cards'}
+    assert moved == {k: v for k, v in full.items() if k not in ('cards', 'cards_unread')}
     assert [(m, rx.pattern, signed_in) for m, rx, fn, signed_in in server.ROUTES if fn is server.billing_figures] == [
         ('GET', '^/api/billing/figures$', True)]
 
@@ -959,6 +960,28 @@ def test_the_story_says_when_the_daily_live_loss_limit_stopped_live():
     assert ("Live trading stopped for today: today’s live loss of $60.50 reached your $50.00 daily limit, so live "
             "autopilot switched itself off and live strategies were paused. Paper keeps running.") in lines
     assert not any(line.startswith('Nothing trades real money until') for line in lines)
+
+
+def test_a_card_list_stripe_did_not_answer_is_marked_unread_not_empty(monkeypatch):
+    # Failure walk 2026-10-31: Stripe's card list failing read as cards == [], and Billing said "No card on file"
+    # to a customer whose card was saved. The read still answers (the figures and statement are ours), and says
+    # the list didn't load; a list Stripe answered empty is not marked.
+    customer = {'stripe_customer_id': 'cus_fixture', 'default_pm_id': 'pm_fixture', 'auto_reload': 1}
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: customer)
+    monkeypatch.setattr(server.repo, 'credit_totals', lambda *a: _totals(bonus=20.0))
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a, **k: 0.0)
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
+
+    def down(cid):
+        raise server.billing.StripeError('Could not reach Stripe: HTTPSConnectionPool(host=synthetic)')
+    monkeypatch.setattr(server.billing, 'list_cards', down)
+    data = server.billing_state(context())
+    assert data['cards'] == [] and data['cards_unread'] is True and data['default_pm'] == 'pm_fixture'
+    assert 'HTTPSConnectionPool' not in repr(data)
+    monkeypatch.setattr(server.billing, 'list_cards', lambda cid: [])
+    assert server.billing_state(context())['cards_unread'] is False
 
 
 @pytest.mark.parametrize('customer,charge', [

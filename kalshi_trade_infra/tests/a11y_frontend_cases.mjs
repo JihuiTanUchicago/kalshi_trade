@@ -122,8 +122,31 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
       await explore.viewExplore(); for (let i = 0; i < 6; i++) await flush();
       assert.equal(explore.root.querySelector('#xbody h2').textContent, words);
       assert.deepEqual(headingSkips(explore.root), []);
+      // A list that failed is said aloud (failure walk 2026-10-31): the heading alone was silent.
+      if (answer.status === 500) {
+        [...explore.timeouts.values()].forEach((run) => run()); explore.timeouts.clear();
+        assert.equal(explore.document.getElementById('sr-alert').textContent, 'Markets didn’t load. Explore is busy.');
+      }
       explore.clearTimers();
     }
+    // A System map whose read keeps failing says so once, with Try again, and its 4s poll backs off (failure walk
+    // 2026-10-31): the same error went into the assertive live region on every tick, and the poll never slowed.
+    const down = frontend({fetchImpl: (path) => path === '/api/admin/system' ? response({error: 'System status is busy.'}, 500) : response({})});
+    await down.viewSystem(); await flush();
+    assert.match(down.root.querySelector('#sys-error').textContent, /System status is busy\./);
+    assert.ok(down.root.querySelector('#sys-error [data-retry]'), 'Try again on a map that never loaded');
+    const alerts = down.document.getElementById('sr-alert');
+    let heard = 0;
+    for (let i = 0; i < 8; i++) {
+      for (const tick of [...down.intervals.values()]) tick();
+      for (let k = 0; k < 4; k++) await flush();
+      [...down.timeouts.values()].forEach((run) => run()); down.timeouts.clear();
+      if (alerts && alerts.textContent) { heard++; alerts.textContent = ''; }
+    }
+    assert.equal(heard, 0, 'the same failure is not said again on every poll');
+    const asks = down.requests.filter((r) => r.path === '/api/admin/system').length;
+    assert.ok(asks <= 5, `the failing poll backs off (asked ${asks} times in 8 ticks)`);
+    down.clearTimers();
     // System's detail panel ("Pick a box" / "Select a component", then the box opened) was h3 under the h1.
     const sys = frontend({fetchImpl: (path) => path === '/api/admin/system' ? response({nodes: {}, events: [], now: '2026-10-20T16:00:00Z'}) : response({})});
     await sys.viewSystem(); await flush();
