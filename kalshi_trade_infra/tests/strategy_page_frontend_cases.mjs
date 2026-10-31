@@ -679,6 +679,18 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     }
   });
 
+  // A strategy with one backtest trade read "1 trades over 20 days" beside its Strategies row's "1" (walked 2026-10-31).
+  test(`${name}: the figures up top say "1 trade", not "1 trades"`, async () => {
+    const one = {pnl: 0.3, trades: 1, win_rate: 1, fees: 0.04, profit_factor: 1, max_drawdown: 0, sharpe: 0, roi: 0.01, days: 20};
+    for (const over of [{status: 'backtest-only', experiment: null}, {status: 'passed'}]) {
+      const f = await open({...over, out_of_sample: one, in_sample: {pnl: 0.5, trades: 1, days: 60}, recent_trades: []});
+      const figs = f.root.querySelector('#figs').innerHTML;
+      assert.match(figs, /1 trade over 20 days/, over.status);
+      assert.match(figs, /1 trade on the history it searched/, over.status);
+      assert.doesNotMatch(figs, /\b1 trades\b/, over.status);
+    }
+  });
+
   // Its missed checks are the backtest's own gates in gate_explain's words ("Didn’t make money on unseen data"). A
   // backtest-only page listed them under a gate list that says "Makes money on data after the split date" (walked
   // 2026-10-28): with no gatekeeper record they say the split date too; a held-out page keeps "unseen data".
