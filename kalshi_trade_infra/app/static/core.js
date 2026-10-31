@@ -963,6 +963,21 @@
   // ---------- the dashboard's since-your-last-visit strip ----------
   // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
   function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
+  // What a demo (or live) figure is net of, as Deploy, Funds and the strategy page say it beside their own.
+  const FEES_NET = 'after Kalshi fees';
+  // The demo book's capital, named as Funds names it on every page that shows it: the dashboard's "$1,000.00 capital"
+  // sat beside Funds' "Starting capital $1,000.00" (Meridian's Funds: "starting capital"), and kept saying "capital"
+  // after a reload while Funds said "Capital at last reload" (walk 2026-10-31).
+  const demoCapital = (dm) => `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'}`;
+  // A demo book's realized P&L, or before its first close (closed_trades 0, all time) when one shows, as Funds says it:
+  // the dashboard read "$0.00 realized all time" beside Funds' "P&L shows once a demo trade closes". An answer
+  // without the count keeps its figure.
+  const DEMO_NO_CLOSE = 'P&amp;L shows once a demo trade closes';
+  const demoNoClose = (dm) => dm.closed_trades != null && !+dm.closed_trades;
+  const demoPnl = (dm, pnl) => demoNoClose(dm) ? DEMO_NO_CLOSE : `${usd(pnl, true)} realized ${demoSpan(dm)}, ${FEES_NET}`;
+  // What the since-your-last-visit strip's book line is net of: paper's spread and fees, demo's fees in play money
+  // ("Demo +$0.67 on 1 trade" said nothing beside paper's "after Kalshi fees and the spread"), live's real money.
+  const sinceNote = (m) => (m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : m === 'demo' ? ` (play money), ${FEES_NET}` : '');
   // An action as a link: the server's {label, href}. One off the site opens in a new tab and says so.
   function actionLink(h) {
     const a = h && h.action;
@@ -1151,8 +1166,8 @@
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
-    exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
-    shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
+    exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose,
+    demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
     sessionNo, olderRows

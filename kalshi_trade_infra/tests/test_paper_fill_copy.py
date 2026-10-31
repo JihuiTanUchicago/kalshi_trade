@@ -91,16 +91,19 @@ def test_both_themes_carry_the_same_words(bundle):
     assert re.search(r"\bPAPER_NET\b", share)
     # Every paper headline: the dashboard's paper figure, Deploy's paper figure (or, on a board led by
     # live money, its paper amount), the track record's paper tab, the autopilot card's all-time and
-    # last-7-days paper P&L, and the paper book of "Since your last visit" (live and demo say nothing of
-    # the kind). Deploy's rows don't repeat it under the headline that says it: a row's backtest line
+    # last-7-days paper P&L. Deploy's rows don't repeat it under the headline that says it: a row's backtest line
     # says the short form beside its own per-trade paper figure (tests/deploy_errors_frontend_cases.mjs).
-    assert src.count("${PAPER_NET}") + src.count("${gl(PAPER_NET, 'paperfills')}") >= 7
+    assert src.count("${PAPER_NET}") + src.count("${gl(PAPER_NET, 'paperfills')}") >= 6
     # Its bubble is glued to the last word ("spread"), so it never wraps onto a line by itself: Deploy's paper
     # figure and the paper amount on a board led by live money both say it with gl(), never a bare glo() after it.
     assert "counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''" in src
     assert "\\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}" in src
     assert "${PAPER_NET}${glo('paperfills')}" not in src.replace("<span class=\"nobr\">${PAPER_NET}${glo('paperfills')}</span>", "")
-    assert "m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : ''" in src
+    # The paper book of "Since your last visit" says it too, from the core's sinceNote, which both bundles take
+    # (demo says its fees in play money, live that it is real money).
+    assert "${sinceNote(m)}" in src
+    assert ("const sinceNote = (m) => (m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : m === 'demo' ? "
+            "` (play money), ${FEES_NET}` : '');") in (STATIC / "core.js").read_text(encoding="utf-8")
 
 
 # The server writes these lines whole, so they carry the short form (PAPER_NET_SHORT) inside the sentence.

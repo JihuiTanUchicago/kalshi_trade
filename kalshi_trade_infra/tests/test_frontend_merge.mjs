@@ -35,6 +35,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {firstTenMinutesCases} from './first_ten_minutes_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
+import {demoBookCases} from './demo_book_frontend_cases.mjs';
 import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
 import {fundsHistoryCases} from './funds_history_frontend_cases.mjs';
 import {moneyPagesWalkCases} from './money_pages_walk_frontend_cases.mjs';
@@ -1167,7 +1168,7 @@ test('the dashboard demo bucket and the autopilot card say plainly when demo can
   };
   const f = await board({equity: 1000, capital: 1000, running: 1, open_positions: 0, realized_pnl: 0, health}, status);
   // The line leads the demo figure, ahead of the capital that made the book look healthy.
-  assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp('<span class="demo-health">' + said.source + '<\\/span><br>\\$1,000\\.00 capital'));
+  assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp('<span class="demo-health">' + said.source + '<\\/span><br>\\$1,000\\.00 starting capital'));
   assert.match(f.root.querySelector('#dash-ap').innerHTML, said);
   // An app-page action still opens in place.
   const k = await board({equity: 1000, capital: 1000, running: 1}, {...apOn, idle: {code: 'demo_key', line: 'Demo isn’t trading: no key.', action: {label: 'Add demo key', href: '/funds'}}});
@@ -1197,8 +1198,8 @@ test('paper P&L on the card and the autopilot card is realized all time, the fig
 
 test('the dashboard demo card says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
-    [{equity: 1000, capital: 1000}, /\$1,000\.00 capital\u00a0· no demo strategies yet\u00a0· real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload, after Kalshi fees\u00a0· real fills/],
+    [{equity: 1000, capital: 1000}, /\$1,000\.00 starting capital\u00a0· no demo strategies yet\u00a0· real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital at last reload\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload, after Kalshi fees\u00a0· real fills/],
     [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 realized all time, after Kalshi fees\u00a0· real fills/],
   ]) {
     const f = frontend({fetchImpl: path => {
@@ -1296,7 +1297,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.25 at cost \+ fees\) not included/);
-  assert.match(figs, /\$1,000\.00 capital\u00a0· 1 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
+  assert.match(figs, /\$1,000\.00 starting capital\u00a0· 1 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
   // Paper is the dashboard's figure (cash + open at their price), never cash alone under another name; its open
   // positions are named at cost + fees, with the part the balance holds.
   assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)\u00a0· practice money</); assert.doesNotMatch(figs, /Paper cash/);
@@ -3520,8 +3521,8 @@ test('a returning user reads what happened since the last visit at the top of th
   assert.match(text, /Since your last visit/);
   // Each book on its own, never added together; a book with no trades and nothing deployed stays out.
   // A book's name and its signed amount are one unit that a phone never splits.
-  assert.match(text, /<span class="nobr"><b>Demo<\/b> <span class="neg">−\$1\.10<\/span><\/span> on 1 trade<\/span>/);
-  // Paper says what its figure is net of, as every paper P&L does; demo and live don't.
+  assert.match(text, /<span class="nobr"><b>Demo<\/b> <span class="neg">−\$1\.10<\/span><\/span> on 1 trade \(play money\), after Kalshi fees<\/span>/);
+  // Paper says what its figure is net of, as every paper P&L does, and demo its fees in play money; live says real money.
   assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades, after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
   assert.match(text, /4 strategies passed: <span class="since-links"><a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a><\/span>/);
@@ -6182,6 +6183,7 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn, fundsData: funds});
 firstTenMinutesCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn, billingPage, cardedBilling});
 fundsTrustCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
+demoBookCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 fundsWalkCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 fundsHistoryCases({name: 'Tau', frontend, fundsData: funds});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
