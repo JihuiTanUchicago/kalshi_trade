@@ -2549,6 +2549,35 @@ test('feed markdown escapes model HTML and rejects non-http links', () => {
   assert.match(output, /<b>complete<\/b>/); assert.match(output, /\*\*pending/);
 });
 
+// A tag the markdown built holds no markup of its own and balanced quotes: a link inside another link's address,
+// or a mention's quoted class inside one, closed that href early and the rest of a post became attributes.
+const builtTagsSound = (html) => (html.match(/<[^>]*>/g) || []).every((tag) => !tag.slice(1).includes('<') && (tag.split('"').length - 1) % 2 === 0);
+
+test('a post or reply can’t turn its words into attributes through a link: the markdown never links inside a tag', async () => {
+  const hostile = '[x](https://a(https://b/onmouseover=onerror=alert;throw-1+) see https://x.com/@bob/p and @ana';
+  const post = {id: 11, body: hostile, author: '"><svg onload=alert(1)>', username: 'eve', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 1, reactions: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/strategies') return response({strategies: []});
+    if (path === '/api/community') return response({posts: [post]});
+    if (path === '/api/community/11/comments') return response({comments: [{body: hostile, author: 'Ana', username: 'ana', created_at: '2026-10-17T10:00:00Z'}]});
+    return response({});
+  }});
+  await f.viewCommunity(); await flush();
+  const feed = f.root.querySelector('#feed'), body = feed.querySelector('.post-body').innerHTML;
+  assert.equal(body, '<a href="https://a(https://b/onmouseover=onerror=alert;throw-1+" target="_blank" rel="noopener nofollow">x</a>'
+    + ' see <a href="https://x.com/@bob/p" target="_blank" rel="noopener nofollow">https://x.com/@bob/p</a> and <span class="mention">@ana</span>');
+  assert.ok(builtTagsSound(feed.innerHTML)); assert.doesNotMatch(feed.innerHTML, /<svg onload/); assert.match(feed.innerHTML, /&quot;&gt;&lt;svg onload=alert\(1\)&gt;/);
+  const thread = feed.querySelector('[data-act="comments"]');
+  await feed.listeners.get('click')({target: thread}); await flush();
+  const reply = feed.querySelector('.cmt-list').innerHTML;
+  assert.ok(builtTagsSound(reply)); assert.match(reply, /<a href="https:\/\/a\(https:\/\/b\/onmouseover=onerror=alert;throw-1\+" target/);
+  // The research feed and the chat draw the same marks (feedMd), and keep what they always linked.
+  const fed = f.feedMd(hostile + '\n**bold**@carl `@code` (https://e.com/p) [ https://c](https://d)');
+  assert.ok(builtTagsSound(fed));
+  assert.match(fed, /<b>bold<\/b><span class="mention">@carl<\/span> <code><span class="mention">@code<\/span><\/code> \(<a href="https:\/\/e.com\/p"/);
+  assert.match(fed, /<a href="https:\/\/d" target="_blank" rel="noopener nofollow"> https:\/\/c<\/a>/);
+});
+
 test('a research run shows what it has cost so far from its ledger debits, and its cost once finished', async () => {
   for (const [status, label] of [['running', 'Spent so far'], ['paused', 'Spent so far'], ['succeeded', 'Cost'], ['cancelled', 'Cost']]) {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', spent_usd: 1.8372};
