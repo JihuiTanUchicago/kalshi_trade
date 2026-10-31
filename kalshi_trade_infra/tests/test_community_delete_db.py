@@ -111,3 +111,43 @@ def test_a_card_stored_before_the_flag_says_later_period_from_the_feeds_own_read
         assert "no_gatekeeper_record" not in cards[k], k
     assert community._post_out(rows[note])["snapshot"] is None
     assert "id" not in cards["loose"]  # the reader isn't its author
+
+
+def test_the_feed_says_which_of_the_readers_own_cards_lost_their_strategy_in_the_same_read(conn):
+    """The author's card for a strategy they deleted since linked its page, which said "Not found" (walked
+    2026-10-31). The feed's own read says so (strategy_gone) for the reader's own cards only: still two statements,
+    and a page more of the feed (Show older posts) is the same read with a larger limit."""
+    from app import repository as repo
+    from app.web.routes import community
+
+    cur = conn.cursor()
+    author, reader = _user(cur), _user(cur)
+
+    def strategy(title):
+        return repo.insert_strategy(cur, author, None, None, "btc15m", "fade", title, "t", {}, "passed",
+                                    {"out_of_sample": {"pnl": 5.5, "trades": 48}})
+
+    def share(sid, title):
+        return repo.create_post(cur, author, "", "strategy", {"kind": "strategy", "id": sid, "title": title,
+                                                              "market": "btc15m", "status": "passed", "pnl": 5.5})
+
+    sid, kept = strategy("Deleted later"), strategy("Kept")
+    gone_post, kept_post = share(sid, "Deleted later"), share(kept, "Kept")
+    cur.execute("DELETE FROM app_strategies WHERE id=%s AND user_id=%s", (sid, author))
+    statements, real = [], cur.execute
+
+    def counted(*a, **k):
+        statements.append(a[0])
+        return real(*a, **k)
+    cur.execute = counted
+    try:
+        mine = {p["id"]: p for p in repo.list_posts(cur, author, mine_only=True)}
+    finally:
+        cur.execute = real
+    assert len(statements) == 2
+    assert mine[gone_post]["strategy_gone"] is True and mine[kept_post]["strategy_gone"] is False
+    assert community._post_out(mine[gone_post])["snapshot"].get("gone") is True
+    assert community._post_out(mine[kept_post])["snapshot"]["id"] == kept
+    theirs = {p["id"]: p for p in repo.list_posts(cur, reader, limit=300)}
+    assert theirs[gone_post]["strategy_gone"] is False  # only the author's own card links, so only theirs is looked up
+    assert len(repo.list_posts(cur, reader, limit=1)) == 1

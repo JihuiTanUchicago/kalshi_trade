@@ -2326,6 +2326,9 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
 /* A bell link to one post: the feed says where it starts, or that the post is gone, and marks the post. */
 .feedwrap .feed-from { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
 .feedwrap .feed-from .notice { flex: 1 1 240px; margin: 0; }
+/* Show older posts, under the feed: centred, with a failed read's line under it. */
+.feedwrap .feed-more { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 8px 0 16px; }
+.feedwrap .feed-more:has(> [data-older][hidden]):not(:has(#older-flash > *)) { display: none; }
 .feedwrap .post.post-target { background: var(--signal-wash); box-shadow: 0 0 0 8px var(--signal-wash); }  /* posts sit flush; the wash reaches past the text */
 .community-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-height: 44px; padding: 0 128px 12px 0; border-bottom: 1px solid var(--rule-2); }
 .feed-filter { display: flex; gap: 20px; }
@@ -2343,6 +2346,8 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
 .post-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; min-width: 0; margin: 0 0 4px; }
 .post-head b { font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
 .post-head .when { margin: 0; color: var(--ink-3); font-size: 12px; line-height: 18px; }
+/* A post's or reply's time ("Oct 27, 06:04 EDT") wraps whole, never between its clock and its zone. */
+.post-head .when time, .cmt .when time { white-space: nowrap; }
 .post-gutter { position: absolute; top: 12px; left: 0; width: 26px; display: flex; justify-content: center; }
 .post-gutter:has(.pfp.ph) { display: none; }
 .post.post-photo { padding-left: 38px; }

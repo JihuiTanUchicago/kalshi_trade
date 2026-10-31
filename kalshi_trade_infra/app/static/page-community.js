@@ -5,9 +5,9 @@
 window.TauPage('community', (T) => {
   'use strict';
   const {
-    alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, deploymentMode, esc, flash, ICON, keepZone,
+    alert0, api, armed, attachMention, authorLine, BEHIND, bellTime, boardTitle, busy, deploymentMode, esc, flash, ICON, keepZone,
     liveWaitMark, loading, marketShort, mdLite, notice, num, overDays, pageLede, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
-    settleAt, shell, statusMark, theme, tone, trDay, usd, when
+    settleAt, shell, statusMark, theme, tone, trDay, usd
   } = T;
   // Each theme lays the page and its cards out its own way: Tau's cards print a figure in a line of words and its
   // composer sits under the feed; Meridian's set figures out as labelled terms, under a New post that opens.
@@ -46,20 +46,23 @@ window.TauPage('community', (T) => {
       // as failed, never judged on held-out data) says "not held out" too, without "which picked it": nothing picked it.
       // The note ends ", not paper or live trading.": Tau's said only "Backtest…", and a "+$42.17" beside a Passed stamp
       // in a feed of paper and live results could pass for money made (walked 2026-10-30).
+      // The author's own card for a strategy they have deleted since (the server's `gone`) is no link: its page said
+      // "Not found" (walked 2026-10-31). It says the strategy is gone; the figures stand as shared.
+      const gone = snap.gone ? `You${'\u2019'}ve deleted this strategy since, so it no longer opens.` : '';
       const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date${snap.status === 'failed' ? '' : ', which picked it'} (later\u00a0period${SEP}not\u00a0held\u00a0out), not paper or live trading.`
         : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data), not paper or live trading.`;
       if (tau) {
         const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
-        return owner ? `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
-          : `<a class="snap" href="/strategies/${snap.id}">${head}${why ? `<div class="snap-note">${why}</div>` : ''}</a>`;
+        if (owner || gone) return `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}${owner ? `Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.` : gone}</div></div>`;
+        return `<a class="snap" href="/strategies/${snap.id}">${head}${why ? `<div class="snap-note">${why}</div>` : ''}</a>`;
       }
       // A Void, Rejected or missed-final idea's figure is muted in Meridian, as its row on Strategies is: a green
       // "+$42.17" under a Void stamp read as a result. Tau's card prints it untoned.
       const noPass = snap.status === 'failed' || snap.status === 'rejected' || snap.verdict === 'missed_final';
-      const note = [why, owner ? `Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''].filter(Boolean).join(' ');
+      const note = [why, owner ? `Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : gone].filter(Boolean).join(' ');
       const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Later-period P&amp;L</dt><dd class="${noPass ? 'pnl-nopass' : tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${num(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl>${note ? `<p class="snap-note">${note}</p>` : ''}`;
-      return owner ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
+      return owner || gone ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
     }
     if (snap.kind === 'deployment') {
       if (tau) {
@@ -105,10 +108,12 @@ window.TauPage('community', (T) => {
   // hover). Its time says its zone, and its date on another day than today (settleAt): it read a bare "07:49" in no
   // zone, under a header that says "Oct 29" (walked 2026-10-30). In Tau's 42px gutter it wraps, the time on its own
   // line; Meridian's keeps it on one line with its zone (keepZone).
+  // A header's time reads as the bell's line that links to it (bellTime): "2h ago" within a day, then "Oct 28, 14:05 EDT",
+  // with the full stamp on hover. It said a bare "Oct 28" in no zone and had no stamp at all (walked 2026-10-31).
   function postCard(p, grouped) {
     const replies = p.comments || 0;
     const gutter = grouped ? `<time class="gutter-time" datetime="${esc(p.created_at)}">${tau ? settleAt(p.created_at) : keepZone(settleAt(p.created_at))}</time>` : avatar(p.picture, p.author);
-    const head = grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`;
+    const head = grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${bellTime(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`;
     const main = `<div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
         ${postSnapshot(p.snapshot, snapOwner(p))}`;
@@ -160,6 +165,7 @@ window.TauPage('community', (T) => {
     setTimeout(() => { document.addEventListener('click', outside, true); document.addEventListener('keydown', onEsc); }, 0);
   }
   // What an empty feed says, the reader's own posts or everyone's, in each theme's words.
+  const FEED_PAGE = 30, FEED_MAX = 300;  // the server's FEED_PAGE and MAX_FEED_POSTS (routes/community.py)
   const EMPTY_MINE = tau ? 'Share a strategy an agent found or how your book is doing — it’ll show up here.'
     : 'Share a strategy an agent found or how your book is doing. It shows up here.';
   const EMPTY_ALL = tau ? 'Be the first. Share a strategy an agent found, drop an idea worth researching, or post how your paper book is doing.'
@@ -167,8 +173,11 @@ window.TauPage('community', (T) => {
   async function viewCommunity() {
     const lede = 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.';
     const filter = '<div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>';
+    // Show older posts reads the feed again with more of it (FEED_PAGE more each time, up to FEED_MAX): there was no way
+    // past the newest 30 but a bell link (walked 2026-10-31). One read, so a refresh repeats or skips no post between pages.
     const feedHtml = `<div id="feed-note"></div>
-        <div id="feed">${loading(120)}${loading(120)}</div>`;
+        <div id="feed">${loading(120)}${loading(120)}</div>
+        <div class="feed-more"><button type="button" class="btn sm" data-older hidden>Show older posts</button><div id="older-flash"></div></div>`;
     const composer = `<form class="panel composer-post" id="composer-post"${tau ? '' : ' aria-label="New post"'}>
           <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" aria-describedby="post-hint" placeholder="${tau ? 'Share an idea or how it’s going…' : 'Write a post…'}"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
@@ -242,10 +251,20 @@ window.TauPage('community', (T) => {
       try {
         await busy(kind === 'pnl' ? share : btn, async () => {
           try {
-            await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
+            const r = await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
             root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa();
             pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
-            if (!(await refreshed(load()))) flash('#post-flash', 'Posted.' + BEHIND, 'good');
+            // The feed reads again unless a reply is being written in it (an open thread with no words in it closes): the
+            // refresh skipped every time a thread was open, so the post didn't show at all (walked 2026-10-31).
+            const draft = Array.from(feed.querySelectorAll('.cmt-form input')).some((i) => i.value.trim());
+            if (!(await refreshed(load(!draft)))) flash('#post-flash', 'Posted.' + BEHIND, 'good');
+            else {
+              // The new post takes focus where it landed: Tau's composer sits under a feed whose top it can't see, so a
+              // post went up with only the box emptying to say so (walked 2026-10-31).
+              const mine = r && feed.querySelector(`.post[data-id="${r.id}"]`);
+              if (mine) { mine.setAttribute('tabindex', '-1'); mine.scrollIntoView({ block: 'nearest' }); mine.focus({ preventScroll: true }); }
+              else flash('#post-flash', 'Posted.', 'good');
+            }
           } catch (e) { flash('#post-flash', e.message, 'bad'); }
         });
       } finally { other.disabled = false; }
@@ -297,79 +316,89 @@ window.TauPage('community', (T) => {
             try {
               await api(`/api/community/${pid}/edit`, { body: nb });
               bodies.set(pid, nb); bodyEl.innerHTML = mdLite(nb); bodyEl.hidden = false; ef.remove();
-              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += `${SEP}edited`;
+              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.insertAdjacentHTML('beforeend', `${SEP}edited`);
             } catch (err) { flash(ef.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };
-      } else {
-        const box = art.querySelector('.comments');
-        if (!box.hidden) { box.hidden = true; return; }
-        box.hidden = false; box.innerHTML = loading(40);
-        // A failed read says so: an empty thread under "2 replies" would read as the replies being gone.
-        let d;
-        try { d = await api(`/api/community/${pid}/comments`); }
-        catch (err) { box.innerHTML = `<div class="cmt-err">${notice('Replies didn’t load just now.', 'bad')}<button type="button" class="btn sm" data-replies-retry>Try again</button></div>`; return; }
-        const many = d.comments.length > 6;      // search bar once a thread gets long
-        const PAGE = 10;
-        box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
-          ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
-          <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
-          <form class="cmt-form"><input class="input" maxlength="1000" aria-label="Write a reply" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form><div class="form-flash"></div>`;
-        // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
-        // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
-        // fetched — add a server offset if a thread ever tops that cap.
-        const cmtSearch = box.querySelector('.cmt-search input');
-        const count = box.querySelector('.cmt-count');
-        const moreBtn = box.querySelector('.cmt-more');
-        const items = Array.from(box.querySelectorAll('.cmt-list .cmt'));
-        let limit = PAGE;
-        const applyView = () => {
-          const q = cmtSearch ? cmtSearch.value.trim().toLowerCase() : '';
-          let matched = 0;
-          items.forEach((el, i) => {
-            const hit = !q || el.textContent.toLowerCase().includes(q);
-            el.hidden = !hit || (!q && i < items.length - limit);  // keep the newest `limit`
-            if (hit) matched++;
-          });
-          if (count) count.textContent = q ? `${num(matched)} of ${num(items.length)}` : '';
-          if (moreBtn) {
-            const rest = items.length - limit;
-            moreBtn.hidden = !!q || rest <= 0;
-            moreBtn.textContent = `Load ${Math.min(PAGE, rest)} earlier`;
-          }
-        };
-        if (cmtSearch) cmtSearch.oninput = applyView;
-        if (moreBtn) moreBtn.onclick = () => { limit += PAGE; applyView(); };
-        applyView();
-        attachMention(box.querySelector('.cmt-form input'));  // @-mention in replies
-        box.querySelector('.cmt-form').onsubmit = async (ev) => {
-          ev.preventDefault();
-          const frm = ev.currentTarget;  // scope to the form — the search box is also an <input> in this box
-          const inp = frm.querySelector('input'); const body = inp.value.trim(); if (!body) return;
-          await busy(frm.querySelector('button'), async () => {
-            try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
-              // Refresh reply counts and the thread link. The repaint closes every thread, so this one opens again
-              // with the new reply in it: walked 2026-10-30, a sent reply vanished with its thread, and only "3 replies"
-              // turning "4 replies" said it had gone through.
-              if (!(await refreshed(load(true)))) flash(box.querySelector('.form-flash'), 'Reply sent.' + BEHIND, 'good');
-              else {
-                const again = feed.querySelector(`.post[data-id="${pid}"]`);
-                if (again && (again.querySelector('.comments') || {}).hidden) again.querySelector('[data-act="comments"]').click();
-              }
-            } catch (err) { flash(box.querySelector('.form-flash'), err.message, 'bad'); }
-          });
-        };
-      }
+      } else openThread(art, pid);
     });
+    // Opens (or closes) a post's thread, and resolves once it is drawn.
+    async function openThread(art, pid) {
+      const box = art.querySelector('.comments');
+      if (!box.hidden) { box.hidden = true; return; }
+      box.hidden = false; box.innerHTML = loading(40);
+      // A failed read says so: an empty thread under "2 replies" would read as the replies being gone.
+      let d;
+      try { d = await api(`/api/community/${pid}/comments`); }
+      catch (err) { box.innerHTML = `<div class="cmt-err">${notice('Replies didn’t load just now.', 'bad')}<button type="button" class="btn sm" data-replies-retry>Try again</button></div>`; return; }
+      const many = d.comments.length > 6;      // search bar once a thread gets long
+      const PAGE = 10;
+      box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
+        ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
+        <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${bellTime(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
+        <form class="cmt-form"><input class="input" maxlength="1000" aria-label="Write a reply" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form><div class="form-flash"></div>`;
+      // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
+      // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
+      // fetched — add a server offset if a thread ever tops that cap.
+      const cmtSearch = box.querySelector('.cmt-search input');
+      const count = box.querySelector('.cmt-count');
+      const moreBtn = box.querySelector('.cmt-more');
+      const items = Array.from(box.querySelectorAll('.cmt-list .cmt'));
+      let limit = PAGE;
+      const applyView = () => {
+        const q = cmtSearch ? cmtSearch.value.trim().toLowerCase() : '';
+        let matched = 0;
+        items.forEach((el, i) => {
+          const hit = !q || el.textContent.toLowerCase().includes(q);
+          el.hidden = !hit || (!q && i < items.length - limit);  // keep the newest `limit`
+          if (hit) matched++;
+        });
+        if (count) count.textContent = q ? `${num(matched)} of ${num(items.length)}` : '';
+        if (moreBtn) {
+          const rest = items.length - limit;
+          moreBtn.hidden = !!q || rest <= 0;
+          moreBtn.textContent = `Load ${Math.min(PAGE, rest)} earlier`;
+        }
+      };
+      if (cmtSearch) cmtSearch.oninput = applyView;
+      if (moreBtn) moreBtn.onclick = () => { limit += PAGE; applyView(); };
+      applyView();
+      attachMention(box.querySelector('.cmt-form input'));  // @-mention in replies
+      box.querySelector('.cmt-form').onsubmit = async (ev) => {
+        ev.preventDefault();
+        const frm = ev.currentTarget;  // scope to the form — the search box is also an <input> in this box
+        const inp = frm.querySelector('input'); const body = inp.value.trim(); if (!body) return;
+        await busy(frm.querySelector('button'), async () => {
+          try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
+            // Refresh reply counts and the thread link. The repaint closes every thread, so this one opens again
+            // with the new reply in it: walked 2026-10-30, a sent reply vanished with its thread, and only "3 replies"
+            // turning "4 replies" said it had gone through.
+            // Focus goes back to the reply box of the thread that opened again: the repaint took the old one away, and
+            // focus fell to the page's top (walked 2026-10-31).
+            if (!(await refreshed(load(true)))) flash(box.querySelector('.form-flash'), 'Reply sent.' + BEHIND, 'good');
+            else {
+              const again = feed.querySelector(`.post[data-id="${pid}"]`);
+              if (again && (again.querySelector('.comments') || {}).hidden) await openThread(again, pid);
+              const box2 = again && again.querySelector('.cmt-form input');
+              if (box2) box2.focus();
+            }
+          } catch (err) { flash(box.querySelector('.form-flash'), err.message, 'bad'); }
+        });
+      };
+    }
     // from: the feed starts at a post older than the newest page, when a bell link opened that post.
-    let lastFeed = '', mineOnly = false, from = 0;
+    let lastFeed = '', mineOnly = false, from = 0, upTo = FEED_PAGE;
     const bodies = new Map();  // post id -> body as written (the source the edit box starts from)
     const load = async (force) => {
       // Never wipe a reply the user is writing: skip the refresh while a reply box is open
       // or anything in the feed is focused (unless this is the first/explicit render).
       if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
-      const d = await api('/api/community' + (mineOnly ? '?mine=1' : from ? `?before=${from}` : ''));
+      const q = [mineOnly ? 'mine=1' : from ? `before=${from}` : '', upTo > FEED_PAGE ? `limit=${upTo}` : ''].filter(Boolean).join('&');
+      const d = await api('/api/community' + (q ? '?' + q : ''));
       d.posts.forEach((p) => bodies.set(String(p.id), p.body));
+      // A full read may have more behind it; a short one is the whole feed.
+      const more = root.querySelector('[data-older]');
+      if (more) more.hidden = d.posts.length < upTo || upTo >= FEED_MAX;
       const html = d.posts.length ? d.posts.map((p, i) => {
         const prev = d.posts[i - 1];  // the post just above (newer) — a run by one author groups under it
         const grouped = !!prev && !!p.username && prev.username === p.username
@@ -384,10 +413,24 @@ window.TauPage('community', (T) => {
     root.querySelectorAll('.feed-filter .chip').forEach((c) => (c.onclick = () => {
       const want = c.dataset.feed === 'mine';
       if (want === mineOnly) return;
-      mineOnly = want; from = 0; root.querySelector('#feed-note').innerHTML = '';
+      mineOnly = want; from = 0; root.querySelector('#feed-note').innerHTML = ''; upTo = FEED_PAGE;
       root.querySelectorAll('.feed-filter .chip').forEach((x) => x.setAttribute('aria-pressed', String((x.dataset.feed === 'mine') === mineOnly)));
       lastFeed = ''; load(true);
     }));
+    // Show older posts: the same read with a page more of it. Focus goes to the first post it added, so a keyboard
+    // reader carries on from there.
+    const older = root.querySelector('[data-older]');
+    older.onclick = async () => {
+      if (older.disabled) return;
+      const shown = feed.querySelectorAll('.post'), last = shown.length ? +shown[shown.length - 1].dataset.id : Infinity;
+      older.disabled = true; root.querySelector('#older-flash').innerHTML = '';
+      upTo = Math.min(FEED_MAX, upTo + FEED_PAGE); lastFeed = '';
+      try {
+        if (!(await refreshed(load(true)))) { upTo -= FEED_PAGE; flash('#older-flash', 'Older posts didn\u2019t load just now. Try again in a moment.', 'bad'); return; }
+        const first = Array.from(feed.querySelectorAll('.post')).find((a) => +a.dataset.id < last);
+        if (first) { first.setAttribute('tabindex', '-1'); first.focus(); }
+      } finally { older.disabled = false; }
+    };
     await load(true);
     await openLinkedPost();
     poll(load, 20000);
@@ -407,13 +450,16 @@ window.TauPage('community', (T) => {
           const note = root.querySelector('#feed-note');
           note.innerHTML = `<div class="feed-from">${notice('Showing posts from the one you opened.', '', true)}<button type="button" class="btn sm" data-latest>Latest posts</button></div>`;
           note.querySelector('[data-latest]').onclick = () => {
-            from = 0; note.innerHTML = ''; history.replaceState(null, '', '/community'); lastFeed = ''; load(true);
+            from = 0; upTo = FEED_PAGE; note.innerHTML = ''; history.replaceState(null, '', '/community'); lastFeed = ''; load(true);
           };
         }
       }
       const art = find();
       if (!art) {
-        root.querySelector('#feed-note').innerHTML = `<div class="feed-from">${notice('That post isn’t here any more. Its author may have removed it.', '', true)}</div>`;
+        // Focus goes to the line that says so, as it does to the post when there is one: it stayed on the page's top.
+        const note = root.querySelector('#feed-note');
+        note.innerHTML = `<div class="feed-from" tabindex="-1">${notice('That post isn’t here any more. Its author may have removed it.', '', true)}</div>`;
+        note.querySelector('.feed-from').focus({ preventScroll: true });
         return;
       }
       art.classList.add('post-target'); art.setAttribute('tabindex', '-1');

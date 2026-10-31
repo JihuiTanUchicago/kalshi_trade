@@ -294,4 +294,120 @@ export function communityCases({name, frontend}) {
     assert.equal(feed.querySelector('[data-react-add]').hasAttribute('aria-pressed'), false, 'Add a reaction is an action, not a toggle');
     f.clearTimers();
   });
+
+  // Walked 2026-10-31 (both themes, 1280 and 390px, as three customers): the fixes below each failed before.
+  // Tau's harness marks a focused element (focused); Meridian's moves document.activeElement.
+  const focusedOn = (f, el) => !!el && (el.focused === true || f.document.activeElement === el);
+  const patched = (f) => {
+    const proto = Object.getPrototypeOf(f.root);
+    if (!('scrollIntoView' in proto)) proto.scrollIntoView = function (o) { this.scrolledTo = o; };
+    return f;
+  };
+  const many = (n, top = 100) => Array.from({length: n}, (_, i) => post(top - i, {username: i % 2 ? 'ann' : 'bob', created_at: new Date(Date.UTC(2026, 9, 1, 0, 0) - i * 3600e3).toISOString()}));
+
+  test(`${name}: Show older posts reads the feed again with a page more, with no repeat or gap, and focus goes to the first older post`, async () => {
+    // There was no way past the newest 30 posts but a bell link.
+    const all = many(45), reads = [];
+    const f = patched(frontend({fetchImpl: (path, options) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path.startsWith('/api/community') && !(options && options.method)) {
+        reads.push(path);
+        const q = new URLSearchParams(path.split('?')[1] || '');
+        return response({posts: all.slice(0, Math.min(+(q.get('limit') || 30), 300))});
+      }
+      return response({});
+    }}));
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const ids = () => f.root.querySelectorAll('#feed .post').map((a) => +a.dataset.id);
+    const older = f.root.querySelector('[data-older]');
+    assert.equal(ids().length, 30);
+    assert.equal(older.hidden, false, 'a full page offers older posts');
+    assert.match(older.textContent, /Show older posts/);
+    await older.onclick(); await settle();
+    assert.equal(reads.at(-1), '/api/community?limit=60', 'one read of the newest 60, so a refresh skips or repeats none');
+    assert.deepEqual(ids(), all.map((p) => p.id));
+    assert.equal(older.hidden, true, 'a short read is the whole feed');
+    assert.ok(focusedOn(f, f.root.querySelector('.post[data-id="70"]')), 'focus is on the first post it added');
+    // The refresh keeps them: it reads the same 60, not the newest 30 again.
+    reads.length = 0;
+    f.root.querySelector('.feed-filter .chip[data-feed="mine"]').onclick(); await settle();
+    assert.equal(reads.at(-1), '/api/community?mine=1', 'a filter starts again from one page');
+    f.clearTimers();
+  });
+
+  test(`${name}: a sent reply puts focus back in its thread's reply box, and a new post takes focus where it landed`, async () => {
+    let count = 1, posts = [post(11, {comments: count})];
+    const replies = [{body: 'First', author: 'Ana', username: 'ana', created_at: '2026-10-17T10:00:00Z'}];
+    const f = patched(frontend({fetchImpl: (path, options) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/11/comments' && options && options.method === 'POST') { replies.push({body: 'Hi', author: 'Dev', username: 'dev', created_at: '2026-10-17T10:05:00Z'}); count += 1; posts = [post(11, {comments: count})]; return response({ok: true}); }
+      if (path === '/api/community/11/comments') return response({comments: replies.slice()});
+      if (path === '/api/community' && options && options.method === 'POST') { posts = [post(12, {mine: true, body: JSON.parse(options.body).body}), ...posts]; return response({id: 12}); }
+      if (path.startsWith('/api/community')) return response({posts});
+      return response({});
+    }}));
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const feed = f.root.querySelector('#feed');
+    feed.listeners.get('click')({target: feed.querySelector('.post[data-id="11"] [data-act="comments"]')}); await settle();
+    const form = feed.querySelector('.post[data-id="11"] .cmt-form');
+    form.querySelector('input').value = 'Hi';
+    await form.onsubmit({preventDefault() {}, currentTarget: form}); await settle();
+    const box = feed.querySelector('.post[data-id="11"] .cmt-form input');
+    assert.ok(box && box !== form.querySelector('input'), 'the thread opened again with a new reply box');
+    assert.ok(focusedOn(f, box), 'focus is in the reply box, not fallen to the page top');
+    // An empty open thread doesn't hold the feed back: the new post shows, and has focus.
+    f.root.querySelector('#post-body').value = 'gm';
+    await f.root.querySelector('#composer-post').onsubmit({preventDefault() {}}); await settle();
+    const mine = feed.querySelector('.post[data-id="12"]');
+    assert.ok(mine, 'the new post is in the feed');
+    assert.ok(focusedOn(f, mine), 'focus is on the new post');
+    assert.equal(mine.getAttribute('tabindex'), '-1');
+    f.clearTimers();
+  });
+
+  test(`${name}: a post's and a reply's time say the date, clock and zone past a day, with the full stamp on hover`, async () => {
+    // A header said a bare "Oct 17" with no clock, zone or stamp; the bell line linking to it says "Oct 17, 10:00 EDT".
+    const iso = '2026-10-17T10:00:00Z';
+    const f = patched(frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/11/comments') return response({comments: [{body: 'x', author: 'Ana', username: 'ana', created_at: iso}]});
+      if (path.startsWith('/api/community')) return response({posts: [post(11, {created_at: iso})]});
+      return response({});
+    }}));
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const stamp = new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}).format(new Date(iso));
+    const feed = f.root.querySelector('#feed');
+    const head = feed.querySelector('.post[data-id="11"] .post-head time');
+    assert.ok(head, 'the header time is a <time>');
+    assert.equal(head.getAttribute('datetime'), iso);
+    assert.equal(head.getAttribute('title'), stamp);
+    assert.equal(head.textContent, stamp);
+    feed.listeners.get('click')({target: feed.querySelector('[data-act="comments"]')}); await settle();
+    const reply = feed.querySelector('.cmt .when time');
+    assert.ok(reply && reply.textContent === stamp, 'a reply says it the same way');
+    f.clearTimers();
+  });
+
+  test(`${name}: the author's card for a strategy they deleted since is no link and says so; a notice for a removed post takes focus to what says it`, async () => {
+    const f = patched(frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path.startsWith('/api/community')) return response({posts: [post(12)]});
+      return response({});
+    }}));
+    const card = {kind: 'strategy', title: 'Gone', market: 'btc15m', status: 'passed', pnl: 5.5, trades: 48, win_rate: 0.58, days: 9};
+    const html = f.postSnapshot({...card, gone: true}, '');
+    assert.doesNotMatch(html, /<a |href=/, 'its page said "Not found"');
+    assert.match(html, /You’ve deleted this strategy since, so it no longer opens\./);
+    assert.match(html, /\+\$5\.50/, 'the figures stand as shared');
+    assert.match(f.postSnapshot({...card, id: 42}, ''), /href="\/strategies\/42"/, 'one still there links its page');
+    f.location.pathname = '/community'; f.location.hash = '#post-77';
+    await f.viewCommunity(); await settle();
+    const note = f.root.querySelector('#feed-note .feed-from');
+    assert.match(note.textContent, /That post isn’t here any more/);
+    assert.ok(focusedOn(f, note), 'focus is on the line saying the post is gone');
+    f.clearTimers();
+  });
 }
