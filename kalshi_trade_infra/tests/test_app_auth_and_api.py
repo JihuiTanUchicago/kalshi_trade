@@ -846,8 +846,10 @@ def test_strategies_sort_best_threads_to_repo_and_orders_by_unseen_pnl(monkeypat
     from app.adapters.db import strategy_repository  # the read itself (repo's name is patched above)
     cur = StratCur()
     strategy_repository.list_strategies(cur, 1, sort="best", limit=50, offset=50)
-    assert ("ORDER BY (JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl') IS NULL), "
-            "CAST(JSON_UNQUOTE(JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')) AS DECIMAL(16,4)) DESC, s.id DESC") in cur.sql
+    # A P&L stored as JSON null ({"pnl": null}) is missing too: it goes last, never sorts as $0.00.
+    missing = "(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')), 'null') = 'null')"
+    assert (f"ORDER BY {missing}, CASE WHEN {missing} THEN NULL "
+            "ELSE CAST(JSON_UNQUOTE(JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')) AS DECIMAL(16,4)) END DESC, s.id DESC") in cur.sql
     assert cur.params[-2:] == [50, 50]
     strategy_repository.list_strategies(cur, 1)
     assert "ORDER BY (s.status='rejected'), s.id DESC" in cur.sql  # the default order is unchanged
@@ -866,6 +868,20 @@ def test_strategies_search_and_deployed_thread_to_repo(monkeypatch):
     # Absent/false by default.
     server.list_strategies(ctx(query={}))
     assert seen["lq"] is None and seen["ldep"] is False
+
+
+def test_strategies_search_matches_its_words_literally():
+    # A search for "_" listed every strategy, and "50%" every title with a "50" in it: LIKE's wildcards are escaped,
+    # in the list's read and in its counts alike (one WHERE clause), so the chips count what the search lists.
+    from app.adapters.db import strategy_repository
+    cur = StratCur()
+    strategy_repository.list_strategies(cur, 1, q="50%_off\\")
+    assert "(s.title LIKE %s OR s.thesis LIKE %s)" in cur.sql
+    assert cur.params[1:3] == ["%50\\%\\_off\\\\%"] * 2
+    strategy_repository.count_strategies(cur, 1, q="_")
+    assert cur.params[-2:] == ["%\\_%"] * 2
+    strategy_repository.list_strategies(cur, 1, q="Fade the close")
+    assert cur.params[1:3] == ["%Fade the close%"] * 2  # plain words unchanged
 
 
 def test_mark_fields_unrealized_pnl():

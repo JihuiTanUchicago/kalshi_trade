@@ -6318,8 +6318,11 @@ test('Tau: the Passed filter with nothing passed says so and points to Research,
   g.location.pathname = '/strategies'; g.location.search = '?status=passed&market=nba';
   await g.viewStrategies(); await flush(); await flush();
   empty = g.root.querySelector('#slips .empty');
-  assert.match(empty.innerHTML, /Try another filter\./);
+  // It names what the list is filtered to and clears it in one press, under a heading that isn't "Nothing here yet".
+  assert.equal(empty.querySelector('h2').textContent, 'No matching strategies');
+  assert.match(empty.innerHTML, /<p>Nothing matches Passed\u00a0· [^<]+\. Try another filter, or clear them\.<\/p>/);
   assert.equal(empty.querySelectorAll('a.btn').length, 0);
+  assert.equal(empty.querySelector('[data-clear-filters]').textContent, 'Clear filters');
   f.clearTimers(); g.clearTimers();
 });
 

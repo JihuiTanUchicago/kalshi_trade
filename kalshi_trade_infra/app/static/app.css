@@ -1239,10 +1239,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-strat.stack tbody td.num .bt-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .t-strat.stack tbody td.nil, .t-strat.stack tbody td.pickcol[data-lab=""] { display: none; }
   .t-strat.stack tbody td.pickcol { position: absolute; top: 10px; right: 0; width: auto; flex-direction: column; align-items: center; gap: 4px; }
-  .t-strat.stack tbody td.pickcol input { width: 22px; height: 22px; margin: 0; }
+  .t-strat.stack tbody td.pickcol input { width: 24px; height: 24px; margin: 0; }
   .t-strat.stack tbody td.pickcol + td.name { padding-right: 60px; }
   .pick-all-m { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; color: var(--ink-2); cursor: pointer; }
-  .pick-all-m input { width: 22px; height: 22px; margin: 0; }
+  .pick-all-m input { width: 24px; height: 24px; margin: 0; }
   .stack thead #pick-all { display: none; }
   .stack thead .pick-head { display: inline; }
   .t-strat.stack tbody td.name .sub-fig { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -2076,7 +2076,7 @@ body.landing-body .apf { display: none; }
   /* The autopilot sheet's message box (41px) and a short button such as Meridian's Send (42px wide). */
   .apf-composer-row textarea { min-height: 44px; }
   .btn { min-width: 44px; }
-  .pick, #pick-all { width: 22px; height: 22px; }
+  .pick, #pick-all { width: 24px; height: 24px; }
   /* Billing's "Reload $25 at $5" (a 23-24px text button beside the Auto-reload switch, walk 2026-10-31 at 360px). */
   .autorel-edit { min-height: 44px; }
 }

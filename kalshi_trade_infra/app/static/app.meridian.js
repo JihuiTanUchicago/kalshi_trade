@@ -7,7 +7,7 @@
   // words, P&L lines, the track record's, Explore's and the autopilot's words) are in the shared core, core.js, which
   // the page runs before this bundle. Each keeps its name here, so the code below calls it as before.
   const {
-    esc, SEP, sepLine, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
+    esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
     researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
     PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
@@ -1582,12 +1582,17 @@
       : `<div class="sub-fig bt-sub" title="${longSub}"><span class="bt-long">${longSub}</span><span class="bt-short" aria-hidden="true">${shortSub}</span></div>`;
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
+    // The Strategies search reads the name and the thesis, and a row shows only the name: a search for a word of the
+    // thesis listed rows with the word nowhere on them (walked 2026-10-31). A row the search found by its thesis
+    // shows it, as Tau's rows always do.
+    const qWords = String(opts.q || '').toLowerCase();
+    const thesis = qWords && s.thesis && !String(s.title || '').toLowerCase().includes(qWords) ? `<div class="sub-fig cellwrap">${mdInline(esc(s.thesis))}</div>` : '';
     const missed = Array.isArray(opts.missed) && opts.missed.length ? `<div class="slip-missed">${whyFailedHtml(opts.missed.slice(0, 1))}${opts.missed.length > 1 ? `<a class="sub-fig" href="/strategies/${s.id}">${opts.missed.length - 1} more check${opts.missed.length > 2 ? 's' : ''} on its page</a>` : ''}</div>` : '';
     const pickCell = opts.pick ? (bulkDeployable(s)
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select ${esc(s.title)} for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}${opts.next ? `<div class="slip-next">${opts.next}</div>` : ''}</td>
+      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${thesis}${missed}${opts.next ? `<div class="slip-next">${opts.next}</div>` : ''}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))}\u00a0· ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : num(m.trades)}</td>

@@ -62,7 +62,9 @@ window.TauPage('strategies', (T) => {
     const depToggle = root.querySelector('[data-toggle="deployed"]');
     if (depToggle) depToggle.onclick = () => { f.deployed = f.deployed === '1' ? '' : '1'; applyFilters(); };
     const sq = root.querySelector('#strat-q');
-    if (sq) sq.onchange = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
+    // Escape or the box's clear button empties it with no change event until the box loses focus: the list stayed
+    // filtered under an empty search box (walked 2026-10-31). The search event they fire reads it at once, as Enter does.
+    if (sq) sq.onchange = sq.onsearch = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
     // Paginate server-side at 50/page — a run_forever session can produce far more than the old
     // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
     // Passed counts only true passes: one a later check left uncleared (Missed final test, Held back) keeps the
@@ -73,6 +75,15 @@ window.TauPage('strategies', (T) => {
     const CLABEL = { passed: 'Passed', not_cleared: 'Not cleared', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
     const slipsEl = root.querySelector('#slips');
     let sp = Math.max(0, (parseInt(q.get('page'), 10) || 1) - 1);
+    // Prev or Next draws the new page over the button that was pressed, and keyboard focus fell to the top of the
+    // document (walked 2026-10-31): it goes to the new page's first strategy, or to Try again when the read failed.
+    let pagedFocus = false;
+    const focusPaged = () => {
+      if (!pagedFocus) return;
+      pagedFocus = false;
+      const to = slipsEl.querySelector('tbody td.name a') || slipsEl.querySelector('[data-retry]');
+      if (to && to.focus) to.focus({ preventScroll: true });
+    };
     const load = async () => {
       slipsEl.innerHTML = loading(240);
       const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== ''));
@@ -83,6 +94,7 @@ window.TauPage('strategies', (T) => {
         slipsEl.innerHTML = loadFail(errText(e), 'Your strategies');
         // Focus goes into the list that came in (or the Try again of one that failed again), not the page's body.
         slipsEl.querySelector('[data-retry]').onclick = () => load().then(() => retried(slipsEl));
+        focusPaged();
         return;
       }
       // A remembered page past the end (the list shrank since) starts again at the first.
@@ -125,11 +137,19 @@ window.TauPage('strategies', (T) => {
         // With autopilot on, the empty list says it is on instead of asking for a session (not "researching":
         // the autopilot panel may be reporting a stale check-in or a billing pause).
         const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
+        // A miss says what the list is filtered to and clears it in one press: "Try another filter." alone sat under
+        // chips, a market select and a search box scrolled out of sight on a phone, with nothing saying which of them
+        // emptied the list or how to undo it (walked 2026-10-31). Clear filters keeps the sort, which narrows nothing.
+        const on = [f.status ? CLABEL[f.status] : '', f.deployed ? 'Deployed' : '', f.market ? esc(marketShort(f.market)) : '', f.q ? `“${esc(f.q)}”` : ''].filter(Boolean);
+        const missText = `${on.length ? `Nothing matches ${on.join(SEP)}. ` : ''}Try another filter${on.length ? ', or clear them' : ''}.`;
+        const clearBtn = on.length ? '<button class="btn" type="button" data-clear-filters>Clear filters</button>' : '';
         // Each theme's own words: Tau's "Nothing here yet" over what to do next, Meridian's heading that says which
-        // empty it is, with New session for a new account.
+        // empty it is, with New session for a new account. An h2 under the page's h1 (it was an h3, a level skipped, axe).
         slipsEl.innerHTML = tau
-          ? `<div class="empty"><h3>Nothing here yet</h3><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : missed ? 'Try another filter.' : apOn ? 'Autopilot is on. The strategies it finds will land here.' : 'Start a research session and the strategies it finds will land here.'}${noneKept && apOn ? ' Autopilot keeps researching on its own.' : ''}</p>${missed && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">${apOn ? 'See its research' : 'Go to Research'}</a>`}</div>`
-          : `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : missed ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : missed ? '<p>Try another filter.</p>' : apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : '<p>Every strategy a research session writes lands here, with its test on data it never saw. Start a session to find your first.</p>'}${missed && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
+          ? `<div class="empty"><h2>${missed && !noneKept ? 'No matching strategies' : 'Nothing here yet'}</h2><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : missed ? missText : apOn ? 'Autopilot is on. The strategies it finds will land here.' : 'Start a research session and the strategies it finds will land here.'}${noneKept && apOn ? ' Autopilot keeps researching on its own.' : ''}</p>${missed && !noneKept ? clearBtn : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">${apOn ? 'See its research' : 'Go to Research'}</a>`}</div>`
+          : `<div class="empty"><h2>${noneKept ? 'No strategy has passed yet' : missed ? 'No matching strategies' : 'No strategies yet'}</h2>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : missed ? `<p>${missText}</p>` : apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : '<p>Every strategy a research session writes lands here, with its test on data it never saw. Start a session to find your first.</p>'}${missed && !noneKept ? clearBtn : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
+        const clear = slipsEl.querySelector('[data-clear-filters]');
+        if (clear) clear.onclick = () => { Object.assign(f, { status: '', market: '', q: '', deployed: '' }); applyFilters(); };
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -137,7 +157,7 @@ window.TauPage('strategies', (T) => {
       // A Paper P&L column beside the backtest's, when a row on this page has a paper book now or had one.
       const paperCol = list.some(paperShown);
       // Each bundle's strategyTable: Meridian's also takes whether the table is a research session's (here, never).
-      const rows = list.map((s) => strategySlip(s, reg, { pick: anyPassed, paper: paperCol })).join('');
+      const rows = list.map((s) => strategySlip(s, reg, { pick: anyPassed, paper: paperCol, q: f.q })).join('');
       // Select all sits in the table's header, which a phone's stacked rows clip to nothing: only a keyboard reached it
       // there, and a tap couldn't (walked 2026-10-31 at 390px). Up to 760px it is a labelled box of its own over the rows
       // (CSS shows one of the two), and both do the same thing.
@@ -149,15 +169,17 @@ window.TauPage('strategies', (T) => {
         const u = new URLSearchParams(location.search);
         if (sp) u.set('page', sp + 1); else u.delete('page');
         history.replaceState(null, '', '/strategies' + (u.toString() ? '?' + u.toString() : ''));
-        load(); window.scrollTo({ top: 0, behavior: smooth() });
+        pagedFocus = true; load(); window.scrollTo({ top: 0, behavior: smooth() });
       });
       wireBulk();
+      focusPaged();
     };
     // Multi-select deploy (paper only; live stays per-strategy behind the typed-LIVE gate).
     // Selection is per page — ponytail: cross-page selection is YAGNI for a 50-row page.
     const bar = root.querySelector('#bulkbar');
     const picks = () => Array.from(slipsEl.querySelectorAll('.pick'));
     const selected = () => picks().filter((c) => c.checked).map((c) => +c.dataset.id);
+    let keepSaid = false;
     const bulkDeploy = async () => {
       const ids = selected();
       if (!ids.length) return;
@@ -167,22 +189,38 @@ window.TauPage('strategies', (T) => {
       }
       if (ok && !errs.length) { go('/deploy'); return; }
       flash('#bulkflash', `${ok} deployed${errs.length ? `${SEP}${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
-      if (ok) load();
+      // The list reads again to show the ones that landed, and that repaint emptied the bar: "2 deployed · 1 failed:
+      // …" was gone a moment after it showed, and nothing on the page said one hadn't deployed (walked 2026-10-31).
+      // The bar keeps it, word for word, until the next pick (keepSaid, in wireBulk).
+      if (ok) { keepSaid = true; load(); }
     };
     // The table header's Select all and the phone's own (data-pickall) move together.
     const pickAlls = () => Array.from(slipsEl.querySelectorAll('#pick-all, [data-pickall]'));
-    const syncBar = () => {
+    // `said`: what a bulk deploy said (the flash's markup), kept in the bar over a repaint with nothing picked.
+    const syncBar = (said = '') => {
       const n = selected().length;
-      if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
+      if (!n && !said) { bar.hidden = true; bar.innerHTML = ''; return; }
       bar.hidden = false;
-      bar.innerHTML = `<span class="lab">${n} selected</span><button class="btn sm" id="bulk-dep">Deploy ${n} on paper</button><button class="btn sm ghost" id="bulk-clear">Clear</button><span id="bulkflash"></span>`;
+      bar.innerHTML = `${n ? `<span class="lab">${n} selected</span><button class="btn sm" id="bulk-dep">Deploy ${n} on paper</button><button class="btn sm ghost" id="bulk-clear">Clear</button>` : ''}<span id="bulkflash"${said ? ' tabindex="-1"' : ''}>${said}</span>`;
+      if (!n) return;
       root.querySelector('#bulk-dep').onclick = (e) => busy(e.target, bulkDeploy);
-      root.querySelector('#bulk-clear').onclick = () => { picks().concat(pickAlls()).forEach((c) => c.checked = false); syncBar(); };
+      // Clear empties the bar, the button with it, and keyboard focus fell to the top of the document: it goes to the
+      // first strategy's box, where picking starts again.
+      root.querySelector('#bulk-clear').onclick = () => {
+        picks().concat(pickAlls()).forEach((c) => c.checked = false); syncBar();
+        const first = picks()[0];
+        if (first && first.focus) first.focus({ preventScroll: true });
+      };
     };
     const wireBulk = () => {
       pickAlls().forEach((all) => all.onclick = () => { picks().concat(pickAlls()).forEach((c) => c.checked = all.checked); syncBar(); });
       picks().forEach((c) => c.onchange = () => { if (!c.checked) pickAlls().forEach((all) => all.checked = false); syncBar(); });
-      syncBar();
+      const fl = keepSaid ? root.querySelector('#bulkflash') : null, said = fl ? fl.innerHTML : '';
+      keepSaid = false;
+      syncBar(said);
+      // The Deploy button that had focus went with the old bar: focus goes to what the bulk deploy said.
+      const a = document.activeElement, kept = said && root.querySelector('#bulkflash');
+      if (kept && kept.focus && (!a || a === document.body || a.isConnected === false)) kept.focus({ preventScroll: true });
     };
     load();
   }
