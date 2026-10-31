@@ -178,8 +178,10 @@
   const UTC_MONTH = { year: 'numeric', month: 'short', timeZone: 'UTC' };
   const LOG_STAMP = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
   const clock = (iso) => dateFmt(new Date(iso), CLOCK);
-  // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
-  const tzName = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
+  // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in. `at` (epoch ms)
+  // names the zone in force then: a market's price history across the November clock change labelled its last
+  // time "06:00 EDT", an hour that was EST.
+  const tzName = (at) => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(at == null ? new Date() : new Date(at)).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
   // A run log line's time: the bare clock fits the rail; the date and zone ride on hover and to a
   // screen reader (a run-until-stopped session spans days, and "06:07" named neither).
   const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(dateFmt(new Date(iso), LOG_STAMP))}">${clock(iso)}</time>`;
@@ -491,11 +493,54 @@
   const BEHIND = ' The page didn’t refresh, so reload to see it.';
 
   // ---------- charts ----------
+  // The points of a [time, value] series a chart can draw: a null, NaN or Infinity time or value is left out. One
+  // such point made the whole polyline "NaN,NaN …" (nothing drawn) and an axis label "$NaN".
+  const finitePts = (curve) => (Array.isArray(curve) ? curve : []).filter((p) => p && p[0] != null && p[1] != null && Number.isFinite(+p[0]) && Number.isFinite(+p[1]));
+  // A long series cut to about `n` points for drawing: the first and last kept exactly, and each run between keeps
+  // its lowest and highest point in time order, so every dip and peak that can show at that width still does. A
+  // 10,000-trade backtest drew a 117KB polyline, a dozen points to each pixel. A series of `n` or fewer is as given.
+  function thinCurve(curve, n) {
+    if (!curve || curve.length <= n) return curve;
+    const runs = Math.max(1, Math.floor((n - 2) / 2)), inner = curve.length - 2, out = [curve[0]];
+    for (let r = 0; r < runs; r++) {
+      const a = 1 + Math.floor((r * inner) / runs), b = 1 + Math.floor(((r + 1) * inner) / runs);
+      if (b <= a) continue;
+      let lo = a, hi = a;
+      for (let i = a + 1; i < b; i++) { if (curve[i][1] < curve[lo][1]) lo = i; if (curve[i][1] > curve[hi][1]) hi = i; }
+      if (lo === hi) out.push(curve[lo]); else out.push(curve[Math.min(lo, hi)], curve[Math.max(lo, hi)]);
+    }
+    out.push(curve[curve.length - 1]);
+    return out;
+  }
+  // A chart's figures in words, for its accessible name: when it runs, where it starts and ends, and its low and
+  // high with when each came ("from Oct 3 to Oct 31: starts at $0.00, ends at +$12.40; low −$3.10 (Oct 4), high
+  // +$15.00 (Oct 28)"). A chart's name said what it was and, at most, where it ended: a screen reader heard
+  // nothing of a deep dip on the way. `fmt` writes a value (dollars, stakes, cents), `day` a time.
+  function curveWords(curve, fmt, day) {
+    const pts = finitePts(curve);
+    if (!pts.length) return '';
+    let lo = pts[0], hi = pts[0];
+    pts.forEach((p) => { if (+p[1] < +lo[1]) lo = p; if (+p[1] > +hi[1]) hi = p; });
+    const a = pts[0], b = pts[pts.length - 1], f = (v) => plain(fmt(+v));
+    const span = day(a[0]) === day(b[0]) ? `on ${day(a[0])}` : `from ${day(a[0])} to ${day(b[0])}`;
+    const range = f(lo[1]) === f(hi[1]) ? `flat at ${f(lo[1])}` : `low ${f(lo[1])} (${day(lo[0])}), high ${f(hi[1])} (${day(hi[0])})`;
+    return `${span}: starts at ${f(a[1])}, ends at ${f(b[1])}; ${range}`;
+  }
+  // The box a price trace (the hot rail's, a market picker row's: Yes prices, 0 to 1) is drawn in. Each filled its
+  // box between its own low and high, so a market that ticked 1¢ drew the same full-height swing as one that moved
+  // 40¢, and a 47¢/48¢ flicker read as a crash and a rally. The box spans at least 10¢, centred on the trace and
+  // kept inside 0–100¢: a flat trace is a flat line and a 1¢ tick a small step.
+  function traceScale(h) {
+    const lo0 = Math.min(...h), hi0 = Math.max(...h), span = Math.max(0.1, hi0 - lo0);
+    let lo = (lo0 + hi0) / 2 - span / 2;
+    if (lo0 >= 0 && hi0 <= 1) lo = Math.max(0, Math.min(1 - span, lo));
+    return { lo, hi: lo + span };
+  }
   // Registered scale: every sparkline in a set shares one dollar axis, so
   // slips compare at a glance instead of each filling its own box.
   function registry(curves) {
     let lo = 0, hi = 0;
-    curves.forEach((c) => (c || []).forEach(([, v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); }));
+    curves.forEach((c) => finitePts(c).forEach(([, v]) => { lo = Math.min(lo, +v); hi = Math.max(hi, +v); }));
     if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
     return { lo, hi };
   }
@@ -508,23 +553,35 @@
   // A deployment's cumulative realized P&L, oldest trade first: a zero baseline and a line coloured
   // by where it ends. `trades` is the closed-trade count for the label: a long curve arrives cut down
   // to 120 points that keep its ends and every dip and peak. Nothing under two points.
-  function spark(curve, reg, trades) {
-    if (!curve || curve.length < 2) return '';
+  // Its name says its low and high as well as where it ends (a curve that fell to −$40 and recovered to +$2 was
+  // read "+$2.00 over 30 trades"), and, given the deployment's `mode`, which money it is: a sparkline is read out
+  // on its own, away from the row's Paper / Demo / Live mark.
+  const SPARK_BOOK = { paper: 'Paper', demo: 'Demo', live: 'Live' };
+  function spark(curve, reg, trades, mode) {
+    curve = finitePts(curve);
+    if (curve.length < 2) return '';
     const W = 80, H = 24;
     reg = reg || registry([curve]);
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
+    const t0 = +curve[0][0], t1 = +curve[curve.length - 1][0];
     const x = t1 > t0 ? (p) => ((p[0] - t0) / (t1 - t0)) * W : (p, i) => (i / (curve.length - 1)) * W;
     const y = (v) => H - 2 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 4);
     const pts = curve.map((p, i) => `${x(p, i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
-    const last = curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
-    const label = `Cumulative P&L, ${usd(last, true)} over ${num(n)} trade${n === 1 ? '' : 's'}`;
+    const last = +curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
+    const vals = curve.map((p) => +p[1]), lo = Math.min(...vals), hi = Math.max(...vals);
+    const range = lo === hi ? `flat at ${usd(lo, true)}` : `low ${usd(lo, true)}, high ${usd(hi, true)}`;
+    const label = `${SPARK_BOOK[mode] ? SPARK_BOOK[mode] + ' cumulative' : 'Cumulative'} P&L, ${usd(last, true)} over ${num(n)} trade${n === 1 ? '' : 's'}; ${range}`;
     return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(plain(label))}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
   }
   // The underwater drawdown plot: the research paper's third figure, and the track record's.
   // `drawn`: a drawdown series the server already built from every trade (the track record sends
   // one, since its equity curve is thinned and could have lost the peak a drop started from).
   // `fmt` labels the worst drop: dollars for the track record, stakes for a research phase.
-  function rpUnderwater(curve, drawn, fmt = usd) {
+  // `opts.words` (a research phase's figure): its name says its span and its worst drop with when that came; a
+  // series that never fell from a high says so, under one zero label, where "0" and "0.0×" were drawn on top of
+  // each other; and the zero carries the unit (fmt(0)). The track record's figure keeps its own name and labels.
+  function rpUnderwater(curve, drawn, fmt = usd, opts = {}) {
+    if (curve) curve = finitePts(curve);
+    if (drawn) drawn = finitePts(drawn);
     const src = drawn || curve;
     if (!src || src.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
     let peak = -Infinity; const dd = drawn || curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
@@ -538,13 +595,16 @@
     const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
     const curvePts = dd.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const area = `${curvePts} ${x(dd[dd.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} ${x(dd[0][0]).toFixed(1)},${y(0).toFixed(1)}`;
-    const maxDd = fmt(minDd);
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${plain(maxDd)}">
+    const maxDd = fmt(minDd), words = !!opts.words, none = words && !(minDd < 0);
+    const worstAt = dd.reduce((w, p) => (p[1] < w[1] ? p : w), dd[0])[0];
+    const name = !words ? `Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${plain(maxDd)}`
+      : `Underwater drawdown plot ${day(t0) === day(t1) ? `on ${day(t0)}` : `from ${day(t0)} to ${day(t1)}`}; ${none ? 'it never fell from a running high' : `worst drawdown ${plain(maxDd)} (${day(worstAt)})`}`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${words ? esc(name) : name}">
       <polygon points="${area}" fill="var(--signal-wash)" stroke="none"/>
       <polyline points="${curvePts}" fill="none" stroke="var(--signal)" stroke-width="1.6"/>
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
-      <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">0</text>
-      <text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>
+      <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">${words ? plain(fmt(0)) : '0'}</text>
+      ${none ? `<text x="${((L + W - R) / 2).toFixed(1)}" y="${(y(lo / 2) + 4).toFixed(1)}" text-anchor="middle">No drawdown</text>` : `<text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>`}
       <text x="${L}" y="${H - 6}">${day(t0)}</text>${day(t1) === day(t0) ? '' : `<text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`}
     </svg>`;
   }
@@ -1227,7 +1287,7 @@
     PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
     catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
-    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
+    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, finitePts, thinCurve, curveWords, traceScale, registry, curveRegs, spark, rpUnderwater, mark,
     statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
     paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
     depInstant, demoRowLine, TR_MODES, trBook, trFix, trDay, trMonth, trCi, TR_STATUS, TR_EDGE, trCurve, trCurveCap,

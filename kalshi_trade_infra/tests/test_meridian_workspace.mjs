@@ -27,6 +27,7 @@ import {strategyMarketFilterCases} from './strategy_market_filter_frontend_cases
 import {exploreParityCases} from './explore_parity_frontend_cases.mjs';
 import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {largeAccountCases} from './large_account_frontend_cases.mjs';
+import {chartTrustCases} from './chart_trust_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
@@ -290,6 +291,22 @@ strategyMarketFilterCases({name: 'Meridian', frontend, detailStrategy});
 exploreParityCases({name: 'Meridian', frontend});
 countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
 largeAccountCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
+chartTrustCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, traces: async (hs) => {
+  // The market picker on Research: each row's trace comes from /api/research/context.
+  const out = [];
+  for (const h of hs) {
+    const g = frontend({fetchImpl: (path, options) => (path === '/api/research/context' ? response({markets: [{key: 'btc15m', mid: .47, vol24: 1200, trace: h}]})
+      : path === '/api/models' ? response({models: [{key: 'offline', label: 'Offline model'}], default: 'offline'})
+        : path.startsWith('/api/research/scoreboard') ? response({total: {runs: 0}}) : path === '/api/research/estimate' ? response({yours: null, sessions: 0, typical: {}})
+          : response({runs: [], counts: {research_running: 0, research_paused: 0, research_queued: 0}, policy: null}))});
+    g.S.me.markets = [{key: 'btc15m', label: 'Bitcoin up or down in 15 minutes', category: 'Crypto', has_data: true}];
+    await g.viewResearch(); for (let i = 0; i < 8; i++) await flush();
+    const spark = g.root.querySelector('.mktrow[data-key="btc15m"] [data-spark]');
+    out.push(spark ? spark.innerHTML : '');
+    g.clearTimers();
+  }
+  return out;
+}});
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});
@@ -346,7 +363,7 @@ test('populated validation and holdout phase curves render without blocking stra
   const before = JSON.stringify(experiment), f = strategyFrontend(detailStrategy({experiment}));
   await f.viewStrategy(42); await flush();
   const phaseChart = f.root.querySelector('.rp-figs .rp-fig svg.chart');
-  assert.ok(phaseChart); assert.match(phaseChart.getAttribute('aria-label'), /research phase: Validation, Holdout/);
+  assert.ok(phaseChart); assert.match(phaseChart.getAttribute('aria-label'), /research phase\. Validation, [^:]+: starts at 0\.0×, ends at \+2\.0×; low −2\.0× \([^)]+\), high \+2\.0× \([^)]+\)\. Holdout, [^:]+: starts at 0\.0×, ends at \+3\.0×/);
   assert.equal(phaseChart.querySelectorAll('polyline').length, 2); assert.doesNotMatch(phaseChart.innerHTML, /NaN|undefined/);
   assert.ok(f.root.querySelector('#dep-paper')); assert.ok(f.root.querySelector('#dep-live'));
   assert.ok(f.root.querySelector('#live-confirm input[name="confirm"]'));
@@ -1291,7 +1308,10 @@ test('Overview charts cumulative closed paper results separately from all-time P
     else {
       const chart = performance.querySelector('svg.chart'), label = chart.getAttribute('aria-label');
       assert.match(label, /^Cumulative closed paper profit and loss /);
-      assert.ok(label.includes(`from ${daily[0].d} through ${daily.at(-1).d}`), 'sparse trading dates are labelled as their actual period');
+      const words = (d, year) => new Date(d + 'T12:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', ...(year ? {year: 'numeric'} : {}), timeZone: 'UTC'});
+      assert.ok(label.includes(`from ${words(daily[0].d, daily[0].d.slice(0, 4) !== daily.at(-1).d.slice(0, 4))} through ${words(daily.at(-1).d, true)}`), 'sparse trading dates are labelled as their actual period, in words');
+      assert.doesNotMatch(label, /\d{4}-\d\d-\d\d/);
+      assert.match(label, /; (?:low [^;]+ \([A-Z][a-z]{2} \d+\), high [^;]+ \([A-Z][a-z]{2} \d+\)|flat at [^;]+); ends at /);
       assert.equal(performance.querySelector('.sect-note').getAttribute('title'), `${daily[0].d} – ${daily.at(-1).d}`);
       assert.ok(performance.querySelector('.sect-note').textContent.includes(daily.at(-1).d.slice(0, 4)));
       assert.ok(label.endsWith('; ends at ' + ending)); assert.doesNotMatch(label, /backtest|111\.25/);
@@ -3935,8 +3955,8 @@ for (const [label, view, endpoint, selector] of [['Overview', 'viewDashboard', '
     const svgs = [...html.matchAll(/<svg class="spark (up|down|flat)"[^>]*aria-label="([^"]*)"[^>]*>.*?<\/svg>/g)];
     assert.equal(svgs.length, 2, html);  // the one-trade deployment draws none
     const [up, down] = [svgs.find((m) => m[1] === 'up'), svgs.find((m) => m[1] === 'down')];
-    assert.equal(up[2], 'Cumulative P&amp;L, +$12.40 over 48 trades');
-    assert.equal(down[2], 'Cumulative P&amp;L, −$3.00 over 2 trades');
+    assert.equal(up[2], 'Paper cumulative P&amp;L, +$12.40 over 48 trades; low −$1.00, high +$500.00');
+    assert.equal(down[2], 'Live cumulative P&amp;L, −$3.00 over 2 trades; low −$3.00, high −$1.00');
     for (const m of svgs) {
       assert.match(m[0], /role="img"/); assert.match(m[0], /viewBox="0 0 80 24"/);
       assert.match(m[0], /<line class="spark-zero"/);

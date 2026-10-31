@@ -13,7 +13,7 @@
     PAPER_NET, NOT_MARKED, markedOf, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
     LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
     catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
-    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
+    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, finitePts, thinCurve, curveWords, traceScale, registry, curveRegs, spark, rpUnderwater, mark,
     statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
     paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
     depInstant, demoRowLine, TR_MODES, trBook, trFix, trDay, trMonth, trCi, TR_STATUS, TR_EDGE, trCurve, trCurveCap,
@@ -1445,8 +1445,10 @@
   const tickGutter = (labels, fit) => (fit ? Math.max(52, Math.ceil(12 + 6.5 * Math.max(0, ...labels.map((t) => t.length)))) : 52);
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = options.height || 236, R = 10, T = options.paper ? 16 : 30, B = 26;
-    if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
-    const dev0 = devCurve && devCurve.length > 1 ? devCurve : null;
+    // A null, NaN or Infinity point is left out (finitePts): one drew the whole line as "NaN,NaN".
+    curve = finitePts(curve);
+    if (curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
+    const dev0 = devCurve && finitePts(devCurve).length > 1 ? finitePts(devCurve) : null;
     // Anchor the real demo-replay to the simulated line at its first timestamp, so both read as
     // cumulative P&L from the same point — the real line diverges from the sim there instead of
     // floating near $0 and looking like a disconnected stub.
@@ -1479,7 +1481,11 @@
     const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
     const cut = cutoffIso ? Date.parse(cutoffIso) / 1000 : null;
     const cx = cut && cut > t0 && cut < t1 ? x(cut) : null;
-    const line = (c) => c.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    // A 10,000-trade backtest drew every trade, a dozen points to a pixel (a 117KB line): past about two points a
+    // pixel of plot (and past the track record's 400) the drawn line keeps each run's low and high (thinCurve). The
+    // axis, the labels and the name above still come from every point.
+    const dense = Math.max(400, 2 * Math.round(W - L - R));
+    const line = (c) => thinCurve(c, dense).map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const reference = options.paper ? levels.filter(v => v !== 0).map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)"/>`).join('') : '';
     const ticks = levels.map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${tickText(v)}</text>`).join('');
     // The grey line across the plot is $0, break-even: unlabelled, a curve that dipped under it read against ticks
@@ -1489,6 +1495,12 @@
     // The paper chart across a new year names the year on each date ("Dec 30, 2025"): "Jan 4" read as before "Dec 30".
     const years = options.paper && new Date(t0 * 1000).getUTCFullYear() !== new Date(t1 * 1000).getUTCFullYear();
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(years ? { year: 'numeric' } : {}), ...(options.paper ? { timeZone: 'UTC' } : {}) });
+    // Its name: the backtest's own end, never the demo replay's (it came last in `vals`, so a strategy page with a
+    // replay said the backtest "ends at" the replay's figure). With `options.words` (a strategy page, a backtest
+    // re-run) it says the curve's span, start, end, low and high in words (curveWords); a curve inside two days
+    // names the clock too.
+    const wordDay = t1 - t0 < 2 * 86400 ? (t) => dateFmt(new Date(t * 1000), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : day;
+    const backtestName = `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}${options.words ? `, ${curveWords(curve, (v) => usd(v, true), wordDay)}` : `; ends at ${plain(usd(curve[curve.length - 1][1], true))}`}`;
     // Each date on the axis once, under a point of the curve. The paper chart's middle tick sat at the span's midpoint,
     // which with two days of closed P&L fell on the second day's midnight ("Oct 29, Oct 30, Oct 30"), and with four on a
     // midnight between two points. Its dates are now the curve's own days, evenly spread (one for each ~90px of axis,
@@ -1535,7 +1547,7 @@
         <g class="chart-reading" aria-hidden="true"><line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="2 3"/><circle cx="${px}" cy="${py}" r="3" fill="var(--ink)"/>
           <rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="26" fill="var(--stock-raised)" stroke="var(--rule-2)"/><text x="${boxX + 8}" y="${boxY + 17}">${esc(label)}</text></g></g>`;
     }).join('') : '';
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(plain(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`))}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(plain(options.label || backtestName))}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               ${unseenLabel(cx, W - R, T - 10, options.cutLabel, dev ? L + 112 + 'Kalshi dev (real)'.length * 6 + 8 : 0)}` : ''}
@@ -1684,7 +1696,7 @@
         <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).map((t, i) => (i ? `<span class="nobr">${t}</span>` : t)).join('\u00a0\u00b7 ')}${d.status !== 'running' && (d.status_why || d.status_reason) ? '\u00a0\u00b7 ' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
         ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d, liveOpen())}</td>
       <td data-lab="Status">${depState(d, live)}<div class="sub-fig">${modeTag}</div></td>
-      <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
+      <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades, d.mode)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}${d.unrealized_pnl != null && d.open_positions ? ` <div class="sub-fig">est.${markOld(d.oldest_mark_ts) ? ' ' + markedAt(d.oldest_mark_ts) : ''}${markedOf(d.marked_open, d.open_positions) ? `${SEP}${markedOf(d.marked_open, d.open_positions)} marked` : ''}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${num(d.closed_trades)} closed${d.open_positions ? ` <div class="sub-fig">${num(d.open_positions)} open</div>` : ''}</td>
       ${actions}
@@ -1703,7 +1715,7 @@
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
       <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))}${SEP}<span class="nobr">${depStake(d)}</span></p><div class="monitor-limits"><span>${depCap(d) ? `${SEP}<span class="nobr">${depCap(d)}</span>` : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? SEP + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}${depInstant(d)}</div>
       <dl class="monitor-metrics">
-        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${realizedCell(d, '<span class="unavailable">None yet</span>')}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${gl(PAPER_NET, 'paperfills')}</dd>` : d.closed_trades ? `<dd class="sub-fig book-net">${monitorNet(d.mode)}</dd>` : ''}</div>
+        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${realizedCell(d, '<span class="unavailable">None yet</span>')}${spark(d.curve, regs && regs[d.mode], d.closed_trades, d.mode)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${gl(PAPER_NET, 'paperfills')}</dd>` : d.closed_trades ? `<dd class="sub-fig book-net">${monitorNet(d.mode)}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}</dd>${d.unrealized_pnl != null && markOld(d.oldest_mark_ts) ? `<dd class="sub-fig mark-when">${markedAt(d.oldest_mark_ts)}</dd>` : ''}${d.unrealized_pnl != null && markedOf(d.marked_open, d.open_positions) ? `<dd class="sub-fig mark-part">${markedOf(d.marked_open, d.open_positions)} marked</dd>` : ''}</div>
       </dl>
       <div class="monitor-footer"><dl class="monitor-counts"><div><dt>Closed / open</dt><dd aria-label="${num(d.closed_trades)} closed trades, ${num(d.open_positions || 0)} open positions">${num(d.closed_trades)} / ${num(d.open_positions || 0)}</dd></div></dl><div class="monitor-controls">${deploymentActions(d, false)}${deploymentEvidence(d, true)}</div></div>
@@ -2295,7 +2307,17 @@
       const days = (p.daily || []).slice(-30);
       let periodPnl = 0;
       const periodCurve = days.map(day => [Date.parse(day.d + 'T12:00:00Z') / 1000, periodPnl += +day.pnl]);
-      const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('#main').clientWidth), height: 180, paper: true, fit: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
+      // Its name reads the period in words ("from Oct 3 through Oct 31, 2026", not "2026-10-03") and the low and high
+      // of the running total with their days, before where it ends: it said only the dates and the end.
+      const paperDay = (d, year) => new Date(d + 'T12:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(year ? { year: 'numeric' } : {}), timeZone: 'UTC' });
+      const paperRange = () => {
+        if (!days.length) return '';
+        let lo = 0, hi = 0;
+        periodCurve.forEach(([, v], i) => { if (v < periodCurve[lo][1]) lo = i; if (v > periodCurve[hi][1]) hi = i; });
+        const f = (i) => plain(usd(periodCurve[i][1], true));
+        return f(lo) === f(hi) ? `; flat at ${f(lo)}` : `; low ${f(lo)} (${paperDay(days[lo].d)}), high ${f(hi)} (${paperDay(days[hi].d)})`;
+      };
+      const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('#main').clientWidth), height: 180, paper: true, fit: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${paperDay(days[0].d, days[0].d.slice(0, 4) !== days[days.length - 1].d.slice(0, 4))} through ${paperDay(days[days.length - 1].d, true)}${paperRange()}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper${SEP}</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
@@ -3521,9 +3543,11 @@
       });
     }
   }
+  // Drawn in a box at least 10¢ tall (traceScale): a 47¢/48¢ flicker filled it top to bottom like a 40¢ move.
   function hotChart(h) {
-    if (!h || h.length < 2) return '';
-    const W = 104, H = 30, p = 3, lo = Math.min(...h), hi = Math.max(...h), rng = hi - lo || 1;
+    h = (h || []).filter((v) => v != null && Number.isFinite(+v)).map(Number);
+    if (h.length < 2) return '';
+    const W = 104, H = 30, p = 3, { lo, hi } = traceScale(h), rng = hi - lo;
     const pts = h.map((v, i) => `${(i / (h.length - 1) * (W - p * 2) + p).toFixed(1)},${(H - p - (v - lo) / rng * (H - p * 2)).toFixed(1)}`);
     return `<svg class="hot-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
   }
@@ -3731,7 +3755,7 @@
     marketFull, marketKnown, marketPicker, marketShort, markQuietRows, mdLite, money, notice, num, olderRows, overDays,
     paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, NOT_MARKED, markedOf, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
-    researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S, sessionEstimate,
+    researchBadge, researchOnly, roadDays, root, rpUnderwater, curveWords, finitePts, thinCurve, runKind, runTag, runWaitLine, runwayLabel, S, sessionEstimate,
     sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
     stripeFail, syncMeBilling, theme: 'meridian', tone, topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, wakers,
     WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
