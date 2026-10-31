@@ -1155,6 +1155,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .stack tbody td .sub-fig { flex: 1 0 100%; }
   /* An open position's mark time sits close under its Unrealized figure, in the figure's own block (pos-unreal). */
   .stack tbody td .pos-unreal .sub-fig { margin-top: 1px; }
+  /* A figure with no value yet (an open position not marked yet) says so in words on a phone card, as Tau's does: the
+     dash kept to fit the desk table's cell read "Unrealized —" here, with no hover to say what it meant. */
+  .stack tbody td .unavailable[title] > [aria-hidden="true"] { display: none; }
+  .stack tbody td .unavailable[title] > .vh { position: static !important; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; }
   .stack tbody td .spark { margin-left: 0; }  /* a stacked cell reads left-aligned */
   .stack tbody tr:hover td { background: transparent; }
   /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
@@ -2597,6 +2601,9 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
   .t-positions td.position-expiry-cell::before { content: "Expiry "; font-size: 12px; color: var(--ink-3); }
   .t-positions td.position-entry::before { content: "Entry"; display: block; font: 400 12px/18px var(--f-ui); color: var(--ink-3); }
   .t-positions td:has(.position-cost)::before { content: "Cost + fee"; display: block; font: 400 12px/18px var(--f-ui); color: var(--ink-3); }
+  /* The dashboard's position card, likewise: "Unrealized P&L Not marked yet", not a bare dash. */
+  .t-positions .position-pnl .unavailable[title] > [aria-hidden="true"] { display: none; }
+  .t-positions .position-pnl .unavailable[title] > .vh { position: static !important; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; }
 }
 @container dashboard (max-width: 679px) {
   .account-band .portfolio-numbers { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -3024,7 +3031,7 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
 .rengine:has(.rsidisc.loop) + .pipefig { border-top: 0; }
 .pipefig:not([open]) > .pipecap { border-bottom: 0; }
 /* Stacked position cards: each family's last card drops its rule, as the wide table's last row does.
-   The next family's heading rule (or Recent settlements' rule) is the one divider, not two lines 4-9px apart. */
+   The next family's heading rule (or Recently closed's rule) is the one divider, not two lines 4-9px apart. */
 @container dashboard (max-width: 779px) {
   .t-positions tbody > tr:last-child { border-bottom: 0; }
 }

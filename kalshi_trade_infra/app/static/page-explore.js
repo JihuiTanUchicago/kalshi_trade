@@ -12,7 +12,7 @@ window.TauPage('explore', (T) => {
     contractMarket, contractMkt, contractShort, errText, esc, exitWord, EXPLORE_NO_FEED, EXPLORE_WAIT, exploreEmpty,
     exploreNoBtc, exploreNoFeed, exploreShowChips, fig, hourET, ICON, kalshiRef, kalshiUrl, keepFocus, keepZone,
     liveClose, loading, markedAt, marketShort, marketSpot, markFig, markOld, midOf, MKT_GONE, MKT_STATUS, mktLabel,
-    money, NO_MARK, NOT_MARKED, notice, num, pageLede, paint, paintRows, phone, poll, retried, root, rulesText, S, SEP,
+    money, NO_MARK, NOT_MARKED, markedOf, notice, num, pageLede, paint, paintRows, phone, poll, retried, root, rulesText, S, SEP,
     settleAt, shell, sinceMin, smooth, spotListNote, spotSect, strikeIn, sum4, theme, tzName, usd, vsHtml, when
   } = T;
   // Each theme heads the list, sets out its figures, its rows and its sort its own way (Meridian's rows carry its
@@ -56,7 +56,8 @@ window.TauPage('explore', (T) => {
       // The sum is as old as its oldest mark: once that is old the figure is dimmed and says how old (markFig), and
       // so is each old row's figure.
       const oldest = marked.map((p) => p.mark_ts).filter((t) => Number.isFinite(Date.parse(t))).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-      const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(marked.reduce((a, p) => a + p.unrealized, 0)))} (est. at the current bid${markOld(oldest) ? ', ' + markedAt(oldest, 'marked') : lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}${NOT_MARKED.toLowerCase()}`}` : '',
+      const part = markedOf(marked.length, op.length);  // some open marked, some not: the sum says how many it covers
+      const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(marked.reduce((a, p) => a + p.unrealized, 0)))}${part ? ` on ${part}` : ''} (est. at the current bid${markOld(oldest) ? ', ' + markedAt(oldest, 'marked') : lastMark ? ', marked ' + when(lastMark) : ''})${part ? `${SEP}${num(op.length - marked.length)} ${NOT_MARKED.toLowerCase()}` : ''}` : `${SEP}${NOT_MARKED.toLowerCase()}`}` : '',
         cl.length ? `${num(cl.length)} closed${SEP}realized ${money(sum4(cl.map((p) => p.pnl)))}` : ''].filter(Boolean).join(SEP);
       const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : markFig(p.mark_ts, money(p.unrealized)) + (markOld(p.mark_ts) ? `<div class="sub-fig">${markedAt(p.mark_ts)}</div>` : '')) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? liveClose(p.market_close_time, 'pos') : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;

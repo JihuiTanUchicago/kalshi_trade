@@ -130,4 +130,47 @@ export function staleMarkCases({name, frontend, strategyFrontend, detailStrategy
     assert.match(words(sum.querySelector('.mark-old')), /^\+\$0\.68$/);
     assert.match(words(sum), /\(est\. at the current bid, marked 3 hours ago/);
   });
+
+  // A sum over only some of a book's (or a deployment's) open positions, the rest not marked yet, says how many it
+  // covers: "2 open positions at cost + fees $10.18 · unrealized +$0.55" read as both positions' figure when only one
+  // had a price (walked 2026-10-31). Every figure is the server's; only the words around it change.
+  test(`${name}: an unrealized sum over some of the open positions says how many it covers`, async () => {
+    const half = [pos({id: 1}), pos({id: 2, ticker: 'KXBTC15M-26OCT301830-30', mark: null, value: null, unrealized: null, mark_ts: null})];
+    // Deploy: the deployment's row says "1 of 2 marked" under its estimate; one with every position marked doesn't.
+    const f = await deploy([...half, pos({id: 3, deployment_id: 2, ticker: 'KXBTC15M-26OCT301845-45', unrealized: .1})],
+      [dep({unrealized_pnl: null}), dep({id: 2, title: 'Drift', unrealized_pnl: .1, open_positions: 1})]);
+    const rows = f.root.querySelectorAll('#deps td[data-lab="Unrealized"]');
+    assert.equal(rows.length, 2);
+    assert.match(words(rows[0]), /^\+\$0\.55 ?est\. · 1 of 2 marked$/);
+    assert.match(words(rows[1]), /^\+\$0\.10 ?est\.$/);
+    // The dashboard: Tau's deployment row, Meridian's monitor.
+    const data = {...dashboard(), deployments: [dep({unrealized_pnl: .55})], open_positions: half, recent_closed: []};
+    const g = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response(data);
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      return response({});
+    }});
+    g.S.me.markets = MARKETS;
+    await g.viewDashboard(); await settle(); if (g.clearTimers) g.clearTimers();
+    const unreal = g.root.querySelector('#dash-deps td[data-lab="Unrealized"]') || g.root.querySelector('.monitor-unrealized');
+    assert.match(words(unreal), /\+\$0\.55.*1 of 2 marked/);
+    // The strategy page's book line: the sum, how many it covers, and how many wait for a price.
+    const sp = strategyFrontend(detailStrategy({holdings: half}), () => response({})); sp.S.me.markets = MARKETS;
+    await sp.viewStrategy(42); await settle(); if (sp.clearTimers) sp.clearTimers();
+    const book = sp.root.querySelectorAll('p.hint').find((p) => /open positions at cost/.test(words(p)));
+    assert.match(words(book), /^Paper: 2 open positions at cost \+ fees \$10\.18 · unrealized \+\$0\.55 on 1 of 2 \(est\., mark-to-market on the current bid\) · 1 not marked yet\.$/);
+    // Every position marked: the line reads as before, with no count.
+    const all = strategyFrontend(detailStrategy({holdings: [pos({id: 1}), pos({id: 2, ticker: 'KXBTC15M-26OCT301830-30', unrealized: .13})]}), () => response({}));
+    all.S.me.markets = MARKETS;
+    await all.viewStrategy(42); await settle(); if (all.clearTimers) all.clearTimers();
+    const full = all.root.querySelectorAll('p.hint').find((p) => /open positions at cost/.test(words(p)));
+    assert.doesNotMatch(words(full), / of 2|not marked/);
+    // A market page's book line.
+    const page = {ticker: 'KXBTC15M-26OCT301815-15', series: 'KXBTC15M', title: 'BTC up or down?', status: 'active',
+      yes_bid: '0.47', yes_ask: '0.49', last: '0.47', points: [], period_min: 1, as_of: ago(60), mine: {open: half, closed: []}};
+    const m = frontend({fetchImpl: (path) => path.startsWith('/api/explore/market?') ? response(page) : response({})});
+    m.S.me.markets = MARKETS;
+    await m.viewMarketDetail(page.ticker); await settle(); if (m.clearTimers) m.clearTimers();
+    assert.match(words(m.root.querySelector('.mk-book p.hint')), /unrealized \+\$0\.55 on 1 of 2 \(est\. at the current bid[^)]*\) · 1 not marked yet/);
+  });
 }

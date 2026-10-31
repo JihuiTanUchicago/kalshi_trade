@@ -607,7 +607,7 @@ class _Counting:
 
 
 def test_settled_lately_ranks_by_settle_time_and_reads_only_the_newest_index_entries(conn, user):
-    """recent_closed (the dashboard's "Settled lately", Deploy's recent trades) lists the most
+    """recent_closed (the dashboard's "Closed lately", Deploy's recent trades) lists the most
     recently settled positions: closed_at newest first, then id. A position that opened first but
     settled last ranks first. The rows come from the newest idx_pos_user entries alone, with no sort.
     A deleted strategy's positions still drop out; the slack covers a few, and the join answers when

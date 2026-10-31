@@ -621,7 +621,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .stub { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .stub:last-child { border-bottom: 0; }
 .stub small { color: var(--ink-3); font-size: 12px; grid-column: 1 / -1; }
-/* Settled lately shows five; the track record below is where every closed trade adds up. */
+/* Closed lately shows five; the track record below is where every closed trade adds up. */
 .stub-all { display: block; padding-top: 10px; font-size: 12.5px; color: var(--ink-2); }
 
 .detail { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; margin-top: 8px; }

@@ -243,7 +243,7 @@ export function pastCloseCases({name, frontend, strategyFrontend, detailStrategy
     // Meridian's Overview lists positions in a table with an Expiry date and no "settles" line; Tau's panel has a line each.
     if (!f.root.querySelector('#dash-open .stub')) { assert.doesNotMatch(f.root.innerHTML, /settles \d|Open, settles/); if (f.clearTimers) f.clearTimers(); return; }
     const smalls = () => f.root.querySelectorAll('#dash-open .stub small').filter((el) => !/stub-why/.test(el.getAttribute('class') || '')).map((el) => el.textContent);
-    const settled = () => f.root.querySelectorAll('.panel').find((p) => /Settled lately/.test(p.textContent)).textContent;
+    const settled = () => f.root.querySelectorAll('.panel').find((p) => /Closed lately/.test(p.textContent)).textContent;
     assert.match(smalls()[0], new RegExp('\\s·\\ssettles ' + AT + '\\s·\\sPAPER\\s·\\s'));
     assert.match(smalls()[1], /\s·\sclosed, result pending\s·\sPAPER\s·\s/);
     assert.doesNotMatch(smalls()[1], /settles/);

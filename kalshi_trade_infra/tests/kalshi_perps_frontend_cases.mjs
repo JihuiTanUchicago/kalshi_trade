@@ -525,6 +525,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // A paused or stopped record isn't growing, so there is no estimate; it says what to do.
     assert.match(await road({...base, pace: {running: false}}, [d(1, 'paper', 'paused')]), /paused, so its record isn’t growing\. <a href="\/deploy">Resume it on Deploy<\/a>/);
     assert.match(await road({...base, pace: {running: false}}, []), /isn’t running on paper[^.]*\. Its 12 earlier paper trades still count\./);
+    // One trade takes the singular verb: "Its 1 earlier paper trade still count" (walked 2026-10-31).
+    assert.match(await road({...base, paper: {...paper, trades: 1}, pace: {running: false}}, []), /\. Its 1 earlier paper trade still counts\./);
     // Every check clear while live autopilot is off: clear, still paper, and live is the user's own step.
     const all = Object.fromEntries(Object.keys(paper.checks).map((k) => [k, true]));
     const clear = await road({...base, blocking: 'autopilot is off', paper: {...paper, ready: true, why: '', p_value: 0.0004, checks: all}});

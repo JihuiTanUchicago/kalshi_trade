@@ -9,7 +9,7 @@ window.TauPage('strategy', (T) => {
     cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, dateFmt, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, FEES_NET, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketFull, marketShort, mdLite,
-    money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
+    money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, markedOf, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
@@ -431,7 +431,7 @@ window.TauPage('strategy', (T) => {
       const paused = (s.deployments || []).some((d) => d.mode === 'paper' && d.status === 'paused');
       const tpd = pace && pace.trades_per_day;
       if (pace && !pace.running) lines.push(`<p class="hint">${paused ? 'Its paper deployment is paused, so its record isn’t growing. <a href="/deploy">Resume it on Deploy</a>.'
-        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? '' : 's'} still count` : ''}. ${apPaper ? `<span data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>The autopilot puts it on paper at its next check-in${apWhenSpan()}.</span><span data-ap-off${S.me.user.autopilot ? ' hidden' : ''}>Deploy it on paper to add to it.</span>` : 'Deploy it on paper to add to it.'}`}</p>`);
+        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? ' still counts' : 's still count'}` : ''}. ${apPaper ? `<span data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>The autopilot puts it on paper at its next check-in${apWhenSpan()}.</span><span data-ap-off${S.me.user.autopilot ? ' hidden' : ''}>Deploy it on paper to add to it.</span>` : 'Deploy it on paper to add to it.'}`}</p>`);
       else if (pace && counts && pace.eta_days != null) lines.push(`<p class="hint road-eta">At its ${pace.rate_from === 'paper' ? 'paper' : 'backtest'} pace (${tpd >= 1 ? `about ${num(Math.round(tpd))} trade${Math.round(tpd) === 1 ? '' : 's'} a day` : 'under one trade a day'}), it could have the trades, events and hours in <b>${roadDays(pace.eta_days)}</b>. The P&amp;L, edge and demo checks are judged on that record, and it may not pass them.</p>`);
       else if (pace && counts) lines.push('<p class="hint road-eta">It hasn’t traded enough yet to estimate when it could have the trades, events and hours.</p>');
     }
@@ -652,8 +652,8 @@ window.TauPage('strategy', (T) => {
       : 'Its checks were the held-out tests on data it never saw: Verdict, above, says which it missed.')
       : 'No gate results recorded for this strategy. Gates only run for finalists that made money in testing.'}</p>`;
     // Opened is on the page's 24-hour clock, with its date and zone (LOG_STAMP): it read "11:21 PM EDT" beside "21:36 EDT".
-    const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(dateFmt(new Date(t.opened.replace('Z', ':00Z')), LOG_STAMP)) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
+    const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Position</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
+        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(dateFmt(new Date(t.opened.replace('Z', ':00Z')), LOG_STAMP)) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Position">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table></div>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
@@ -774,7 +774,9 @@ window.TauPage('strategy', (T) => {
               // Alone too: a strategy holding on paper only read "4 open positions at cost + fees $20.38" with no word of
               // which money, its rows untagged (walked 2026-10-31), and a demo-only one's line read like real money.
               const lead = ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ';
-              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(unreal))} (est., mark-to-market on the current bid${markOld(oldest) ? ', ' + markedAt(oldest) : ''})` : `${SEP}${NOT_MARKED.toLowerCase()}`}.`;
+              // Some marked, some not: the sum says how many it covers and how many wait for a price (markedOf).
+              const part = markedOf(marked.length, xs.length);
+              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(unreal))}${part ? ` on ${part}` : ''} (est., mark-to-market on the current bid${markOld(oldest) ? ', ' + markedAt(oldest) : ''})${part ? `${SEP}${num(xs.length - marked.length)} ${NOT_MARKED.toLowerCase()}` : ''}` : `${SEP}${NOT_MARKED.toLowerCase()}`}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             // Each Unrealized figure says when its mark was read (the engine's mark_ts), as Deploy's does: a mark
