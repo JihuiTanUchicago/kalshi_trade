@@ -711,6 +711,24 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     assert cards[1]["books"] == ["demo"]
 
 
+def test_strategies_list_says_a_paused_demo_book_beside_paper(monkeypatch):
+    # Walk 2026-10-31 (theme fact audit): the demo copy paused by its loss guard read "On paper + demo" over a demo line
+    # with no word of the pause. The demo book beside paper carries paused, only when it is.
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 1, "total": 1})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": 1, "deployed": True}])
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
+    deps = [{"id": 11, "strategy_id": 1, "mode": "paper", "status": "running", "realized_pnl": 3.31, "closed_trades": 13, "open_positions": 1},
+            {"id": 12, "strategy_id": 1, "mode": "demo", "status": "paused", "realized_pnl": "-14.99", "closed_trades": 8, "open_positions": 1}]
+    monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda cur, uid, **k: deps)
+    monkeypatch.setattr(server.repo, "realistic_paper_closed", lambda cur, ids: {11: 13})
+    card = server.list_strategies(ctx(query={}))["strategies"][0]
+    assert card["real"]["paused"] is False  # the paper book shown runs
+    assert card["real"]["demo"] == {"pnl": -14.99, "trades": 8, "open": 1, "paused": True}
+    deps[1]["status"] = "running"
+    card = server.list_strategies(ctx(query={}))["strategies"][0]
+    assert card["real"]["demo"] == {"pnl": -14.99, "trades": 8, "open": 1}  # running: as before
+
+
 def test_strategies_list_flags_a_paper_book_whose_trades_were_all_instant_fills(monkeypatch):
     # The list read "+$3.80 on paper since deploying · 2 trades" for a strategy whose only paper trades were instant
     # fills, while the track record left them out and said so. The card is flagged from the same split the track

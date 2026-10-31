@@ -237,6 +237,11 @@ def _stamp_real_records(cards: List[Dict], real: Dict[int, Dict[str, Dict]]) -> 
             if mode == "paper" and "demo" in books:
                 dm = books["demo"]
                 c["real"]["demo"] = {"pnl": dm["pnl"], "trades": dm["trades"], "open": dm["open"]}
+                # A paused demo book says so on its line ("Demo (paused): ..."): the row's badge read "On paper + demo"
+                # and its demo line its P&L, with the demo copy paused by its loss guard (walk 2026-10-31). Only when
+                # paused, so a running book's answer is as before.
+                if dm.get("paused"):
+                    c["real"]["demo"]["paused"] = True
 
 
 def _attach_session_real_records(cur, uid: int, cards: List[Dict]) -> None:
