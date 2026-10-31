@@ -111,11 +111,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(html, /real-paused/);
     const paused = strategyFrontend(detailStrategy({deployments: [{id: 5, mode: 'paper', status: 'paused', status_reason: 'Lost $12.00, more than the <guard>.', realized_pnl: -12, closed_trades: 9, open_positions: 0}]}));
     await paused.viewStrategy(42); await flush();
-    assert.match(paused.root.querySelector('#main').innerHTML, /<b>Paused<\/b>: Lost \$12\.00, more than the &lt;guard&gt;\. <a href="\/deploy">Resume or remove it on Deploy<\/a>/);
+    assert.match(paused.root.querySelector('#main').innerHTML, /<b>Paper paused<\/b>: Lost \$12\.00, more than the &lt;guard&gt;\. <a href="\/deploy">Resume or remove it on Deploy<\/a>/);
     // The server's plain words (status_why) lead: "By you" read "Paused By you".
     const byYou = strategyFrontend(detailStrategy({deployments: [{id: 6, mode: 'paper', status: 'paused', status_reason: 'By you', status_why: 'You paused it', realized_pnl: 0, closed_trades: 0, open_positions: 0}]}));
     await byYou.viewStrategy(42); await flush();
-    assert.match(byYou.root.querySelector('#main').innerHTML, /<b>Paused<\/b>: You paused it\. <a href="\/deploy">/);
+    assert.match(byYou.root.querySelector('#main').innerHTML, /<b>Paper paused<\/b>: You paused it\. <a href="\/deploy">/);
     assert.doesNotMatch(byYou.root.querySelector('#main').innerHTML, /By you/);
     const untested = strategyFrontend(detailStrategy({out_of_sample: null, deployments}));
     await untested.viewStrategy(42); await flush();

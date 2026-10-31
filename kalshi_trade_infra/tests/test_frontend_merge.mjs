@@ -128,9 +128,11 @@ class Element {
   set textContent(value) { this.text = String(value); }
   matches(selector) {
     const tag = selector.match(/^[\w-]+/);
+    // A '#' or '.' inside an attribute's value ([href="/funds#connect-kalshi"]) names no id or class.
+    const plain = selector.replace(/\[[^\]]*\]/g, '');
     if (tag && this.tag !== tag[0]) return false;
-    for (const [, id] of selector.matchAll(/#([\w-]+)/g)) if (this.id !== id) return false;
-    for (const [, cls] of selector.matchAll(/\.([\w-]+)/g)) if (!this.classes.has(cls)) return false;
+    for (const [, id] of plain.matchAll(/#([\w-]+)/g)) if (this.id !== id) return false;
+    for (const [, cls] of plain.matchAll(/\.([\w-]+)/g)) if (!this.classes.has(cls)) return false;
     for (const [, key, quoted, bare] of selector.matchAll(/\[([\w-]+)(?:=(?:"([^"]*)"|([^\]]+)))?\]/g)) {
       if (!(key in this.attributes) || (quoted ?? bare) !== undefined && this.attributes[key] !== (quoted ?? bare)) return false;
     }

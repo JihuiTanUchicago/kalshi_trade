@@ -8,9 +8,9 @@ window.TauPage('strategy', (T) => {
     actionLink, announce, api, ApiError, closeClock, liveClose, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, busy,
     cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, dateFmt, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, FEES_NET, fig, flash, fmt0, fold, fundsLinked,
-    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketFull, marketShort, mdLite,
+    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, keepFocus, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketFull, marketShort, mdLite,
     money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, markedOf, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, curveWords, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark, sum4,
+    researchOnly, retried, roadDays, root, rpUnderwater, curveWords, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark, sum4,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -52,9 +52,9 @@ window.TauPage('strategy', (T) => {
     next_open: 'the next bar’s open', finalized_payments_as_cost_only: 'settled funding payments, counted only as a cost' };
   const rpCost = (v) => (typeof v === 'string' ? RP_COST[v] || rpPlain(v) : String(v));
   const LORD_WORDS = ' (a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare)';
-  // With its zone, as the page's other clock times say it ("Settles 23:38 EDT"): "Pre-registered Oct 30, 2026, 09:38 PM"
-  // named none (walked 2026-10-31).
-  const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }); } catch (e) { return String(iso); } };
+  // With its zone and on the page's 24-hour clock, as its other times say it ("Settles 23:38 EDT"): "Pre-registered Oct 30, 2026, 09:38 PM"
+  // named no zone, and "10:35 AM EDT" sat on a 12-hour clock beside the holdings' "10:34 EDT" (walked 2026-10-31).
+  const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }); } catch (e) { return String(iso); } };
   // A figure that is neither money nor a stake share (a trade count, a profit factor, a Sharpe), grouped in thousands as
   // num() groups counts and signed with the minus the money beside it uses: a gate read "1200" and a Sharpe "-1.82".
   const rpFig = (v) => (typeof v !== 'number' || !Number.isFinite(v) ? esc(v == null ? '—' : v) : (v < 0 ? '−' : '') + num(Math.abs(v)));
@@ -339,10 +339,15 @@ window.TauPage('strategy', (T) => {
     // What the same trades would have made at the unseen-data backtest's average, scaled to each
     // deployment's stake, so "is it doing what the test said?" has an answer beside the real P&L.
     const oos = s.out_of_sample, stake = +s.stake;
-    // A paused deployment (often paused automatically, and the bell links here) says so and why.
-    const pausedLine = (ds) => {
-      const p = ds.find((d) => d.status === 'paused');
-      return p ? `<p class="real-paused"><b>Paused</b>${(p.status_why || p.status_reason) ? ': ' + fundsLinked(esc((p.status_why || p.status_reason).replace(/\.$/, ''))) + '.' : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
+    // A paused deployment (often paused automatically, and the bell links here) says so and why, and which book it is:
+    // a strategy on paper and demo at once read "Paused: Lost $12.30, more than the $10.00 guard…" between its Demo and
+    // Paper lines, the loss in no book's name (walk 2026-10-31). Each paused deployment of the book says its own reason
+    // (one line for copies paused for the same one).
+    const PAUSED_BOOK = { live: 'Live', demo: 'Demo', paper: 'Paper' };
+    const pausedLine = (ds, mode) => {
+      const why = (d) => d.status_why || d.status_reason || '';
+      const seen = new Set();
+      return ds.filter((d) => d.status === 'paused' && !seen.has(why(d)) && seen.add(why(d))).map((p) => `<p class="real-paused"><b>${PAUSED_BOOK[mode] || 'It'} paused</b>${why(p) ? ': ' + fundsLinked(esc(why(p).replace(/\.$/, ''))) + '.' : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>`).join('');
     };
     // Paper counts its realistic fills only (each deployment's closed trades less its `instant_fills`), as the
     // server's backtest check and the count toward live do: "2 trades would have made" counted the instant fill
@@ -378,7 +383,7 @@ window.TauPage('strategy', (T) => {
       // dashboard's "+$0.36 realized since reload" with no word of its window (walk 2026-10-31). It says it.
       const head = n ? `${money(pnl)} realized over ${num(n)} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'demo' ? DEMO_WINDOW : ''}` : 'No closed trades yet';
       const tail = [open ? `${num(open)} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : '', since ? `<span class="nobr">deployed ${when(since)}</span>` : ''].filter(Boolean).join(SEP);
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds, mode)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,
@@ -896,8 +901,10 @@ window.TauPage('strategy', (T) => {
       try {
         const r = await api('/api/strategies/' + s.id + '/live-readiness');
         roadNow = r;
+        // The ladder is drawn again with it, and with the demo cash below: a link in it that held keyboard focus (the
+        // Funds page, a demo account's fix) kept it only until then, and focus fell to the page's top (walk 2026-10-31).
         const lb = root.querySelector('#ladder-body');
-        if (lb) lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: r, apPaper });
+        if (lb) keepFocus(lb, () => { lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: r, apPaper }); });
         const p = r.paper, c = p.checks;
         const rows = [
           { name: 'Gatekeeper cleared', threshold: 'holdout + diversification', ok: r.deployment_candidate, value: r.deployment_candidate ? 'yes' : 'no' },
@@ -920,7 +927,7 @@ window.TauPage('strategy', (T) => {
           // The server's realization is against the backtest's later slice (its out_of_sample), so the hint names it as
           // the figure up top does, by laterQual: "later period · unseen data" only with a gatekeeper record (splitOnly
           // otherwise). It read "made money on unseen data" and "…P&L per trade on unseen data".
-          + (p.realization != null && !btEarly ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period${SEP}${laterQual}).` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s P&amp;L per trade after its split date (later period${SEP}${laterQual}).`}</p>` : '')
+          + (p.realization != null && !btEarly ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period${SEP}${laterQual}).` : `Paper earns <b>${num(Math.round(p.realization * 100))}%</b> of the backtest’s P&amp;L per trade after its split date (later period${SEP}${laterQual}).`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book (bought at the ask, sold at the bid, after Kalshi fees), from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         // A read that failed (a bad connection) says why and offers Try again: it said "unavailable" for the
@@ -929,7 +936,12 @@ window.TauPage('strategy', (T) => {
         if (!body) return;
         const why = 'Road to live didn\u2019t load. ' + (e instanceof ApiError ? e.message : 'Try again in a moment.') + ' Everything else on this page did.';
         body.innerHTML = `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-road-retry>Try again</button></p>`;
-        body.querySelector('[data-road-retry]').onclick = () => { body.innerHTML = '<p class="hint">Checking…</p>'; return roadRead(); };
+        // Its Try again goes with the notice it sits in: once the read is done, focus goes into what came in (or the next
+        // Try again), not to the page's top.
+        body.querySelector('[data-road-retry]').onclick = () => {
+          body.innerHTML = '<p class="hint">Checking…</p>';
+          return roadRead().then(() => retried(body, body.querySelector('[data-road-retry]') || body.querySelector('.road-sum')));
+        };
       }
     };
     if (root.querySelector('#road-live-body')) roadRead();
@@ -944,7 +956,7 @@ window.TauPage('strategy', (T) => {
         if (again) s.demo_health = again.demo_health;
         s.demo_health_pending = false;
         const lb = root.querySelector('#ladder-body');
-        if (lb) lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: roadNow, apPaper });
+        if (lb) keepFocus(lb, () => { lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: roadNow, apPaper }); });
       };
       demoCashRead().then(() => (gen === S.gen ? api('/api/strategies/' + s.id) : null)).then(redraw, () => redraw(null));
     }
