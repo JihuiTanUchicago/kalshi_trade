@@ -208,3 +208,19 @@ test('a compact volume that rounds up into the next unit takes it', () => {
   assert.deepEqual([0, 88, 999.4, 999.6, 9045, 99949, 999949, 999960, 1234567].map(kfmt),
     ['0', '88', '999', '1.0k', '9.0k', '99.9k', '999.9k', '1.0M', '1.2M']);
 });
+
+// First-week walk 2026-10-31: day 4's dashboard read "Today (UTC): $0.00 realized" with its last paper trade two days
+// back. closedToday says whether a book closed a trade today from the newest closed rows and the book's count, and
+// says it can't tell (null) when those rows can't.
+test('closedToday tells a book with no trade today from one that broke even, and says when it cannot tell', () => {
+  const {closedToday} = core();
+  const now = Date.UTC(2026, 9, 31, 13, 0), day = Date.UTC(2026, 9, 31);
+  const row = (mode, at) => ({mode, closed_at: new Date(at).toISOString()});
+  const older = [row('paper', day - 3600e3), row('paper', day - 2 * 864e5)];
+  assert.equal(closedToday(older, 'paper', 2, now), false, 'every paper trade listed, none today');
+  assert.equal(closedToday(older, 'paper', 40, now), false, 'the oldest row listed closed before today');
+  assert.equal(closedToday([row('paper', day), ...older], 'paper', 3, now), true, 'one closed at midnight UTC counts');
+  assert.equal(closedToday([row('demo', day + 1000), row('demo', day + 2000)], 'paper', 4, now), null, 'other books today, paper unlisted');
+  assert.equal(closedToday([], 'paper', 0, now), false);
+  assert.equal(closedToday(undefined, 'paper', undefined, now), false);
+});

@@ -53,6 +53,7 @@ import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
+import {firstWeekCases} from './first_week_frontend_cases.mjs';
 import {autopilotCostCases, billingCostCases} from './autopilot_cost_frontend_cases.mjs';
 import {settingsBillingCases} from './settings_billing_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
@@ -6792,6 +6793,7 @@ deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, 
 liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
 newcomerMoneyCases({name: 'Meridian', frontend, dashboard: dashboardData});
+firstWeekCases({name: 'Meridian', frontend, dashboard: () => dashboardData(), detailStrategy, strategyFrontend});
 autopilotCostCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus});
 billingCostCases({name: 'Meridian', frontend, dashboard: dashboardData, billingPage, cardedBilling});
 settingsBillingCases({name: 'Meridian', frontend, billingPage, cardedBilling});

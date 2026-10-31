@@ -21,7 +21,7 @@
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS,
-    shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
+    shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode,
     sessionNo, olderRows
@@ -2276,7 +2276,7 @@
       const paperNew = !(p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper'));
       // The day's realized figure names its book ("Paper realized today", "Live realized today"): beside a Kalshi cash
       // band, a bare "Realized today (UTC) −$0.57" didn't say it was paper's (walked 2026-10-27 with a live key).
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `${pnlWin('all')} <span class="nobr">realized P&amp;L${glo('realized')} ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEstGl(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">${pnlWin('today')} paper realized</span><strong>${!hasClosed(p) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `${pnlWin('all')} <span class="nobr">realized P&amp;L${glo('realized')} ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEstGl(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">${pnlWin('today')} paper realized</span><strong>${!hasClosed(p) || (!+p.today_pnl && closedToday(d.recent_closed, 'paper', p.closed_trades) === false) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -2858,10 +2858,11 @@
       ((s.books || {})[m] || {}).trades || d.deployments.some((x) => x.mode === m && x.status !== 'stopped'));
     const money = books.length ? books.map(([m, label]) => {
       const b = s.books[m] || { pnl: 0, trades: 0 };
-      // The book's name and its signed amount never break apart (a phone wraps the rest of the line).
+      // The book's name and its signed amount never break apart (a phone wraps the rest of the line). A book that
+      // closed trades before the window has "no trades closed", not "…yet" (day 4 of a new account, walk 2026-10-31).
       return `<span class="since-book" data-book="${m}">${b.trades
         ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${sinceNote(m)}`
-        : `<b>${label}</b>: no trades closed yet`}</span>`;
+        : `<b>${label}</b>: no trades closed${(d[m] || {}).closed_trades ? '' : ' yet'}`}</span>`;
     }).join('<span class="sep">·</span>') + sinceSlip(s.books) + sinceSplit(d, books) : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
