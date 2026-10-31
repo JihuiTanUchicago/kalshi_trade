@@ -640,6 +640,12 @@ class Handler(BaseHTTPRequestHandler):
     def _send_json(self, status: int, payload: Any, cookies: List[str]) -> None:
         body = json.dumps(payload, default=_json_default, separators=(",", ":")).encode("utf-8")
         extra = [("Cache-Control", "no-store")] + [("Set-Cookie", c) for c in cookies]
+        # The account this reply was read as (the session cookie is the browser's, shared by its tabs): a tab
+        # that still shows another account, after a sign-in as someone else in another tab, never paints it
+        # under the old name (api() in app.js and app.meridian.js). The same id /api/me already gives the page.
+        account = getattr(self, "_account", None)
+        if account is not None:
+            extra.append(("X-Tau-Account", str(int(account))))
         self._send(status, "application/json; charset=utf-8", body, extra)
 
     def _shell_theme(self, path: str) -> Tuple[Optional[str], List[str]]:
@@ -849,6 +855,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(200, webperf.summary(window), [])
 
     def _dispatch(self, method: str) -> None:
+        self._account = None  # a keep-alive socket reuses the handler: never the last request's account
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/healthz":
@@ -895,6 +902,7 @@ class Handler(BaseHTTPRequestHandler):
             token = self.cookies().get(auth.SESSION_COOKIE)
             if token:
                 user = repo.session_user(conn.cursor(), auth.hash_token(token))
+            self._account = user["id"] if user else None
             if needs_user and user is None:
                 raise ApiError(401, "Please sign in.")
             parsed_query = parse_qs(parsed.query, keep_blank_values=path.startswith("/auth/brokers/"))
