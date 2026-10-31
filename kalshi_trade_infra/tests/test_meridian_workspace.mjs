@@ -2022,8 +2022,8 @@ test('the current research run renders a safe streaming log and its paused statu
   const run = {id: 9, prompt: '<script>unsafe</script>', status: 'paused', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/runs/9?after=0'); return response({run, events: []}); }});
   await f.viewRun(9);
-  // A list that announces what is added (a role="log" on the <ol> took away its list semantics).
-  assert.equal(f.root.querySelector('#log').getAttribute('aria-live'), 'polite'); assert.equal(f.root.querySelector('#log').getAttribute('role'), null);
+  // A list (a role="log" on the <ol> took away its list semantics), and not a live region: it read every streamed line.
+  assert.equal(f.root.querySelector('#log').getAttribute('aria-live'), null); assert.equal(f.root.querySelector('#log').getAttribute('role'), null);
   assert.match(f.root.querySelector('#runboard').innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(f.root.querySelector('#runboard').innerHTML, /<script>/);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /Paused/);
@@ -2227,7 +2227,7 @@ test('Research run polling keeps one current stage through unknown events, pause
   assert.equal(treeSvg.querySelectorAll('.rsi-tedge').length, 1);
   assert.match(treeSvg.innerHTML, /Parent &lt;script&gt;unsafe&lt;\/script&gt;/); assert.doesNotMatch(treeSvg.innerHTML, /<script>/);
   await advance('running', [event(5, 'gating')], 'gate', ['explore', 'backtest']);
-  assert.equal(f.root.querySelector('#rsiobs [data-phase]').textContent, 'Gating on unseen data');
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').textContent, 'Testing on unseen data');
   await advance('paused', [], null, ['explore', 'backtest', 'gate']);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Paused'); assert.ok(f.root.querySelector('#resume'));
   await advance('running', [], 'gate', ['explore', 'backtest']);
@@ -2488,6 +2488,20 @@ test('completed and empty Research accounts keep their history and do not show a
     if (!runs.length) assert.equal(f.root.querySelector('#runs .empty h3').textContent, 'No sessions yet');
     assert.equal(postRequests(f).length, 0);
   }
+});
+
+// Walk 2026-10-31: a session gone silent led the page ("Silent 7 min") while another researched beside it, and its
+// "Started 57m ago" named no clock or zone.
+test('Meridian: the session at work leads the Research page, and its start says the clock and zone on hover', async () => {
+  const silent = {...researchRun(9, 'running'), started_at: '2026-10-17T09:00:00Z', wait: {state: 'silent', seconds: 1800, overdue: true}};
+  const working = {...researchRun(8, 'running'), started_at: '2026-10-17T10:00:00Z'};
+  const f = researchFrontend([silent, working]); await f.viewResearch(); await flush();
+  const card = f.root.querySelector('#active-research');
+  assert.equal(card.querySelector('a.active-open').getAttribute('href'), '/research/8');
+  assert.match(card.innerHTML, /Started <time datetime="2026-10-17T10:00:00Z" title="[^"]*\d{2}:\d{2}[^"]*">/);
+  // With only the silent one at work, it still leads.
+  const g = researchFrontend([silent]); await g.viewResearch(); await flush();
+  assert.equal(g.root.querySelector('#active-research a.active-open').getAttribute('href'), '/research/9');
 });
 
 test('one active Research session does not claim the account has no sessions', async () => {
@@ -5063,7 +5077,8 @@ test('Meridian: a running session counts its ideas and passes live; a stopped on
   f = await M_RUN_AT({status: 'running', max_hypotheses: 10, hypotheses_tried: 2}, [hyp(1)], []);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /of up to 10/);
   f = await M_RUN_AT({status: 'succeeded', started_at: '2026-10-25T10:00:00Z', finished_at: '2026-10-25T14:59:00Z'});
-  assert.equal(M_FIG(f.root.querySelector('#runfigs').innerHTML, 'Time'), '5');
+  // 4 hr 59 min, not rounded to "5 hr" (walk 2026-10-31: "5 hr" stood for anything from 4.5 to 5.5 hours).
+  assert.match(f.root.querySelector('#runfigs').textContent, /Time\s*4 hr 59 min/);
   const error = 'The research models are at capacity right now, so the session stopped. Start it again in a little while.';
   f = await M_RUN_AT({status: 'failed', error}, [{id: 1, kind: 'hypothesis', message: 'Vol', data: {}, created_at: '2026-10-25T10:00:00Z'}]);
   const stamp = f.root.querySelector('#log').querySelector('[data-stamp]');

@@ -305,14 +305,57 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     stream.state('running');
     assert.equal(said(), 'Researching', 'and Resume');
     f.clearTimers();
-    // On the page, the foot that ticks is not itself a live region, and the log is a list that announces.
+    // On the page, the foot that ticks is not itself a live region, and neither is the log: a list, which read every
+    // streamed line, each piece of a thought and each second of its clock (walk 2026-10-31).
     const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
     const g = frontend({fetchImpl: (path) => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
     await g.viewRun(9);
     const foot = g.root.querySelector('#runpulse');
     if (foot) assert.equal(foot.getAttribute('aria-live'), null);
     const log = g.root.querySelector('#log');
-    assert.equal(log.tag, 'ol'); assert.equal(log.getAttribute('role'), null); assert.equal(log.getAttribute('aria-live'), 'polite');
+    assert.equal(log.tag, 'ol'); assert.equal(log.getAttribute('role'), null); assert.equal(log.getAttribute('aria-live'), null);
+    g.clearTimers();
+  });
+
+  // Walk 2026-10-31: with the log a live region, a screen reader read ~100 lines a minute on a live session. What a
+  // listener waits for is said instead: a poll's idea verdicts once (the newest by name), and the end of the session.
+  test(`${name}: a live session says each poll's verdicts once and its end once, never its streamed lines`, async () => {
+    const AT = '2026-10-17T10:00:00Z';
+    const ev = (id, kind, message, data = {}) => ({id, kind, message, data, created_at: AT});
+    let status = 'running', next = [];
+    const f = frontend({fetchImpl: (path) => {
+      if (!path.startsWith('/api/runs/9')) return response({});
+      const out = next; next = [];
+      return response({run: {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: AT, started_at: AT, run_forever: 1,
+        stop_reason: status === 'cancelled' ? 'user' : null}, events: out, strategies: []});
+    }});
+    next = [ev(1, 'hypothesis', 'Old idea'), ev(2, 'verdict', 'DROPPED "Old idea" (no candidate) — lost money', {title: 'Old idea', status: 'abandoned'})];
+    await f.viewRun(9); await flush();
+    const said = () => { f.elapse(50); const el = f.document.getElementById('sr-status'); return el ? el.textContent : ''; };
+    assert.equal(said(), '', 'the first paint says nothing');
+    const tick = f.intervals.get(f.S.timers.at(-1)), poll = () => tick();  // the 2s poll, before a thought adds its clock
+    next = [ev(3, 'thinking', 'Takers chase the move ', {block: 1}), ev(4, 'thinking', 'late in the window.', {block: 1})];
+    poll(); await flush(); await flush();
+    assert.equal(said(), '', 'a streamed thought is not read out');
+    next = [ev(5, 'hypothesis', 'Late fade'), ev(6, 'verdict', 'REJECTED - Late fade: not a finalist', {title: 'Late fade', status: 'rejected'})];
+    poll(); await flush(); await flush();
+    assert.equal(said(), 'Late fade: rejected.');
+    next = [ev(7, 'verdict', 'DROPPED "A" (no candidate) — x', {title: 'A', status: 'abandoned'}),
+      ev(8, 'verdict', 'PASSED - B: passed', {title: 'B', status: 'passed', strategy_id: 4}),
+      ev(9, 'verdict', 'B: one-time holdout', {title: 'B', phase: 'holdout', classification: 'forward_validated'})];
+    poll(); await flush(); await flush();
+    assert.equal(said(), '2 ideas checked. Latest: B: passed its first test on unseen data.', 'a later check is not counted');
+    status = 'cancelled';
+    poll(); await flush(); await flush();
+    assert.equal(said(), 'This session has ended: Stopped by you.');
+    f.clearTimers();
+    // A finished session opened later says nothing of its end.
+    status = 'succeeded'; next = [];
+    const g = frontend({fetchImpl: (path) => response(path.startsWith('/api/runs/9') ? {run: {id: 9, prompt: 'Idea', status: 'succeeded',
+      stop_reason: 'limit', market: 'btc15m', created_at: AT, started_at: AT}, events: [], strategies: []} : {})});
+    await g.viewRun(9); await flush();
+    g.elapse(50);
+    assert.equal((g.document.getElementById('sr-status') || {}).textContent || '', '');
     g.clearTimers();
   });
 

@@ -3080,6 +3080,8 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
      the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
   .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  /* A session's strategy row's "1 more check on its page" (20px, walked 2026-10-31 at 390px): 44px, the row left alone. */
+  .slip-missed > a.sub-fig { padding-block: 12px; margin-block: -10px -12px; }
   /* The strip's links follow one another line after line ("4 strategies passed: A, B, C, 1 more", a paused
      strategy over "Add it on the Funds page"), and 44px boxes set on a 21px line reached 27px into the next
      line's link (walked 2026-10-28, 360-768px): a thumb on one title could open the next. Each link's 44px is

@@ -2390,8 +2390,8 @@ test('the current research run renders a safe streaming log and its paused statu
   const run = {id: 9, prompt: '<script>unsafe</script>', status: 'paused', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/runs/9?after=0'); return response({run, events: []}); }});
   await f.viewRun(9);
-  // A list that announces what is added (a role="log" on the <ol> took away its list semantics).
-  assert.equal(f.root.querySelector('#log').getAttribute('aria-live'), 'polite'); assert.equal(f.root.querySelector('#log').getAttribute('role'), null);
+  // A list (a role="log" on the <ol> took away its list semantics), and not a live region: it read every streamed line.
+  assert.equal(f.root.querySelector('#log').getAttribute('aria-live'), null); assert.equal(f.root.querySelector('#log').getAttribute('role'), null);
   assert.match(f.root.querySelector('#runboard').innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(f.root.querySelector('#runboard').innerHTML, /<script>/);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /Paused/);
@@ -3309,9 +3309,9 @@ test('Tau: a running session counts its ideas and passes live, and a set-size on
   f = await RUN_AT({status: 'running', max_hypotheses: 10, hypotheses_tried: 2}, [hyp(1)], []);
   figs = f.root.querySelector('#runfigs').innerHTML;
   assert.match(figs, /Tested<\/dt><dd><span class="fig ">2<.*of up to 10/s); assert.match(figs, /Passed<\/dt><dd><span class="fig ">0</);
-  // A long session's time reads in hours, not "299 min".
+  // A long session's time reads in hours and minutes, not "299 min" nor rounded to "5 hr".
   f = await RUN_AT({status: 'succeeded', hypotheses_tried: 4, strategies_passed: 0, started_at: '2026-10-25T10:00:00Z', finished_at: '2026-10-25T14:59:00Z'});
-  assert.match(f.root.querySelector('#runfigs').innerHTML, />5 hr</);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, />4 hr 59 min</);
 });
 
 test('Tau: a running session quiet for hours reads its age in minutes and hours, not raw seconds', async () => {

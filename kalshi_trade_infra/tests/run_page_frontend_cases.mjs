@@ -245,6 +245,12 @@ export function runPageCases({name, frontend}) {
     assert.match(figs(f), /\$0\.00\s*free: Tau ran it for you/); assert.doesNotMatch(figs(f), /from your credits/);
     f = await open({status: 'succeeded', spent_usd: 1.84});
     assert.match(figs(f), /\$1\.84\s*from your credits/);
+    assert.doesNotMatch(figs(f), /round of ideas/);
+    // A running session's spend moves as each round of ideas is billed: it says so, so "None yet" isn't read as free.
+    for (const run of [{status: 'running', run_forever: 1, spent_usd: 0}, {status: 'running', max_hypotheses: 6, spent_usd: 0.4}, {status: 'queued', spent_usd: 0}]) {
+      f = await open(run);
+      assert.match(figs(f), /Spent so far\s*(None yet|\$0\.40)\s*from your credits\s·\scharged as each round of ideas ends/, JSON.stringify(run));
+    }
   });
 
   test(`${name}: a step line shows the server's plain words, and the challenger reads as the skeptic's review`, async () => {
@@ -309,6 +315,55 @@ export function runPageCases({name, frontend}) {
     // Never paused: the wall clock, with no note.
     f = await open({status: 'succeeded', started_at: ago(60), finished_at: ago(15)}, [at(1, 'step', 59)]);
     assert.match(time(f), /^Time45 min$/);
+  });
+
+  // Walk 2026-10-31: a session watched from its start said "Time 1 min" for its first two minutes (a queue wait's minute
+  // count), and a five-hour one "5 hr" for anything from 4.5 to 5.5 hours.
+  test(`${name}: Time counts seconds in a session's first minute, then minutes, then hours and minutes`, async () => {
+    const ago = (s) => new Date(Date.now() - s * 1000).toISOString();
+    const time = (f) => f.root.querySelectorAll('#runfigs .m').find((m) => m.querySelector('dt').textContent === 'Time').textContent;
+    for (const [secs, said] of [[4, /^Time[45]s$/], [45, /^Time4[56]s$/], [61, /^Time1 min$/], [59 * 60 + 30, /^Time59 min$/],
+      [3600, /^Time1 hr$/], [3600 + 5 * 60 + 10, /^Time1 hr 5 min$/], [26 * 3600 + 120, /^Time1 day 2 hr$/], [3 * 86400, /^Time3 days$/]]) {
+      const f = await open({status: 'running', run_forever: 1, started_at: ago(secs)});
+      assert.match(time(f), said, String(secs));
+    }
+  });
+
+  // Walk 2026-10-31: reading the log as a session streamed, what sits above it (a new row of Tau's Ideas tested,
+  // Meridian's "1 more idea still being tested" and phase lines) grew and shrank, and the log moved under the reader by a
+  // line every few seconds (Meridian's phone layout in Chrome; every layout in Safari, which doesn't anchor scrolling).
+  test(`${name}: a poll keeps the log where it was while the reader reads it, and leaves a reader above it alone`, async () => {
+    const flush = () => new Promise((r) => setImmediate(r));
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+      ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, status: 'running', run_forever: 1},
+        events: [], strategies: []})
+      : response({})});
+    await f.viewRun(9);
+    const tick = f.intervals.get(f.S.timers.at(-1));
+    const scrolls = [], feed = f.root.querySelector('#runfeed');
+    Object.assign(f.window, {scrollY: 900, innerHeight: 800, scrollBy: (o) => scrolls.push(o)});
+    const tops = (a, b) => { let n = 0; feed.getBoundingClientRect = () => ({top: n++ ? b : a, bottom: (n > 1 ? b : a) + 500}); };
+    tops(120, 180);  // the log's top in the upper half: a line grew above it
+    tick(); await flush(); await flush();
+    assert.equal(JSON.stringify(scrolls), JSON.stringify([{top: 60, behavior: 'instant'}]));  // the page's own realm
+    tops(600, 640);  // the reader is above the log: nothing moves
+    tick(); await flush(); await flush();
+    tops(120, 120);  // nothing above it changed
+    tick(); await flush(); await flush();
+    f.window.scrollY = 0; tops(120, 150);  // at the top of the page
+    tick(); await flush(); await flush();
+    assert.equal(scrolls.length, 1);
+    f.clearTimers();
+  });
+
+  test(`${name}: an interrupted session that listed ideas says it was interrupted, not that it finished`, async () => {
+    const f = await open({status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 3,
+      error: 'Tested 3 ideas, then the session was interrupted and stopped — start a new one to keep going.'}, [],
+      [{id: 43, title: 'Fade', status: 'rejected', market: 'btc15m', direction: 'custom'}]);
+    const next = f.root.querySelector('#runnext').innerHTML;
+    assert.match(next, /^<p class="run-next">It was interrupted and couldn’t be resumed, so it stopped early\. Nothing passed before then\./);
+    assert.doesNotMatch(next, /this time/);
+    assert.match(figs(f), /Interrupted/);
   });
 
   test(`${name}: a silent session says "No word from the agent" once, in the loop panel, in place of its last phase`, async () => {

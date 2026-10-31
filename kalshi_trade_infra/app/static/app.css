@@ -2425,6 +2425,10 @@ body.landing-body .apf { display: none; }
   .apf-top > .ap-focus { margin-bottom: 12px; }
   /* A research result's title (20px) and a community post's Reply, Edit and reactions (25-28px). */
   .ri-title { padding-block: 12px; margin-block: -12px; }
+  /* In the agent log, a passed idea's stamp link (15px) and its "View strategy →" (17px), walked 2026-10-31 at 390px: 44px
+     tall, the line left alone. */
+  .hx-stamp a { display: inline-block; padding-block: 14px; margin-block: -14px; }
+  .hx-viewstrat { padding-block: 13px; margin-block: -11px -13px; }
   /* Room between the title and its Deploy link (and the next result), so the two grown targets don't overlap. */
   .ri-list li { row-gap: 26px; padding-block: 14px; }
   .post-actions .thread-link, .reactions .rx { min-height: 44px; }
