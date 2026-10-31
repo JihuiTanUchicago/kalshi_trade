@@ -30,6 +30,24 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
   const other = current === 'tau' ? 'meridian' : 'tau';
   const label = {tau: 'Tau', meridian: 'Meridian'};
 
+  test(`${name}: with live trading closed the email switch names the live-ready email as the email names itself, never "ready for live trading"`, async () => {
+    // The server's live switch closed: that email's subject is "“…” cleared every paper-to-live check" and it says the
+    // strategy stays on paper. Open, the line is as before.
+    const line = async (open, stored) => {
+      const f = frontend({fetchImpl: path => { throw new Error('Settings reads nothing on open: ' + path); }});
+      f.S.me.live_trading_available = open;
+      f.S.me.user = {...f.S.me.user, email: 'owner@example.invalid', email_opt_out: stored};
+      await f.viewSettings();
+      return f.root.querySelector('#email-state').textContent;
+    };
+    const on = await line(false, false), off = await line(false, true);
+    assert.match(on, /^On\. Tau emails you about replies to your posts, mentions of your @name, new community posts \(at most one email every 4 hours\), and a paper strategy that clears every paper-to-live check\.$/);
+    assert.match(off, /^Off\. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or a paper strategy that clears every paper-to-live check\. The bell in Tau still shows replies, mentions and those paper-to-live notices\.$/);
+    for (const t of [on, off]) assert.doesNotMatch(t, /ready for live|ready-for-live/);
+    assert.match(await line(true, false), /and a paper strategy that’s ready for live trading\.$/);
+    assert.match(await line(true, true), /The bell in Tau still shows replies, mentions and ready-for-live notices\.$/);
+  });
+
   test(`${name}: a theme switch whose save fails stays on this theme, says so, and changes nothing on the device`, async () => {
     const local = new Map([['tau_ui', current]]), session = sessionStore();
     const f = frontend({storage: storageFor(local), session, fetchImpl: path => {

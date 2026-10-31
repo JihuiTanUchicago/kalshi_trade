@@ -205,12 +205,48 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     const card = f.root.querySelector('#dash-ap').innerHTML;
     // Each count names its book, as the panel's does: "Strategies running 2" didn't say which money.
     assert.match(card, new RegExp(`<dt>Strategies running</dt><dd>2\u00a0paper <small>${IDLE_COUNT}</small></dd>`));
-    // Open, the counts read as before.
+    // Its realized figure: the waiting live strategy has realized nothing today, so the card shows the paper book, as
+    // with no live strategy, never "Live realized today (UTC) $0.00" (live money at work). Paper's own figure alone.
+    assert.doesNotMatch(card, /Live realized today|real money, after Kalshi fees/);
+    assert.match(card, /<dt><span class="pnl-win">[^<]*<\/span> paper P&amp;L, <span class="nobr">realized/);
+    // The panel the same: paper's day figure, never the live one.
+    assert.doesNotMatch(stats, /Live realized today|real money, after Kalshi fees/);
+    assert.match(stats, /paper <span class="nobr">realized/);
+    // A live trade that settled today (today_live_pnl) is live money realized: the live figure stays, in both.
+    const settled = {...status, today_live_pnl: -2};
+    f.S.ap = settled; f.paintDashAp();
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
+    await f.apUpdate(box, settled); await settle();
+    assert.match(box.querySelector('#apf-stats').innerHTML, /<dt>Live realized today \(UTC\)<\/dt>/);
+    f.S.ap = status;
+    // Open, the counts read as before, and the live strategy's day figure is the live book's.
     f.S.me.live_trading_available = true; f.paintDashAp();
     assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Strategies running<\/dt><dd>1\u00a0live\u00a0· 2\u00a0paper<\/dd>/);
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd>(?:<span[^>]*>)?\$0\.00(?:<\/span>)? <small>real money, after Kalshi fees<\/small>/);
     await f.apUpdate(box, status); await settle();
     assert.match(box.querySelector('#apf-stats').innerHTML, /class="apf-live">1 live<\/span>/);
+    assert.match(box.querySelector('#apf-stats').innerHTML, /<dt>Live realized today \(UTC\)<\/dt>/);
     f.clearTimers();
+  });
+
+  test(`${name}: the dashboard's autopilot-off card never says real money can be turned on while live trading is closed`, async () => {
+    const card = async (open) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(dashboard());
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        return response({messages: [], models: []});
+      }});
+      f.S.me.live_trading_available = open; f.S.me.user.autopilot = false;
+      await f.viewDashboard(); await settle();
+      f.S.ap = {autopilot: false, mode: 'off'}; f.paintDashAp();
+      const html = f.root.querySelector('#dash-ap').innerHTML;
+      f.clearTimers();
+      return html;
+    };
+    const shut = await card(false);
+    assert.match(shut, /Every move shows up in its activity feed\. Real money stays off: live trading isn’t open yet\.<\/p>/);
+    assert.doesNotMatch(shut, /until you turn it on/);
+    assert.match(await card(true), /Real money stays off until you turn it on separately\.<\/p>/);
   });
 
   // The panel's Running figure shares its row with another figure (two to a row on a phone): "1 live, placing

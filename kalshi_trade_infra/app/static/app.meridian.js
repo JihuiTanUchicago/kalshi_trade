@@ -787,9 +787,10 @@
   // unread_kinds): a week back, seven "Autopilot put ... on paper" lines ran past the first screen
   // before the pause among them. Shown from BELL_SUM_MIN new notices; the lines below are unchanged.
   const BELL_SUM_MIN = 4;
+  // A live-ready notice while live trading is closed (liveOpen) waits on paper, as the notice itself says: "ready for live" read as if it could go live.
   const BELL_SUM = [['deployed', (n) => `${n === 1 ? '1 strategy' : num(n) + ' strategies'} put on paper`],
     ['paused', (n) => `${num(n)} paused`], ['passed', (n) => `${num(n)} passed ${n === 1 ? 'its' : 'their'} paper test`],
-    ['live_ready', (n) => `${num(n)} ready for live`], ['reload_failed', () => 'auto-reload couldn\u2019t charge your card'],
+    ['live_ready', (n) => `${num(n)} ${liveOpen() ? 'ready for live' : 'cleared every paper-to-live check'}`], ['reload_failed', () => 'auto-reload couldn\u2019t charge your card'],
     ['comment', (n) => `${num(n)} comment${n === 1 ? '' : 's'}`], ['mention', (n) => `${num(n)} mention${n === 1 ? '' : 's'}`],
     ['share', (n) => `${num(n)} shared with you`]];
   function bellSummary(d) {
@@ -829,7 +830,7 @@
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${num(d.unread)} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${num(d.unread)} new</span>` : '');
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
-      list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
+      list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : `<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or ${liveOpen() ? 'is ready for live' : 'clears every paper-to-live check'}, and if auto-reload can\u2019t charge your card.</p>`;
     };
     // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
     // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.
@@ -1020,7 +1021,7 @@
         <div class="email-pref">
           <label class="switch"><input type="checkbox" id="email-optional" role="switch" aria-describedby="email-state"${off ? '' : ' checked'}><span>Updates and community email</span></label>
           <div id="email-flash"></div>
-          <p class="hint" id="email-state">${esc(emailState(off))}</p>
+          <p class="hint" id="email-state">${esc(emailState(off, liveOpen()))}</p>
           <p class="hint email-always"><b>Always sent:</b> safety alerts about a Bitcoin perps account you trade through Tau: a position that doesn’t match Tau’s orders, a position near liquidation, or heavy margin use. They protect real money, so this switch doesn’t stop them. Also an email when an auto-reload of your credits fails, since research pauses when they run out.</p>
         </div>
       </section>`;
@@ -1057,7 +1058,7 @@
       const now = !!(S.me && S.me.user && S.me.user.email_opt_out);
       sw.disabled = false; sw.checked = !now;
       const state = root.querySelector('#email-state');
-      if (state) state.textContent = emailState(now);
+      if (state) state.textContent = emailState(now, liveOpen());
     };
   }
   async function viewSettings() {
@@ -1636,7 +1637,7 @@
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).map((t, i) => (i ? `<span class="nobr">${t}</span>` : t)).join('\u00a0\u00b7 ')}${d.status !== 'running' && (d.status_why || d.status_reason) ? '\u00a0\u00b7 ' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
-        ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d)}</td>
+        ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d, liveOpen())}</td>
       <td data-lab="Status">${depState(d, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}${d.unrealized_pnl != null && d.open_positions ? ` <div class="sub-fig">est.${markOld(d.oldest_mark_ts) ? ' ' + markedAt(d.oldest_mark_ts) : ''}</div>` : ''}</td>
@@ -2911,10 +2912,11 @@
     syncApCopy(on);
     if (!host) return;
     if (!on) {
+      // With live trading closed (liveOpen) nothing can turn real money on: "until you turn it on separately" read as if one could.
       host.className = 'apcard'; repainted.delete(host);
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
-        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. Real money stays off until you turn it on separately.</p>${apCostLine()}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. ${liveOpen() ? 'Real money stays off until you turn it on separately.' : 'Real money stays off: live trading isn\u2019t open yet.'}</p>${apCostLine()}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
@@ -2936,6 +2938,11 @@
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     // A live one while live trading is closed places no orders: counted apart, as Deploy counts it.
     const liveIdle = liveOpen() ? 0 : +d.live_running || 0;
+    // Its realized figure is the live book's while a live strategy places orders, or while one settled a trade today
+    // (today_live_pnl). Live trading closed with nothing live realized today, the only live strategy waits: "Live
+    // realized today (UTC) $0.00" read as live money at work, so it shows the paper book, as with no live strategy.
+    // One book either way, never the two summed.
+    const liveFig = !!d.live_running && (liveOpen() || !!+d.today_live_pnl);
     // Each book by name, as the panel's Running figure says it: "Strategies running 2" didn't say which money they trade.
     const running = [[(+d.live_running || 0) - liveIdle, 'live'], [+d.demo_running || 0, 'demo'], [+d.paper_running || 0, 'paper']]
       .filter(([n]) => n > 0).map(([n, book]) => `${num(n)}\u00a0${book}`).join(SEP);
@@ -2948,7 +2955,7 @@
     // A paper book that has never closed a trade has no P&L yet: "$0.00" read as a result to a new account.
     const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : [`${pnlWin('all')} ${gl('paper P&amp;L, realized', 'realized')}`, pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEstGl(S.dashPaper.slippage_estimate)}`],
+      liveFig ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : [`${pnlWin('all')} ${gl('paper P&amp;L, realized', 'realized')}`, pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEstGl(S.dashPaper.slippage_estimate)}`],
       // With strategies paused (the dashboard's deployments, S.dashPaused) it says so: "None yet" read as nothing ever
       // having run beside the header's "2 paused, needs you" (walk 2026-10-31).
       ['Strategies running', `${running || (S.dashPaused ? `None${SEP}${num(S.dashPaused)} paused` : 'None yet')}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],

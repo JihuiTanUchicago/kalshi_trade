@@ -515,7 +515,9 @@ window.TauPage('autopilot', (T) => {
     }
     // Live figures once real money is armed or running. A paper-only panel used to show "Live P&L
     // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.
-    const liveInPlay = !!(d.autopilot_live || d.live_running);
+    // Live trading closed with nothing live realized today (today_live_pnl), nothing live places orders: "Live realized
+    // today (UTC) $0.00" read as live money at work, so the paper book shows, as on the dashboard's card. One book, never summed.
+    const liveInPlay = !!(d.autopilot_live || d.live_running) && (liveOpen() || !!+d.today_live_pnl);
     const pnl = (liveInPlay ? d.today_live_pnl : d.today_paper_pnl) || 0;
     // The live loss budget stops live trading; while live trading is closed nothing live trades, so it isn't shown
     // (a live position still settling counts in Live realized today).

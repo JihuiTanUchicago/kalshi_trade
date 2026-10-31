@@ -479,7 +479,10 @@ window.TauPage('strategy', (T) => {
       + ' Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money.';
     else if (road) {
       const left = roadLeft(road, s);
-      need = `Next rung, live: ${roadClear(road) ? 'its record clears every check. It trades live money only once you deploy it there' : `${num(left.length)} check${left.length === 1 ? '' : 's'} left, first ${left[0]}`}.`;
+      // With live trading closed a live deployment places no orders: "It trades live money only once you deploy it there"
+      // read as if deploying it were the only step left.
+      need = `Next rung, live: ${roadClear(road) ? (liveOpen() ? 'its record clears every check. It trades live money only once you deploy it there'
+        : 'its record clears every check, but live trading isn\u2019t open yet, so it can\u2019t trade live money') : `${num(left.length)} check${left.length === 1 ? '' : 's'} left, first ${left[0]}`}.`;
     }
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }

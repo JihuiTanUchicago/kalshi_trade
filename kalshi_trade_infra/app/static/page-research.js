@@ -6,7 +6,7 @@ window.TauPage('research', (T) => {
   'use strict';
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
-    failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
+    failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, liveOpen, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     dateFmt, LOG_STAMP,
@@ -94,7 +94,8 @@ window.TauPage('research', (T) => {
     const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
     const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${num(d.explored)} ideas, ${num(d.gated)} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
     const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
-    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${num(pt.strategies)} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${num(pt.trading)} trading, ${num(pt.round_trips)} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${num(pt.live_ready)} ready for live` : ''}.</p>` : '';
+    // Live trading closed (liveOpen), a strategy that clears every check waits on paper, as its bell notice says: "ready for live" read as if it could go.
+    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${num(pt.strategies)} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${num(pt.trading)} trading, ${num(pt.round_trips)} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${num(pt.live_ready)} ${liveOpen() ? 'ready for live' : 'cleared every paper-to-live check'}` : ''}.</p>` : '';
     const fams = {};
     (b.playbooks || []).forEach((p) => { (fams[p.family] = fams[p.family] || {})[p.status] = p; });
     const pbRows = Object.keys(fams).sort().map((f) => {

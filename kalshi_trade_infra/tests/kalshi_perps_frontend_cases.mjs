@@ -468,6 +468,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       const line = await ladder({deployments: [d(2, 'demo', 5, -1.2)]}, road);
       assert.match(line, /Next rung, live: its record clears every check\. It trades live money only once you deploy it there\./);
       assert.doesNotMatch(line, /autopilot is off/);
+      // Live trading closed on the server: a live deployment places no orders, so the line never says deploying it is
+      // all that is left. It says live trading isn't open yet, in the words the rest of the app uses.
+      const shut = await ladder({deployments: [d(2, 'demo', 5, -1.2)]}, road, {live_trading_available: false});
+      assert.match(shut, /Next rung, live: its record clears every check, but live trading isn’t open yet, so it can’t trade live money\./);
+      assert.doesNotMatch(shut, /only once you deploy it there/);
     }
     // Paper only: the next rung is demo, and it names the missing demo key.
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
@@ -555,6 +560,16 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 separate events · paused, so not growing'));
     assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
     assert.ok(lines.includes('Its paper record toward live: every check cleared. Live money only if you deploy it there'));
+    // Live trading closed on the server: deploying it live places no orders, so the cleared record says live trading isn't
+    // open yet, never "Live money only if you deploy it there". The rows' other lines are unchanged.
+    const g = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(4, {...r, trades: 40, events: 30, failing: []}), dep(1, r)], open_positions: []}) : response({})});
+    g.S.me.live_trading_available = false;
+    await g.viewDeploy(); await flush(); await flush();
+    const shut = g.root.querySelectorAll('.road-line').map((el) => el.innerHTML.replace(/<[^>]+>/g, '').replace(/\u00a0/g, ' '));
+    g.clearTimers && g.clearTimers();
+    assert.ok(shut.includes('Its paper record toward live: every check cleared, but live trading isn’t open yet'), shut.join('\n'));
+    assert.ok(shut.includes('Its paper record toward live: 12/30 trades · 10/20 separate events · enough in about 2 days at its pace'), shut.join('\n'));
+    assert.ok(shut.every((l) => !/if you deploy it there/.test(l)), shut.join('\n'));
     // The research clearance in the words the Strategies list uses ("cleared to trade"), never the internal "gatekeeper".
     assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: clearance to trade, P&amp;L'), lines.join('\n'));
     assert.ok(lines.every((l) => !/gatekeeper|candidate/.test(l)), lines.join('\n'));
