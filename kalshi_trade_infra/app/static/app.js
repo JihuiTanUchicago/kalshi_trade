@@ -11,8 +11,8 @@
     researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
     PAPER_NET, NOT_MARKED, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
-    LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt, MKT_SHORT,
-    catOrder, NO_MARKET, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
+    LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
+    catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
     fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
     statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
     paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
@@ -139,15 +139,14 @@
   // refuses to deploy it in any mode, so its page offers no deploy button and says what to do instead.
   const CODE_RESEARCH_ONLY = 'Strategies written as code run only in the research sandbox, even after passing every check: paper, demo and live trading run rule-based strategies only. To trade this idea, ask for a rule-based version in a new research session.';
   const PERPS_SCENARIO = 'Research scenario: at most 1× capital, fixed 12 bps taker fees and 5 bps adverse slippage per fill, plus settled funding. These are uncalibrated cost assumptions; fills use the next bar’s open. No margin or liquidation model. Short losses can exceed capital.';
-  // A market by the catalog's label. A key the catalog no longer lists (a retired market) reads "Unlisted market",
-  // never the raw key, as the autopilot card says one (apMarketName).
-  const marketLabel = (k) => { const m = S.me && (S.me.markets || []).find((x) => x.key === k); return m && m.label ? m.label : 'Unlisted market'; };
-  const marketShort = (k) => (!k ? NO_MARKET : MKT_SHORT[k] || marketLabel(k));
-  // A market named on its own, in a sentence or as a row's market ("Bitcoin up or down in 15 minutes"), by its full
-  // label, as Billing's lines and every position name it; the short one stays for chips and meta lines joined by
-  // " · ". The autopilot said "Researching BTC 15-min up/down" and Deploy's rows "BTC 15-min up/down" above
-  // positions in "Bitcoin up or down in 15 minutes". A key the catalog doesn't list reads as marketShort does.
-  const marketFull = (k) => { const m = k && ((S.me && S.me.markets) || []).find((x) => x.key === k); return m && m.label ? m.label : marketShort(k); };
+  // A market's two names, both from the shared core (mktShort, mktLong: core.js says which is for what). The short
+  // one for chips and meta lines joined by " · "; the long one, the server's own name for it, in a sentence or as a
+  // row's market, as Billing's lines and every position name it. The autopilot said "Researching BTC 15-min up/down"
+  // and Deploy's rows "BTC 15-min up/down" above positions in "Bitcoin up or down in 15 minutes". A key nothing
+  // knows reads "Unlisted market", never the raw key.
+  const marketShort = (k) => mktShort(k, S.me);
+  const marketFull = (k) => mktLong(k, S.me);
+  const marketKnown = (k) => mktKnown(k, S.me);
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
   // Another hour of a ladder a market here keeps to one close (KXBTCD-26OCT2612, the noon "Bitcoin above a set price"
@@ -157,7 +156,7 @@
     const sib = ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
     if (!sib || h == null) return null;
     const at = ` at ${hourET(sib.close_hour_et)} ET`, to = ` at ${hourET(h)} ET`;
-    const pair = [marketShort(sib.key), sib.label || marketShort(sib.key)];
+    const pair = [marketShort(sib.key), marketFull(sib.key)];
     return pair.every((l) => l.includes(at)) ? pair.map((l) => l.replace(at, to)) : null;
   };
   const seriesLabel = (ticker, i) => {
@@ -175,7 +174,7 @@
     const at = '$' + num(k[2]) + (k[3] || ''), close = name.replace(/^Bitcoin range /, '');
     return k[1] === 'B' ? `Bitcoin in the bucket around ${at} ${close}` : `Bitcoin range end at ${at}, ${close.replace(/^at /, '')}`;
   };
-  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : rangeName(ticker); };
+  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(marketFull(m.key), ticker) : rangeName(ticker); };
   // A position's contract as people name it: its market's plain label with its own strike ("Bitcoin $68,500
   // or above at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
   // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
@@ -2809,7 +2808,8 @@
   // sentence, without the "Autopilot" lead-in or Markdown; the switch note reads as the switch. The time
   // is relative, with the clock time and zone on hover.
   function apMoveText(la) {
-    const raw = String((la && la.text) || '').replace(/[*_`]+/g, '').replace(/\s+/g, ' ').trim();
+    // Markdown's marks go; an underscore inside a word stays (an older line's "on btc_daily" read "on btcdaily").
+    const raw = String((la && la.text) || '').replace(/[*`]+|(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g, '').replace(/\s+/g, ' ').trim();
     const flip = /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(raw);
     if (flip) return `${flip[1] ? 'Live autopilot' : 'Autopilot'} switched ${/on/i.test(flip[2]) ? 'on' : 'off'}`;
     // A strategy's name can hold " — " ("Fade tails — v2"), where the line is cut to its first clause:
@@ -2825,9 +2825,9 @@
     t = t.replace(/^\[[a-z-]+ #\d+\]\s*/, '').replace(/^Paper forward gate: (.+?) PASSED\b.*$/, '$1 passed its paper forward test')
       .replace(/^Paper forward gate: (.+?) passed on paper\b.*$/, '$1 passed on paper, not added to the candidates')
       .replace(/^Paper forward gate: (.+?) did not pass\b.*$/, '$1 did not pass its paper forward test');
-    // agent.act names a research session's market by its key ("on btc15m"); say it the way the app does.
-    const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
-    t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) || MKT_SHORT[k] ? 'on ' + marketShort(k) : all);
+    // agent.act named a research session's market by its key ("on btc15m"); in this sentence it reads by its long
+    // name, as the server's lines name it today.
+    t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => marketKnown(k) ? 'on ' + marketFull(k) : all);
     if (whole(t).length > 90 && t.indexOf(': ') > 10) t = t.slice(0, t.indexOf(': '));
     t = whole(t);
     t = clipWords(t, 90);
@@ -2842,7 +2842,7 @@
     const s = String(n || '');
     const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
     if (m) return marketFull(m.key);
-    if (MKT_SHORT[s]) return MKT_SHORT[s];
+    if (marketKnown(s)) return marketFull(s);
     // A label has a space or mixed case ("Chicago high temp"); a key is one case, no spaces.
     if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
     return contractMarket(s) || 'an unlisted market';
@@ -3596,7 +3596,7 @@
     demoSpan, DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
-    marketKalshiUrl, marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money,
+    marketKalshiUrl, marketFull, marketKnown, marketPicker, marketShort, markQuietRows, mdLite, money,
     notice, num, olderRows, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,

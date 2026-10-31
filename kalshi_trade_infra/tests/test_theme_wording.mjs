@@ -47,14 +47,18 @@ test('the autopilot panel’s live gate says “Live trading isn’t open yet.�
 });
 
 test('a session with no picked market is named as a market in both themes, display only', () => {
-  // One label, in the shared core (core.js), that each theme's marketShort draws.
-  const m = read('static/core.js').match(/const NO_MARKET = '([^']*)';\n/);
+  // One label, in the shared core (core.js), that its market names (mktShort, mktLong) say for no market, and each
+  // theme's marketShort and marketFull draw.
+  const core = read('static/core.js');
+  const m = core.match(/const NO_MARKET = '([^']*)';\n/);
   assert.ok(m);
   assert.equal(m[1], 'Any market (agent’s choice)');
+  assert.match(core, /\n {2}const mktLong = \(k, me\) => \(!k \? NO_MARKET : /);
+  assert.match(core, /\n {2}const mktShort = \(k, me\) => \(!k \? NO_MARKET : /);
   for (const [bundle] of Object.values(BUNDLES)) {
     const src = read(bundle);
-    assert.match(src, /\n {4}[^\n]*\bNO_MARKET\b[^}]*\} = window\.TauCore;/, bundle);
-    assert.match(src, /\n {2}const marketShort = \(k\) => \(!k \? NO_MARKET : /, bundle);
+    assert.match(src, /\n {4}[^\n]*\bmktShort\b[^}]*\} = window\.TauCore;/, bundle);
+    assert.match(src, /\n {2}const marketShort = \(k\) => mktShort\(k, S\.me\);/, bundle);
     assert.doesNotMatch(src, /\? 'Agent’s choice' :|const NO_MARKET = /, bundle);
   }
   // What the research model is sent is not this label: the "open" angle keeps its own words.

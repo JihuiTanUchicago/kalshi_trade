@@ -7,7 +7,7 @@ window.TauPage('research', (T) => {
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, liveOpen, loading, logTime, marketPicker, marketShort,
-    markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
+    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionEstimate, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     dateFmt, LOG_STAMP,
     whyFailedHtml, wireMarketPicker
@@ -256,7 +256,7 @@ window.TauPage('research', (T) => {
     // Options line. A key it doesn't know is never shown as typed.
     const wantMkt = new URLSearchParams(location.search).get('market');
     const wantRow = wantMkt ? (me.markets || []).find((m) => m.key === wantMkt) : null;
-    const notOpen = wantMkt && !wantRow ? `${MKT_SHORT[wantMkt] || 'The market you picked'} isn\u2019t open for research right now` : '';
+    const notOpen = wantMkt && !wantRow ? `${marketKnown(wantMkt) ? marketFull(wantMkt) : 'The market you picked'} isn\u2019t open for research right now` : '';
     // Under the credits a session needs to start, the form says so up top. Start refused for it (402) moves
     // that note beside Start instead of adding the server's own words under it: the same warning twice.
     const lowSaid = `You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start.`;

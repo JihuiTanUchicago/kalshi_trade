@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.trading.markets import (CROSS_FEATURES, FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES, Snapshot, compatible_cadence,
-                         cross_feature_names)
+                         cross_feature_names, customer_name)
 from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 
 OPS = (">", ">=", "<", "<=")
@@ -1311,6 +1311,14 @@ def _grouped(v) -> str:
     return "{:,}".format(int(v)) if v.is_integer() and abs(v) < 1e15 else "%g" % v
 
 
+def _market_names(keys: List[Optional[str]]) -> str:
+    """Markets by their long names (markets.customer_name), never a raw key; a spec stored without one loses
+    the line (KeyError, for describe's say) rather than read "an unlisted market"."""
+    if not all(keys):
+        raise KeyError("market")
+    return ", ".join(customer_name(k) for k in keys)
+
+
 def describe(spec: Dict) -> List[str]:
     """Plain-language reading of a spec, for people who do not read JSON. Display only: a stored spec
     older or thinner than this code (a seeded row with no `model`, a field stored as null) loses just
@@ -1397,9 +1405,8 @@ def describe(spec: Dict) -> List[str]:
             return ["Relative-value pair across %s: buys YES on the underpriced leg and NO on the "
                     "overpriced leg, holding both to settlement." % kind] if kind else []
         say(pair)
-        say(lambda: "Legs: %s." % ", ".join(MARKETS[m].customer_label if m in MARKETS else m for m in involved_markets(spec)))
+        say(lambda: "Legs: %s." % _market_names(involved_markets(spec)))
     if spec.get("pool"):
         say(lambda: "Judged on the pooled trades of %s; trades %s." % (
-            ", ".join(MARKETS[m].customer_label if m in MARKETS else m for m in involved_markets(spec)),
-            MARKETS[spec["market"]].customer_label if spec["market"] in MARKETS else spec["market"]))
+            _market_names(involved_markets(spec)), _market_names([spec["market"]])))
     return lines

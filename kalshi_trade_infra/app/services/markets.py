@@ -55,3 +55,11 @@ def researchable_markets(cur, ready_series: Optional[Set[str]] = None) -> List[D
                     **({"close_hour_et": m.close_hour_et} if m.close_hour_et is not None else {}),
                     **({"kind": "perpetual", "research_only": True} if m.kind == "perpetual" else {})})
     return out
+
+
+def unlisted_names(listed: List[Dict]) -> Dict[str, str]:
+    """{key: long name} for each market `listed` (researchable_markets) leaves out: the Bitcoin perpetual while
+    perps are closed, a subnet whose feed has no candles yet. A session, strategy or deployment kept on one is
+    still named as the server's own lines name it (markets.customer_name), never "Unlisted market"."""
+    keys = {r.get("key") for r in listed}
+    return {k: m.customer_label for k, m in MARKETS.items() if k not in keys}

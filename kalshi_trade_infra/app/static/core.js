@@ -396,6 +396,25 @@
   // row shows it beside other labels ("Agent’s choice · Session" didn’t say it was the market). Display only:
   // the stored market stays empty and the research model is sent nothing new.
   const NO_MARKET = 'Any market (agent’s choice)';
+  // ---------- a market's two names ----------
+  // Every market has one long name and one short name, and every page says it by one of the two, from here:
+  //   long  (mktLong): the server's customer_label (app/trading/markets.py), sent as the catalog's `label` (me.markets)
+  //         or, for a market the catalog leaves out (the perpetual while perps are closed), me.market_names. For a
+  //         sentence, a row's or a page's own market, a position. The server's feed, chat, bell and email lines say it too.
+  //   short (mktShort): MKT_SHORT above, for chips, filters and meta lines joined by " · ".
+  // Each falls back to the other, and a key neither knows reads UNLISTED_MARKET, never the raw key; no market at all
+  // is NO_MARKET. Walked 2026-10-31: one market read "BTC 15-min up/down", "Bitcoin 15-minute" and "Bitcoin up or
+  // down in 15 minutes", and a perpetual strategy's page "BTC perpetual, no expiry" over a Market line "Unlisted market".
+  // `me` is the bundle's signed-in answer (S.me); nothing here reads the page.
+  const UNLISTED_MARKET = 'Unlisted market';
+  const mktCatalog = (k, me) => {
+    const m = k && me && (me.markets || []).find((x) => x.key === k);
+    return (m && m.label) || (k && me && me.market_names && me.market_names[k]) || '';
+  };
+  const mktLong = (k, me) => (!k ? NO_MARKET : mktCatalog(k, me) || MKT_SHORT[k] || UNLISTED_MARKET);
+  const mktShort = (k, me) => (!k ? NO_MARKET : MKT_SHORT[k] || mktCatalog(k, me) || UNLISTED_MARKET);
+  // Whether a key is a market the app can name (a line quoting one by its key can be said in words).
+  const mktKnown = (k, me) => !!(k && (MKT_SHORT[k] || mktCatalog(k, me)));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin $68,500 or above at 5pm ET", as Kalshi names it), so an open position never shows only the raw ticker. Unknown: ''.
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
@@ -1059,10 +1078,10 @@
   // What it is doing right now in a word or two, for the pill on every page: "researching",
   // "reviewing", "2 on paper", or "paused" while billing stops it. '' when there's nothing to add.
   // A market the autopilot names (the status read's research list, and its story, which quotes that
-  // list): the app's own label. The server sends a market's label, or the run's raw key when the
-  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a listed market, key or series, reads
-  // as its full label (marketFull, as Billing's research lines say it), a key only the app knows as its
-  // short label, and a key nothing knows as "an unlisted market", never the raw key.
+  // list): the app's own label. The server sends a market's long name (markets.customer_name), or "an unlisted
+  // market"; an older line quoted the run's raw key ("btc15m", a series like "KXBTCD"). A market the app can
+  // name, by key, label or series, reads by its long name (mktLong, as Billing's research lines say it), and a
+  // key nothing knows as "an unlisted market", never the raw key.
   const AP_PICKING = "a market it’s still picking";
   // The card leads with why its paper strategies hold nothing (d.idle). The autopilot keeps working
   // meanwhile, and the card never said so: someone back after a day read "Nothing open right now" and
@@ -1196,8 +1215,8 @@
     researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, LOG_STAMP, WEEKDAY_DAY, clock, tzName,
     logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
     PAPER_NET, NOT_MARKED, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
-    LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt, MKT_SHORT,
-    catOrder, NO_MARKET, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
+    LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt,
+    catOrder, mktLong, mktShort, mktKnown, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
     fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
     statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
     paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,

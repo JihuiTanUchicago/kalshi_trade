@@ -48,7 +48,7 @@ from app.research import rsi_repair
 from app.trading import spec as specmod
 from app.research import stats
 from app.adapters.llm.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model, public_message
-from app.trading.markets import MARKETS
+from app.trading.markets import MARKETS, customer_name
 from app.services import markets as market_service
 from app.services import research_memory
 from app.services import research_leads
@@ -2882,14 +2882,15 @@ def run_research(
             # The autopilot named a catalog market that dropped out of the universe before the run
             # started (catalog refresh / restart). Keep the angle and let the picker choose instead
             # of failing the run; a user-pinned market still fails cleanly below.
-            log("step", "%s is no longer in the market list — picking another market for this angle." % market)
+            # In words: the feed read the raw key ("kxgone is no longer in the market list").
+            log("step", "The market this angle was queued on is no longer in the market list — picking another market for this angle.")
             market = None
         if (market and run.get("brief") and not ckpt.get("market")
                 and not focus_keys(cur, user_id, [market])):
             # A delegated run queued on a market outside the user's focus (an older queue entry, or
             # another path): keep the angle, let the picker choose inside the focus.
             log("step", "%s is outside your autopilot focus — picking a market inside it for this angle."
-                % (MARKETS[market].customer_label if market in MARKETS else market))
+                % customer_name(market))
             market = None
         if market and run.get("brief") and not ckpt.get("market") and not autopilot_scope_ok(market):
             # A delegated run queued on a coin the autopilot no longer researches (before the scope
@@ -2904,7 +2905,7 @@ def run_research(
             # Queued on a market long-term memory has since marked exhausted: keep the angle, pick another.
             log("step", "Every kind of idea has been tried on %s with nothing passing, so autopilot no longer "
                 "researches it — picking another market for this angle."
-                % (MARKETS[market].customer_label if market in MARKETS else market))
+                % customer_name(market))
             market = None
         if not market:  # user left it to the agent — it picks the market from the idea first
             if resuming and ckpt.get("market"):
@@ -4586,7 +4587,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 # run id, which the review's context keeps but the customer never needs.
                 return ("Started a fresh research session on a market the research specialist picks. %s %s, "
                         "so this angle goes to one that isn’t on cooldown. Follow it on the Research page."
-                        % (MARKETS[market].customer_label if market in MARKETS else market,
+                        % (customer_name(market),
                            "keeps failing today" if "backed off" in why else "was researched in the last few hours")), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
@@ -4597,7 +4598,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if not sid and off_scope:
             return ("Crypto research is %s only now, so I started this angle on a market the research "
                     "specialist picks instead of %s. Follow it on the Research page."
-                    % (_scope_coin_words("and"), MARKETS[off_scope].customer_label if off_scope in MARKETS else off_scope)), None
+                    % (_scope_coin_words("and"), customer_name(off_scope))), None
         if not sid and unsupported:
             return ("%s isn’t a market Tau supports, so I started this angle on a supported market the "
                     "research specialist picks. Follow it on the Research page." % unsupported), None
@@ -4606,7 +4607,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         # key and three terms of art. It keeps its first words (chat_repository.last_autopilot_action).
         return ("Started a fresh research session on %s. Anything it finds has to pass the same tests as "
                 "any session before it trades, even on paper. Follow it on the Research page."
-                % (MARKETS[market].customer_label if market in MARKETS else (market or "a market I’ll choose")), None)
+                % (customer_name(market) if market else "a market I’ll choose"), None)
     # Should be unreachable for a well-formed action. Log the raw dict so a genuinely new/malformed
     # action kind is diagnosable from the agents journal instead of only this opaque chat line.
     print("[agents] copilot emitted an unhandled action: %r" % (action,), flush=True)
@@ -4717,7 +4718,7 @@ def false_live_line(text: str, deps: List[Dict], customer: bool = False) -> Opti
 
 def _market_words(key: Optional[str]) -> str:
     """A market as a customer reads it: its label, never its raw key."""
-    return MARKETS[key].customer_label if key in MARKETS else "an unlisted market"
+    return customer_name(key)
 
 
 def _deployment_words(d: Dict) -> str:
