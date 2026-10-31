@@ -6142,7 +6142,7 @@ fundsWalkCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboa
 fundsHistoryCases({name: 'Tau', frontend, fundsData: funds});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
-  source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});
+  source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds, apStatus: apOn});
 creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
 writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});

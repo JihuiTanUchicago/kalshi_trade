@@ -1378,6 +1378,21 @@
     let next = null; try { next = host.querySelector(key); } catch (e) { /* a selector the page cannot read */ }
     if (next && next.focus) next.focus({ preventScroll: true });
   }
+  // A Try again (a read) that brings in what failed draws over its notice, the button with it, and keyboard focus fell
+  // to the page's body (Billing's saved cards, System's map, Explore's list, the dashboard's autopilot card). Once the
+  // read is done, focus goes into what came in: `head` (a selector in `box`, or an element), else the first heading in
+  // `box`, else `box` itself, made focusable for a script, as a page change hands its h1 focus (pageStart). A retry that
+  // failed again leaves its Try again in `box`, and focus goes there. Only when focus was lost: a button the read left
+  // in place (busy() gives it focus back) or a control the reader moved to keeps it.
+  const RETRY_BTN = '[data-retry], [data-xretry], [data-apcard="again"]';
+  function retried(box, head) {
+    const a = document.activeElement;
+    if (!box || box.isConnected === false || (a && a !== document.body && a.isConnected !== false)) return;
+    const named = typeof head === 'string' ? box.querySelector(head) : head;
+    const to = box.querySelector(RETRY_BTN) || named || box.querySelector('h1, h2, h3') || box;
+    if (!/^(?:BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(to.tagName) && to.getAttribute('tabindex') == null) to.setAttribute('tabindex', '-1');
+    if (to.focus) to.focus({ preventScroll: true });
+  }
 
   // ---------- charts ----------
   // devCurve (optional): a second, realized series replayed read-only against
@@ -2714,7 +2729,8 @@
       host.className = 'apcard on';
       repaintKeep(host, () => S.apFailing ? `<div class="apcard-main">${notice(AP_CARD_UNREAD)}<button type="button" class="btn sm" data-apcard="again">Try again</button></div>` : '');
       const again = host.querySelector('[data-apcard="again"]');
-      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float')));
+      // Back, the card (named Autopilot) takes focus: the button went with the notice.
+      if (again) again.onclick = () => busy(again, () => refreshAutopilot(document.getElementById('autopilot-float'))).then(() => retried(document.getElementById('dash-ap')));
       return;
     }
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
@@ -3512,7 +3528,7 @@
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
     marketKalshiUrl, marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money,
     notice, num, olderRows, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
-    paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
+    paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
     runTag, runWaitLine, runwayLabel, S, sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, theme: 'tau', tone, topupCharge, tradePrice, trDay, tzName,

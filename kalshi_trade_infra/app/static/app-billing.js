@@ -6,7 +6,7 @@ window.TauPage('billing', (T) => {
   const {
     alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
     halfUp, ICON, KIND_LABEL, loadFail, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
-    root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote, WJ,
+    retried, root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote, WJ,
     WEEKDAY_DAY
   } = T;
   const CARDS_UNREAD_BUY = 'Your saved cards didn\u2019t load, so buying credits waits until they do.';
@@ -114,7 +114,9 @@ window.TauPage('billing', (T) => {
       root.querySelector('#main').innerHTML = `<div id="flash"></div>${main}`;
       if (!d.configured) return;
       const cardsAgain = root.querySelector('#cards [data-retry]');
-      if (cardsAgain) cardsAgain.onclick = () => busy(cardsAgain, () => load().catch((err) => flash('#flash', err.message, 'bad')));
+      // The cards back, focus goes to their panel's heading (Payment method); still unread, to the new Try again.
+      if (cardsAgain) cardsAgain.onclick = () => busy(cardsAgain, () => load().catch((err) => flash('#flash', err.message, 'bad')))
+        .then(() => retried(root.querySelector('#main'), '.panel h2'));
       // top-up fee preview
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
       // At the user's own pace, how long the amount being bought would last: picks the amount for them.

@@ -12,7 +12,7 @@ window.TauPage('explore', (T) => {
     contractMarket, contractMkt, contractShort, errText, esc, exitWord, EXPLORE_NO_FEED, EXPLORE_WAIT, exploreEmpty,
     exploreNoBtc, exploreNoFeed, exploreShowChips, fig, hourET, ICON, kalshiRef, kalshiUrl, keepFocus, keepZone,
     liveClose, loading, markedAt, marketShort, marketSpot, markFig, markOld, midOf, MKT_GONE, MKT_STATUS, mktLabel,
-    money, NO_MARK, NOT_MARKED, notice, num, pageLede, paint, paintRows, phone, poll, root, rulesText, S, SEP,
+    money, NO_MARK, NOT_MARKED, notice, num, pageLede, paint, paintRows, phone, poll, retried, root, rulesText, S, SEP,
     settleAt, shell, sinceMin, smooth, spotListNote, spotSect, strikeIn, sum4, theme, tzName, usd, vsHtml, when
   } = T;
   // Each theme heads the list, sets out its figures, its rows and its sort its own way (Meridian's rows carry its
@@ -255,6 +255,9 @@ window.TauPage('explore', (T) => {
     // the line under the figures says how old it is. Only the newest read draws: a poll answering after a
     // search doesn't put the old list back.
     let seq = 0, shown = null;
+    // The list's Try again: the list drew over the button, and focus fell to the page's body. The list has no heading of
+    // its own, so focus goes to the page's (Explore), or to the new Try again when the read failed again.
+    const reread = () => load().then(() => retried(body, root.querySelector('main h1')));
     // `typed`: the read a search typed asked for. The list changed under the box with nothing said (the figures aren't a
     // live region: their age ticks on every poll), so that read says how many markets match, or that none do.
     const load = async (cfg, typed) => {
@@ -266,7 +269,7 @@ window.TauPage('explore', (T) => {
         if (cfg) { if (shown) paintFigs(shown); throw e; }
         // Said aloud too (failure walk 2026-10-31): the failed list was a plain heading, and a screen reader that
         // pressed Try again, or opened the page, heard nothing at all.
-        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = () => load();
+        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = reread;
         announce(`Markets didn’t load. ${e.message}`, true); return;
       }
       if (mine !== seq || !tau && gen !== S.gen) return;
@@ -279,10 +282,10 @@ window.TauPage('explore', (T) => {
         if (f.btc && !exploreNoFeed(d)) {
           paint(body, exploreNoBtc(f.q));
           const again = body.querySelector('[data-xretry]');
-          if (again) again.onclick = () => load();
+          if (again) again.onclick = reread;
           body.querySelector('[data-xall]').onclick = () => setShow(false);
         } else if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2><p>Try a broader search, or clear it to see the hottest markets.</p></div>`);
-        else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = () => load(); }
+        else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = reread; }
         return;
       }
       shown = d;
