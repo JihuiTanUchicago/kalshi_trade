@@ -23,7 +23,7 @@
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
-    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode,
     sessionNo, olderRows
   } = window.TauCore;
 
@@ -2922,7 +2922,7 @@
       host.className = 'apcard'; repainted.delete(host);
       host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>Autopilot off</span>
         <h2>Let the autopilot trade for you</h2>
-        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. ${liveOpen() ? 'Real money stays off until you turn it on separately.' : 'Real money stays off: live trading isn\u2019t open yet.'}</p>${apCostLine()}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
+        <p>It picks markets, tests ideas on data it never saw, and runs the ones that pass on paper money. Every move shows up in its activity feed. ${liveOpen() ? 'Real money stays off until you turn it on separately.' : 'Real money stays off: live trading isn\u2019t open yet.'}</p>${apCostLine()}${apOffCost(d, 'apcard-cost')}${d && Array.isArray(d.focus) ? `<p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}</div>
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
@@ -3116,7 +3116,7 @@
     const researching = !!(d && d.research && d.research.active && d.research.active.length);
     if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>${PNL_WINDOW.week}:</b> ${researching
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
-      : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
+      : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : apOffCost(d, 'ap-week-left')}</section>`;
     // Its note on what each row counts is folded under "How these are counted": shown whole, it read as a dense
     // paragraph under the figures to a new account. Its words are unchanged inside.
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>${PNL_WINDOW.week}</h3><dl>
@@ -3163,14 +3163,42 @@
     const pace = reloadIn ? `; at ${at} auto-reload adds ${usd(me.auto_reload.amount)} ${inDays(w.reload_days)} (card charged ${usd(me.auto_reload.charge)})`
       : w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at ${at}`
       : paceTooSoon(w.pace_days, (+w.research_credits || 0) + (+w.checkin_credits || 0)) ? ', too soon to say how long they last: its first day sets the pace' : '';
+    // No pace of its own yet (nothing spent, or a first day): what a session usually costs stands in for it.
+    const est = !reloadIn && w.runway_days == null ? apSessionLine(d) : '';
     // "Uses credits until your balance is under $1.00, then pauses (auto-reload adds $20.00 at $5.00)" read
     // as a pause; with auto-reload on the balance never gets there, the card is charged again and again.
     // A card just declined reads as no auto-reload: the floor is what stops it then.
     const ar = d && d.reload_failed ? null : me.auto_reload;
     const cap = ar ? `each time your balance falls to ${usd(ar.threshold)}, auto-reload charges your card${reloadIn ? '' : ` ${usd(ar.charge)} for ${usd(ar.amount)} more`} and research carries on.${me.min_run_balance != null ? ` With auto-reload off, it pauses when your balance is under ${usd(me.min_run_balance)}.` : ''}`
       : `it uses credits${me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : ''}.`;
-    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: ${cap}${d && d.reload_failed ? ` <b>Auto-reload failed.</b> ${esc(d.reload_failed)} <a href="/billing">Update your card</a>.` : ''} <a href="/billing">Billing</a> lists every charge.</p>`;
+    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}.${est ? ' ' + est : ''} It has no daily spending cap: ${cap}${d && d.reload_failed ? ` <b>Auto-reload failed.</b> ${esc(d.reload_failed)} <a href="/billing">Update your card</a>.` : ''} <a href="/billing">Billing</a> lists every charge.</p>`;
   }
+  // What a research session on the autopilot's model usually costs and how far the credits go at that rate
+  // (core's apSessionCost, on the research form's own figure from /api/research/estimate), said where it is
+  // switched on and until its own pace shows. The estimate is read only while a line can use it, never on the
+  // status poll, and kept 10 minutes, as long as the server keeps its typical figure; the card and the panel
+  // repaint when it lands. A read that fails says nothing new. '' with payments off or no figure for the model.
+  const SESSION_EST_KEEP_MS = 600000;
+  function apSessionLine(d) {
+    const me = S.me;
+    if (!me || !me.billing_enabled) return '';
+    const c = S.sessionEst;
+    if (!c || Date.now() - c.at >= SESSION_EST_KEEP_MS) {
+      S.sessionEst = { at: Date.now(), d: c ? c.d : null };
+      api('/api/research/estimate', undefined, { keep: true }).then((est) => {
+        S.sessionEst = { at: Date.now(), d: est };
+        paintDashAp();
+        const box = document.getElementById('autopilot-float');
+        if (box && apExpanded() && S.ap) apUpdate(box, S.ap);
+      }, () => {});
+    }
+    const models = me.models || {}, key = (d && d.model) || models.default;
+    const m = (models.models || []).find((x) => x.key === key);
+    return apSessionCost(sessionEstimate(S.sessionEst.d, key), m && m.label, me);
+  }
+  // The same line on its own, in a paragraph of `cls`: under the off card's cost line, in the off panel, and in an
+  // autopilot week with nothing in it yet.
+  const apOffCost = (d, cls) => { const s = apSessionLine(d); return s ? `<p class="${cls}">${s}</p>` : ''; };
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
   function apCostLine() {
@@ -3628,7 +3656,7 @@
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apQueued, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
-    apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
+    apWeek, apOffCost, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE, LOG_STAMP, closeClock, liveClose,
     clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, demoCapital, demoNoClose, demoPnl, FEES_NET, inBalance, openBasis, openCost, openFig, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
@@ -3637,7 +3665,7 @@
     marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money, notice, num, olderRows, overDays,
     paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
-    researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
+    researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S, sessionEstimate,
     sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
     stripeFail, syncMeBilling, theme: 'meridian', tone, topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, wakers,
     WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker

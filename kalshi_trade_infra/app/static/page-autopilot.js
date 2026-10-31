@@ -7,7 +7,7 @@ window.TauPage('autopilot', (T) => {
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apQueued, apReloadFailed, apShowFocus,
-    apEvery, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
+    apEvery, apOffCost, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, pnlWin, refreshAutopilot, repaintKeep, S, SEP, settleAt, sinceMin, slipEstGl, theme, usd, waitNote, waitSpan,
     wakers
   } = T;
@@ -565,7 +565,7 @@ window.TauPage('autopilot', (T) => {
     const pulseEl = idleEl && box.querySelector('#apf-pulse'), idleSay = pulseEl && apIdleLine(box, true), sayEl = pulseEl && pulseEl.querySelector('.vh');
     if (sayEl && pulseEl.apSaid !== idleSay) { pulseEl.apSaid = idleSay; sayEl.textContent = idleSay; }
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
-    const week = box.querySelector('#apf-week'); if (week) repaintKeep(week, (open) => d.autopilot ? apWeek(d.week, d, open) : '');
+    const week = box.querySelector('#apf-week'); if (week) repaintKeep(week, (open) => d.autopilot ? apWeek(d.week, d, open) : apOffCost(d, 'ap-week-left'));
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);
     const fsel = box.querySelector('#apf-focus');

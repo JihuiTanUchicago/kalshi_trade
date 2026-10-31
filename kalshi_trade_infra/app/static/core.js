@@ -1140,6 +1140,39 @@
   // A days figure as when something happens: "in about 2 days", "in under a day".
   const inDays = (days) => 'in ' + runwayLabel(days).toLowerCase();
 
+  // ---------- what a research session usually costs ----------
+  // The research form's figure for one model, from /api/research/estimate: the user's own median on that model
+  // (yours_by_model; an older server sends only "yours", their own on any model), else the typical one for that
+  // model. {v, own} or null, `own` being 'model', true or false as the form's costBasis reads it. The research
+  // form and the autopilot's cost line both read it here, so the two pages can't show different figures.
+  const sessionEstimate = (est, key) => {
+    if (!est || !key) return null;
+    const byModel = est.yours_by_model, mine = byModel ? byModel[key] : est.yours;
+    if (mine != null) return { v: +mine, own: byModel ? 'model' : true };
+    const typical = (est.typical || {})[key];
+    return typical == null ? null : { v: +typical, own: false };
+  };
+  // What switching the autopilot on is likely to cost, in the customer's credits: the research form's figure for
+  // the autopilot's model (`label`, the model picker's name for it), and how many such sessions the balance covers
+  // at that rate. Typical, never a quote; credits only, never beside a P&L. '' with payments off or no figure.
+  // Under the floor a session needs, the line beside it already says it waits for credits: only the figure.
+  // With auto-reload on (and its card not declined), what each reload buys at that rate instead of a pause.
+  const apSessionCost = (e, label, me) => {
+    if (!e || !(e.v > 0) || !me || !me.billing_enabled) return '';
+    const own = e.own ? 'your recent sessions' : 'recent sessions';
+    const basis = label ? `${own} on ${esc(label)}` : e.own === true ? own : `${own} on its model`;
+    const sessions = (n) => `about ${num(n)} session${n === 1 ? '' : 's'}`;
+    const covers = (amt) => Math.floor((halfUp(+amt || 0) + 1e-9) / e.v);
+    let s = `A research session usually costs about ${usd(e.v)} in credits (${basis}; typical, not a quote).`;
+    const bal = +me.credit_balance || 0, ar = me.reload_failed ? null : me.auto_reload;
+    if (me.min_run_balance != null && bal < +me.min_run_balance && !ar) return s;
+    const n = covers(bal), k = ar ? covers(ar.amount) : 0;
+    if (ar) return s + (n >= 1 ? ` At that rate your ${usd(bal)} covers ${sessions(n)}${k >= 1 ? `, and each ${usd(ar.amount)} auto-reload about ${num(k)} more` : ''}.`
+      : k >= 1 ? ` At that rate each ${usd(ar.amount)} auto-reload covers ${sessions(k)}.` : '');
+    return s + (n >= 1 ? ` At that rate your ${usd(bal)} lasts ${sessions(n)}.`
+      : ` That’s more than the ${usd(bal)} you have, so a session may stop short when your credits run out.`);
+  };
+
   // ---------- a list read a page at a time ----------
   // A list whose newest page is polled and whose older pages are read on request (Funds' paper history: "Show older
   // entries") keeps its older rows under each fresh newest page only while the two still join: `kept` (rows read
@@ -1172,7 +1205,7 @@
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose,
     demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
-    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
-    sessionNo, olderRows
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost,
+    pageLede, deploymentMode, sessionNo, olderRows
   });
 })();
