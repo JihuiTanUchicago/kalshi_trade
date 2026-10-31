@@ -127,7 +127,7 @@ export function exploreListWalkCases({name, frontend}) {
     const {f, links} = await open(() => response(page(order.map((t) => row(t)))), {win});
     // Rows 50px tall, the list's top 500px down the page: scrolled 600px, row C (index 2) is the first in view.
     const pw = f.window || f.win;  // the page's own window (the harness copies `win` into it)
-    const proto = Object.getPrototypeOf(f.root), had = Object.prototype.hasOwnProperty.call(proto, 'getBoundingClientRect');
+    const proto = Object.getPrototypeOf(f.root), had = Object.prototype.hasOwnProperty.call(proto, 'getBoundingClientRect'), was = proto.getBoundingClientRect;
     proto.getBoundingClientRect = function () {
       if (this.tag !== 'tr' || !this.parent || this.parent.attributes.id !== 'xrows') return {top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0};
       const top = 500 + this.parent.children.indexOf(this) * 50 - pw.scrollY;
@@ -165,7 +165,8 @@ export function exploreListWalkCases({name, frontend}) {
       f.root.querySelector('[data-sort="oi"]').onclick(); await settle();
       assert.deepEqual(scrolls, []);
     } finally {
-      if (!had) delete proto.getBoundingClientRect;
+      // The fake DOM's prototype is shared by every later test: put back what it had.
+      if (had) proto.getBoundingClientRect = was; else delete proto.getBoundingClientRect;
       f.clearTimers();
     }
   });
