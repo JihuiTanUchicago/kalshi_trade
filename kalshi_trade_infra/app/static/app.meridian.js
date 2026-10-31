@@ -816,15 +816,18 @@
     };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
     // A notice the server grouped (the same kind about the same page, in a row) says how many more it
-    // stands for. One without a page to open is plain text, not a link to nowhere.
+    // stands for. One without a page to open is plain text, not a link to nowhere. One about a strategy
+    // that is no longer the user's (the server's `gone`: deleted since, as a shared copy can be) says so,
+    // as text: its link opened "Not found" (walk 2026-10-31).
+    const BELL_GONE = 'This strategy is no longer in your list.';
     const item = (n) => {
-      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.more ? `<span class="notif-more">and ${num(n.more)} more like this</span>` : ''}${bellTime(n.created_at)}`;
-      return /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
+      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.gone ? `<span class="notif-more">${BELL_GONE}</span>` : ''}${n.more ? `<span class="notif-more">and ${num(n.more)} more like this</span>` : ''}${bellTime(n.created_at)}`;
+      return !n.gone && /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
     };
     const paint = (d) => {
       dot.hidden = !d.unread;
-      trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
-      head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
+      trig.setAttribute('aria-label', d.unread ? `Notifications, ${num(d.unread)} unread` : 'Notifications');  // the dot alone is colour
+      head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${num(d.unread)} new</span>` : '');
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
       list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
@@ -856,7 +859,7 @@
       api('/api/notifications/read', {}).catch(() => {
         if (data !== was) return;  // a newer read already says what the server has
         data.unread = unread; fresh.forEach((n) => { n.read = false; });
-        if (menu.hidden) paint(data); else { dot.hidden = false; trig.setAttribute('aria-label', `Notifications, ${unread} unread`); }
+        if (menu.hidden) paint(data); else { dot.hidden = false; trig.setAttribute('aria-label', `Notifications, ${num(unread)} unread`); }
       });
     };
     const load = async () => {

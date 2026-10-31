@@ -5598,12 +5598,13 @@ test('the bell keeps new items marked while it is open, says how many, and clear
   assert.ok(wrap.querySelectorAll('.notif-new').every((e) => e.removed));
 });
 
-test('a bell item older than a day shows its day and clock, and every item its full time on hover', async () => {
+test('a bell item older than a day shows its day, clock and zone, and every item its full time on hover', async () => {
   const f = bellFrontend(bellNotes());
   await f.viewDashboard(); await flush(); await flush();
   const [recent, older] = f.root.querySelectorAll('#bell-list time');
   assert.equal(recent.textContent, '2h ago');
-  assert.match(older.textContent, /^[A-Z][a-z]{2} \d{1,2}, \d\d:\d\d$/);  // "Oct 23, 14:05", not a bare "Oct 23"
+  // "Oct 23, 14:05 EDT": not a bare "Oct 23", nor a clock that doesn't say whose (walk 2026-10-31).
+  assert.match(older.textContent, /^[A-Z][a-z]{2} \d{1,2}, \d\d:\d\d (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)$/);
   for (const t of [recent, older]) { assert.ok(t.getAttribute('datetime')); assert.match(t.getAttribute('title'), /\d\d:\d\d/); }
   // Nothing new: no count, no marks.
   const g = bellFrontend({unread: 0, items: bellNotes().items.map((n) => ({...n, read: true}))});

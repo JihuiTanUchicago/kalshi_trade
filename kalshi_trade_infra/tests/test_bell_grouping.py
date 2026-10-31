@@ -20,7 +20,8 @@ def test_adjacent_notices_about_one_page_collapse_into_the_newest():
     out = bell.grouped(rows)
     assert [(n["id"], n["more"]) for n in out] == [(9, 2), (6, 0), (5, 0), (4, 0), (3, 0)]
     assert out[0]["body"] == "Ana commented on your post." and out[0]["read"] is False
-    assert set(out[0]) == {"id", "kind", "body", "link", "created_at", "read", "more"}
+    assert set(out[0]) == {"id", "kind", "body", "link", "created_at", "read", "more", "gone"}
+    assert not any(n["gone"] for n in out)
 
 
 def test_a_group_is_unread_when_any_notice_in_it_is():
@@ -61,3 +62,12 @@ def test_the_unread_notices_are_counted_by_kind_for_the_lists_summary():
     # Stored rows, not grouped lines: two pauses of one strategy in a row are one line and two notices.
     assert bell.unread_kinds(rows) == {"deployed": 2, "paused": 2}
     assert bell.unread_kinds([_row(1, "share", None)]) == {}
+
+
+def test_a_notice_about_a_strategy_no_longer_the_users_says_gone():
+    # list_notifications joins each strategy link to its row: a deleted strategy (a shared copy removed, one
+    # the user deleted) comes back gone=1, so the bell says so instead of linking to "Not found".
+    rows = [dict(_row(3, "share", "/strategies/14"), gone=1), dict(_row(2, "passed", "/strategies/6"), gone=0),
+            _row(1, "comment", "/community#post-1")]
+    out = bell.grouped(rows)
+    assert [(n["id"], n["gone"]) for n in out] == [(3, True), (2, False), (1, False)]

@@ -154,7 +154,8 @@
   const bellTime = (iso) => {
     const d = new Date(iso || NaN);
     if (!Number.isFinite(d.getTime())) return '';
-    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : dateFmt(d, DAY_CLOCK);
+    // Past a day it names its zone ("Oct 27, 22:26 EDT"), as the trade list's clock does: the bare clock didn't say whose.
+    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : dateFmt(d, LOG_STAMP);
     return `<time datetime="${esc(iso)}" title="${esc(dateFmt(d, LOG_STAMP))}">${esc(shown)}</time>`;
   };
   // Each date format is built once and reused: toLocaleString with options builds a new formatter on
@@ -172,7 +173,6 @@
   const CLOCK = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
   const CLOCK_ZONE = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
   const MON_DAY = { month: 'short', day: 'numeric' };
-  const DAY_CLOCK = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
   const WEEKDAY_DAY = { weekday: 'short', month: 'short', day: 'numeric' };
   const YEAR_DAY = { year: 'numeric', month: 'short', day: 'numeric' };
   const UTC_MONTH = { year: 'numeric', month: 'short', timeZone: 'UTC' };

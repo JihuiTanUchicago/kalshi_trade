@@ -13,8 +13,8 @@ READ_ROWS = 100  # newest rows read to fill them; a fixed bound however many not
 
 def grouped(rows: List[Dict], shown: int = SHOWN) -> List[Dict]:
     """`rows` newest first, as list_notifications returns them. Returns at most `shown` items
-    ({id, kind, body, link, created_at, read, more}); `read` is False when any row it stands
-    for is unread."""
+    ({id, kind, body, link, created_at, read, more, gone}); `read` is False when any row it stands
+    for is unread, and `gone` True when the strategy it links to is no longer the user's."""
     out: List[Dict] = []
     for r in rows:
         last = out[-1] if out else None
@@ -25,7 +25,8 @@ def grouped(rows: List[Dict], shown: int = SHOWN) -> List[Dict]:
         if len(out) == shown:
             break
         out.append({"id": r["id"], "kind": r["kind"], "body": r["body"], "link": r.get("link"),
-                    "created_at": r["created_at"], "read": r.get("read_at") is not None, "more": 0})
+                    "created_at": r["created_at"], "read": r.get("read_at") is not None, "more": 0,
+                    "gone": bool(r.get("gone"))})
     return out
 
 

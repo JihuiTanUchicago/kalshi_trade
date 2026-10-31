@@ -171,9 +171,20 @@ def event_rows(events: List[Dict]) -> List[Dict]:
 
 
 # The bell lines whose words are billing's own and say an apostrophe straight as stored ("Auto-reload couldn't
-# add ... in credits."; billing.RELOAD_FAILED_KIND): the bell reads them curly, as Billing's banner does. Every
+# add ... in credits."; billing.RELOAD_FAILED_KIND): the bell reads them curly, as Billing's banner does, and
+# their dollar figure grouped (grouped_dollars). Every
 # other kind keeps its stored words (the engine's kill switch, pause and fill lines are said as written).
 CURLY_KINDS = frozenset({"reload_failed"})
+
+
+# A dollar figure billing wrote with no thousands separator ("$1000.00", reload_failed_body's "%s" of a Decimal):
+# the bell and Billing's banner read it grouped ("$1,000.00"), as every other figure on the page is.
+_UNGROUPED_DOLLARS = re.compile(r"\$(\d{4,})(?=\.\d{2}(?!\d))")
+
+
+def grouped_dollars(text: Optional[str]) -> Optional[str]:
+    """``text`` with each "$1000.00" as "$1,000.00"; None and "" as given."""
+    return _UNGROUPED_DOLLARS.sub(lambda m: "$" + "{:,}".format(int(m.group(1))), text) if text else text
 
 
 def notification_rows(items: List[Dict]) -> List[Dict]:
@@ -181,7 +192,7 @@ def notification_rows(items: List[Dict]) -> List[Dict]:
     for n in items:
         n["body"] = clean(n.get("body"), NOTICE_FALLBACK)
         if n.get("kind") in CURLY_KINDS:
-            n["body"] = curly(n["body"])
+            n["body"] = grouped_dollars(curly(n["body"]))
     return items
 
 

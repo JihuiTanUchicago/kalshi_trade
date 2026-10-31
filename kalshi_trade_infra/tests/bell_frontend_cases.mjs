@@ -62,6 +62,27 @@ export function bellCases({name, frontend}) {
     assert.match(gm.querySelector('.bell-empty').textContent, /It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can’t charge your card\./);
   });
 
+  test(`${name}: a notice about a strategy no longer in the list says so as text, and a big count is grouped`, async () => {
+    // Walk 2026-10-31: a shared strategy the user later deleted, and a forward-test pass of one deleted since,
+    // linked to "Not found". The server marks them gone; the line says so and opens nothing.
+    const f = dashboard({unread: 1234, items: [
+      {id: 9, kind: 'share', body: 'Sam shared the strategy “Drift” with you.', link: '/strategies/14', created_at: ago(60e3), read: false, more: 0, gone: true},
+      {id: 8, kind: 'passed', body: '“Fade” passed the paper forward gate.', link: '/strategies/6', created_at: ago(120e3), read: false, more: 0, gone: false},
+    ]});
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const wrap = f.root.querySelector('.bell-wrap');
+    const links = wrap.querySelectorAll('a.notif');
+    assert.deepEqual(links.map((a) => a.getAttribute('href')), ['/strategies/6']);
+    const plain = wrap.querySelectorAll('p.notif');
+    assert.equal(plain.length, 1);
+    assert.match(plain[0].innerHTML, /Sam shared the strategy “Drift” with you\.<span class="notif-more">This strategy is no longer in your list\.<\/span>/);
+    assert.doesNotMatch(plain[0].innerHTML, /strategies\/14/);
+    // Counts carry their thousands separator, on screen and to a screen reader.
+    assert.equal(wrap.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1,234 unread');
+    assert.match(wrap.querySelector('.bell-head').innerHTML, /<span class="bell-new">1,234 new<\/span>/);
+  });
+
   test(`${name}: a notice that arrives while the page sits open reaches the bell within a minute, without a reload`, async () => {
     const notes = {unread: 0, items: []};
     const f = dashboard(notes);
