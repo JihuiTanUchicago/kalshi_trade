@@ -6,9 +6,9 @@ window.TauPage('strategy', (T) => {
   'use strict';
   const {
     actionLink, announce, api, ApiError, closeClock, liveClose, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, busy,
-    cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
+    cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, dateFmt, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
-    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, LOG_STAMP, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
     tone, tradePrice, usd, when, whyFailedHtml
@@ -632,8 +632,9 @@ window.TauPage('strategy', (T) => {
     // split date, which these gates picked it on (display only: the stored names are unchanged).
     const gateName = (n) => splitOnly ? String(n).replace(/\bunseen data\b/g, 'data after the split date').replace(/\bunseen trades\b/g, 'trades after the split date') : n;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : rpFig(g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
+    // Opened is on the page's 24-hour clock, with its date and zone (LOG_STAMP): it read "11:21 PM EDT" beside "21:36 EDT".
     const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
+        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(dateFmt(new Date(t.opened.replace('Z', ':00Z')), LOG_STAMP)) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table></div>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
