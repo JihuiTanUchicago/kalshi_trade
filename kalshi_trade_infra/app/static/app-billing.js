@@ -5,10 +5,11 @@ window.TauPage('billing', (T) => {
   'use strict';
   const {
     alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
-    halfUp, ICON, KIND_LABEL, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
+    halfUp, ICON, KIND_LABEL, loadFail, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
     root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote, WJ,
     WEEKDAY_DAY
   } = T;
+  const CARDS_UNREAD_BUY = 'Your saved cards didn\u2019t load, so buying credits waits until they do.';
 
   async function viewBilling() {
     const gen = S.gen;
@@ -23,7 +24,7 @@ window.TauPage('billing', (T) => {
     const lowNote = (d) => {
       const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
       return !isLow(d) ? '' : `<div class="notice" role="status">${ICON.warn}<span>${d.balance <= 0 ? 'You’re out of credits' : `You have ${usd(d.balance)} in credits`}. New research needs at least ${usd(d.min_run_balance)} to start, so none is starting${apOn ? ' and autopilot is paused' : ''}. ${
-        !d.cards.length ? 'Add a card, then add credits.' : d.auto_reload && d.reload_failed ? 'Auto-reload couldn’t charge your card (see below). Update the card first, then add credits here: they go on the same card.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
+        !d.cards.length && !d.cards_unread ? 'Add a card, then add credits.' : d.auto_reload && d.reload_failed ? 'Auto-reload couldn’t charge your card (see below). Update the card first, then add credits here: they go on the same card.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
     };
     // The figures, the week's split and the out-of-credits note: drawn by the page's read and again by its poll.
     const paintFigs = (d) => {
@@ -58,6 +59,9 @@ window.TauPage('billing', (T) => {
       shown = d;
       paintFigs(d);
       const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
+      // Stripe didn't answer for the saved cards (the server's cards_unread): never "No card on file" or "Add a card
+      // first." over a card that is saved; it says the list didn't load, with Try again (a read).
+      const cardsUnread = !!d.cards_unread && !d.cards.length;
       const payCard = d.cards.find((c) => c.id === d.default_pm) || d.cards[0];
       const payName = payCard ? `your ${esc((payCard.brand || 'card').toUpperCase())} •••• ${esc(payCard.last4 || '')}` : 'your card';
       const reloadWhen = (on, amount, threshold) => on
@@ -71,6 +75,7 @@ window.TauPage('billing', (T) => {
             <td data-lab="Expires">${String(c.exp_month).padStart(2, '0')}/${c.exp_year}</td>
             <td data-lab="Status">${c.id === d.default_pm ? '<span class="mk on">Default</span>' : '<span class="mk quiet">Backup</span>'}</td>
             <td class="act" data-lab="">${d.cards.length > 1 ? `<button class="btn sm danger" data-remove="${c.id}">Remove</button>` : '<span class="hint">Only card</span>'}</td></tr>`).join('')}</tbody></table>`
+        : cardsUnread ? loadFail('Try again in a moment.', 'Your saved cards')
         : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Card payments aren’t available yet. You can still use your free credits.</span></div>
@@ -79,7 +84,7 @@ window.TauPage('billing', (T) => {
             <div>
               <section class="panel"><h2>Payment method</h2><div id="cards">${cardLines}</div>
                 <div id="card-add" style="margin-top:14px">
-                  <div class="field"><span>${d.cards.length ? 'Add another card' : 'Add a card'}</span><div id="card-el" class="card-el"></div></div>
+                  <div class="field"><span>${d.cards.length || cardsUnread ? 'Add another card' : 'Add a card'}</span><div id="card-el" class="card-el"></div></div>
                   <div id="card-flash"></div>
                   <button class="btn" id="save-card" style="margin-top:10px">Save card</button>
                 </div>
@@ -101,13 +106,15 @@ window.TauPage('billing', (T) => {
                 <label class="field"><span>Amount (USD)</span><input class="input" id="topup-amt" type="number" min="${d.min_topup}" max="${d.max_topup}" step="1" value="20"></label>
                 <p class="hint" id="topup-note" style="margin-top:8px">${feeNote}</p>
                 <button class="btn primary" id="topup-btn" style="margin-top:12px;width:100%" ${d.cards.length ? '' : 'aria-disabled="true"'}>Buy credits</button>
-                ${d.cards.length ? '' : '<p class="hint" style="margin-top:8px">Add a card first.</p>'}
+                ${d.cards.length ? '' : `<p class="hint" style="margin-top:8px">${cardsUnread ? CARDS_UNREAD_BUY : 'Add a card first.'}</p>`}
                 <div id="topup-flash"></div>
               </section>
             </aside>
           </div>`;
       root.querySelector('#main').innerHTML = `<div id="flash"></div>${main}`;
       if (!d.configured) return;
+      const cardsAgain = root.querySelector('#cards [data-retry]');
+      if (cardsAgain) cardsAgain.onclick = () => busy(cardsAgain, () => load().catch((err) => flash('#flash', err.message, 'bad')));
       // top-up fee preview
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
       // At the user's own pace, how long the amount being bought would last: picks the amount for them.
@@ -119,7 +126,7 @@ window.TauPage('billing', (T) => {
         : `You’ll pay ${usd(topupCharge(v, d.topup_fee_pct))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {
-        if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }
+        if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', cardsUnread ? CARDS_UNREAD_BUY : 'Add a card first.', 'bad'); return; }
         const waited = waitNote(e.currentTarget);
         busy(e.currentTarget, async () => {
           const credits = +amt.value;

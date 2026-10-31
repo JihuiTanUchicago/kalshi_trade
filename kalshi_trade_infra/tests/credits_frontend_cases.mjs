@@ -33,6 +33,27 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.match(f.root.querySelector('#topup-flash').innerHTML, /Added \$19\.00 in credits\. You paid \$20\.05 — \$19\.00 plus the 5\.5% fee\. New balance is \$26\.42\./);
   });
 
+  test(`${name}: a saved-card list Stripe didn't answer is never "No card on file", and Try again reads it again`, async () => {
+    // Failure walk 2026-10-31: a customer with a saved card (charged by auto-reload) read "No card on file.
+    // Add one to buy credits" and "Add a card first." when Stripe's card list failed (cards: [], now cards_unread).
+    let data = cardedBilling({cards: [], cards_unread: true});
+    const f = billingPage(null, [], {[`/api/billing?tz=${new Date().getTimezoneOffset()}`]: () => response(data)});
+    await f.viewBilling(); await flush();
+    const main = () => f.root.querySelector('#main').textContent;
+    assert.doesNotMatch(main(), /No card on file|Add a card first/);
+    const cards = f.root.querySelector('#cards');
+    assert.match(cards.textContent, /Your saved cards didn’t load\. Try again in a moment\. Everything else on this page did\./);
+    assert.match(cards.innerHTML, /role="alert"/);
+    assert.match(main(), /Your saved cards didn’t load, so buying credits waits until they do\./);
+    assert.match(main(), /Add another card/);
+    const again = f.root.querySelector('#cards [data-retry]');
+    assert.ok(again, 'a Try again button for the card list');
+    data = cardedBilling();
+    await again.onclick(); await flush(); await flush();
+    assert.match(f.root.querySelector('#cards').textContent, /VISA •••• 4242/);
+    assert.doesNotMatch(main(), /didn’t load/);
+  });
+
   test(`${name}: Billing's week split adds up to the week shown, and a part under a cent says so instead of vanishing`, async () => {
     // Walk 2026-10-27: "$38.85 + $0.18 + $0.18" sat under "Spent, last 7 days $39.22", and $0.0004 of other agent
     // calls was left out. The server now sends the parts in cents that add up (credit_split) and names the one
