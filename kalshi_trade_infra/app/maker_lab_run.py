@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import traceback
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Sequence
 
-from app.adapters.sim.maker_eval import evaluate
+from app.adapters.sim.maker_eval import FALLBACKS, evaluate
 from app.adapters.llm.llm import Usage
 from app.services.maker_lab import S3ForwardBook, S3Ledger, forward_due, judge_forward, run_lab, split, summary_lines
 from trading_core.engine.maker_policy import MAKER_SERIES
@@ -121,6 +122,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
                    workers=a.workers, rounds=rounds, per_round=per_round, **extra)
         s3.put_object(Bucket=BUCKET, Key=status_key, Body=json.dumps(doc, default=str).encode())
 
+    # Progress goes to the status file as the run logs, so a run the unit kills still shows how far it
+    # got and whether workers died (each broken pool reruns a policy's hours in-process, ~2x slower).
+    progress: List[str] = []
+
+    def note(line: str) -> None:
+        print(line, flush=True)
+        progress.append(str(line)[:300])
+        status("running", progress=progress[-5:], steps=len(progress), fallbacks=list(FALLBACKS))
+
+    def killed(signum, frame) -> None:
+        status("killed", reason="SIGTERM: the unit's 4h timeout or a stop", progress=progress[-5:],
+               steps=len(progress), fallbacks=list(FALLBACKS))
+        raise SystemExit(143)
+
+    signal.signal(signal.SIGTERM, killed)
     status("started")
     fwd: List[dict] = []
     try:
@@ -131,9 +147,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
         print("[maker_lab] forward step failed: %s" % traceback.format_exc()[-2000:], flush=True)
     try:
         out = run_lab(series, research, holdout, model, Usage(), S3Ledger(s3, BUCKET), evaluate, rounds,
-                      per_round, a.workers, prior=prior_lines(s3, BUCKET, series))
+                      per_round, a.workers, log=note, prior=prior_lines(s3, BUCKET, series))
     except Exception:
-        status("failed", error=traceback.format_exc()[-4000:])
+        status("failed", error=traceback.format_exc()[-4000:], progress=progress[-5:], fallbacks=list(FALLBACKS))
         raise
     out["model"] = choice.model_id
     out["forward"] = fwd
@@ -143,7 +159,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     if a.out:
         with open(a.out, "w") as f:
             f.write(body)
-    status("done", result=key, forward=fwd)
+    status("done", result=key, forward=fwd, steps=len(progress), fallbacks=list(FALLBACKS))
     print("saved s3://%s/%s" % (BUCKET, key))
     return 0
 

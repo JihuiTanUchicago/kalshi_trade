@@ -121,8 +121,10 @@ def test_a_worker_killed_out_of_memory_finishes_the_hours_in_process(monkeypatch
     monkeypatch.setattr(maker_eval, "ProcessPoolExecutor", Dies)
     monkeypatch.setattr(maker_eval, "_eval_args", lambda j: {"hour": j[1]})
     hours = [H0 + timedelta(hours=k) for k in range(3)]
+    monkeypatch.setattr(maker_eval, "FALLBACKS", [])
     rows = maker_eval.evaluate({"series": "KXBTCD"}, hours, workers=2)
     assert [r["hour"] for r in rows] == [int(h.timestamp()) for h in hours]
+    assert maker_eval.FALLBACKS == [3]                                  # the run's status file reports it
 
 
 def test_the_fast_series_search_wider_inside_the_slot():

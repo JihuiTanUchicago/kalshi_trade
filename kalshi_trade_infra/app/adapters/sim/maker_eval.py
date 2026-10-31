@@ -52,6 +52,10 @@ def evaluate_hour(policy: Dict, hour: datetime, store=None, target_size: float =
     return base
 
 
+# Hours rerun in-process after a worker died, per broken pool (the lab reports it in its status file).
+FALLBACKS: List[int] = []
+
+
 def _eval_args(a):
     policy, hour_ts, target = a
     return evaluate_hour(policy, datetime.fromtimestamp(hour_ts, timezone.utc), target_size=target)
@@ -65,6 +69,7 @@ def evaluate(policy: Dict, hours: Sequence[datetime], workers: int = 1, target_s
         with ProcessPoolExecutor(max_workers=workers) as ex:
             return list(ex.map(_eval_args, jobs))
     except BrokenProcessPool as e:   # a worker died (out of memory): finish in this process, one hour at a time
+        FALLBACKS.append(len(jobs))
         print("[maker_eval] worker pool broke (%r); rerunning %d hours in-process" % (e, len(jobs)), flush=True)
         return [_eval_args(j) for j in jobs]
 
