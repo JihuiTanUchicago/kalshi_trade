@@ -30,6 +30,7 @@ import {chartTrustCases} from './chart_trust_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
+import {exploreListWalkCases} from './explore_list_walk_frontend_cases.mjs';
 import {loadPollCases} from './load_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
@@ -279,6 +280,7 @@ exploreSpotListCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 explorePollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+exploreListWalkCases({name: 'Tau', frontend});
 loadPollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages',

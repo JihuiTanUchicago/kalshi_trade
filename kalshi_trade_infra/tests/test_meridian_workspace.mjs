@@ -31,6 +31,7 @@ import {chartTrustCases} from './chart_trust_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
+import {exploreListWalkCases} from './explore_list_walk_frontend_cases.mjs';
 import {loadPollCases} from './load_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
@@ -320,6 +321,7 @@ kalshiWaitCases({name: 'Meridian', frontend, detailStrategy});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 exploreSpotListCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 explorePollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
+exploreListWalkCases({name: 'Meridian', frontend});
 loadPollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => m});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
@@ -2765,7 +2767,7 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
   const expected = new Map([
     [a.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price\u00a0· Above $100,000', ['52¢', '1,200', '4'], '&gt; $100,000']],
     [b.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price\u00a0· Above $100,000', ['68¢', '8', '2'], '&gt; $100,000']],
-    [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle?\u00a0· At least 1 inch', ['25¢', '0', '0']]],
+    [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle?\u00a0· At least 1 inch', ['25¢last trade', '0', '0']]],
     [subtitle.t, ['Subtitle only', null, 'Subtitle only', ['—', '0', '8']]],
     [fallback.t, ['Kalshi contract', null, 'Kalshi contract', ['12¢', '2', '9']]],
     [hostile.t, ['Price &quot;&lt;img src=x&gt;&quot; &amp; forecast', 'Above &lt;script&gt;unsafe&lt;/script&gt;',
@@ -2885,7 +2887,7 @@ test('Explore shows a side nobody quotes as empty, not 0¢, and a search that mi
   const rows = f.root.querySelectorAll('#xbody tbody tr');
   assert.deepEqual(rows.map(row => row.querySelectorAll('.quote-side').map(n => n.textContent)),
     [['—No bid', '—No ask'], ['—No bid', '5¢'], ['40¢', '42¢']]);
-  assert.deepEqual(rows.map(row => row.querySelector('.yes-price').textContent), ['99¢', '—', '41¢'], 'the price is the midpoint only when both sides are quoted, else the last trade');
+  assert.deepEqual(rows.map(row => row.querySelector('.yes-price').textContent), ['99¢last trade', '—', '41¢'], 'the price is the midpoint only when both sides are quoted, else the last trade, and says so');
   assert.equal(rows[0].querySelector('.quote-bid > span').getAttribute('title'), 'No bid');
   assert.equal(rows[0].querySelector('.quote-ask > span').getAttribute('title'), 'No ask');
   assert.doesNotMatch(f.root.querySelector('#xbody').textContent, /(^|[^\d.])0¢/, 'no side reads as a 0¢ quote');
@@ -2918,7 +2920,7 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   assert.deepEqual(quotes.map(row => row.querySelector('.hot-title > span').textContent), displays);
   quotes.forEach((row, index) => {
     assert.equal(row.querySelector('.hot-title').getAttribute('title'), `Bitcoin\u00a0· ${conditions[index]}`);
-    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin\u00a0· ${conditions[index]}\u00a0· 51¢`));
+    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin\u00a0· ${conditions[index]}\u00a0· Yes price 51¢`));
   });
   assert.equal(f.requests.length, requests, 'formatting source conditions performs no lookup');
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
@@ -2964,7 +2966,7 @@ test('Explore bid and ask preserve decimal strings, zero and independently missi
   assert.deepEqual(rows.map(row => row.querySelectorAll('.quote-side').map(side => side.textContent)),
     [['51¢', '53¢'], ['—No bid', '2¢'], ['—', '54¢'], ['—', '—'], ['—', '—'], ['—', '—'], ['—No bid', '2¢']],
     'a side at zero is a side nobody quotes (Kalshi has no 0¢ price), told apart from a missing one');
-  assert.deepEqual(rows.map(row => row.querySelector('td.num').textContent), ['52¢', '1¢', '50¢', '—', '—', '—', '1¢']);
+  assert.deepEqual(rows.map(row => row.querySelector('td.num').textContent), ['52¢', '1¢last trade', '50¢last trade', '—', '—', '—', '1¢last trade']);
   const priceGroup = f.root.querySelector('.t-explore th[scope="colgroup"]');
   assert.equal(priceGroup.textContent, 'YES'); assert.equal(priceGroup.getAttribute('colspan'), '3');
   const quoteHeaders = f.root.querySelectorAll('.t-explore thead tr')[1].querySelectorAll('th');

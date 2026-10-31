@@ -20,7 +20,7 @@
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
-    exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS,
+    exploreNoBtc, hotWhen, hotSpotNote, hotPriceWord, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode,
@@ -3651,8 +3651,8 @@
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     // A row opens the market's own page in Tau, as Explore's rows do: it opened Kalshi in a new tab, away from the
     // countdown, the spot section and the reader's positions there.
-    return `<a class="hot-row" href="${marketHref(m.t)}" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${plain(when)}">
-      <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span${condWide(m.su) ? ' class="hot-cond-wide"' : ''}>${glueTarget(esc(compactCondition(m.su)))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
+    return `<a class="hot-row" href="${marketHref(m.t)}" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : `${hotPriceWord(m)} ${cents(mid)}`}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${plain(when)}">
+      <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span${condWide(m.su) ? ' class="hot-cond-wide"' : ''}>${glueTarget(esc(compactCondition(m.su)))}</span>` : ''}</span><span class="hot-price" title="${hotPriceWord(m)}"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)}${SEP}24h</span></span></span>${hotWhen(m)}</a>`;
   }
   function renderHotRail() {

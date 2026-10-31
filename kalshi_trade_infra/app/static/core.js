@@ -1047,11 +1047,15 @@
   // Bitcoin series it reads spot for (btc_spot.BTC_SERIES, as BTC_CONTRACT), so the list pages over Bitcoin alone.
   const EXPLORE_SHOW = [['all', 'All markets'], ['bitcoin', 'Bitcoin']];
   const exploreShowChips = (btc) => `<div class="chips xshow" role="group" aria-label="Show">${EXPLORE_SHOW.map(([v, l]) => `<button class="chip" type="button" data-show="${v}" aria-pressed="${btc === (v === 'bitcoin')}">${l}</button>`).join('')}</div>`;
-  // A Bitcoin list with nothing in it says so in plain words, with the way back to every market.
-  const exploreNoBtc = (q) => `<div class="empty"><h2>${q ? `No Bitcoin markets match “${esc(q)}”` : 'No Bitcoin markets are open right now'}</h2><p>${q ? 'Try a broader search, or clear it to see every open Bitcoin market.' : 'Kalshi opens new Bitcoin markets through the day, and they show here within about a minute.'}</p><p>${q ? '' : '<button class="btn sm" type="button" data-xretry>Try again</button> '}<button class="btn sm" type="button" data-xall>Show all markets</button></p></div>`;
+  // A Bitcoin list with nothing in it says so in plain words, with the way back to every market; one a search emptied
+  // offers to clear the search (page-explore.js wires data-xclear), as its words say.
+  const exploreNoBtc = (q) => `<div class="empty"><h2>${q ? `No Bitcoin markets match “${esc(q)}”` : 'No Bitcoin markets are open right now'}</h2><p>${q ? 'Try a broader search, or clear it to see every open Bitcoin market.' : 'Kalshi opens new Bitcoin markets through the day, and they show here within about a minute.'}</p><p>${q ? '<button class="btn sm" type="button" data-xclear>Clear search</button> ' : '<button class="btn sm" type="button" data-xretry>Try again</button> '}<button class="btn sm" type="button" data-xall>Show all markets</button></p></div>`;
   // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
   // from its strike; a rail with no fresh spot says why above its rows, as the list does.
   const hotWhen = (m) => (m.ct || rowVs(m) ? `<span class="hot-when">${m.ct ? liveClose(m.ct, 'chip', { cap: true }) : ''}${vsHtml(m)}</span>` : '');
+  // The hot rail's figure is named as Explore's column and the market page name it ("Yes price"; Meridian's said
+  // "Midpoint quote", Tau's nothing), and one from the last trade (one side quoted, or none) says so.
+  const hotPriceWord = (m) => ((+m.bid > 0 && +m.ask > 0) || midOf(m) == null ? 'Yes price' : 'Yes price, from the last trade');
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
 
   // ---------- research runs ----------
@@ -1331,7 +1335,7 @@
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
-    exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose,
+    exploreNoBtc, hotWhen, hotSpotNote, hotPriceWord, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose,
     demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost,
