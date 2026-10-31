@@ -338,7 +338,8 @@
     // AbortController fires an abort the fetch rejects on. A read with none of its own gets READ_MS:
     // one the network swallowed left its page's skeleton up for good.
     let ctl, tid;
-    const limit = (cfg && cfg.timeoutMs) || (body === undefined ? READ_MS : 0);
+    // Only a read has one: a write never times out or aborts, whatever cfg a caller hands on (a poll's POLL_READ).
+    const limit = body === undefined ? (cfg && cfg.timeoutMs) || READ_MS : 0;
     if (limit) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), limit); }
     let res;
     // A GET that hits a restart (a deploy takes the server away for a second, and CloudFront
@@ -488,6 +489,9 @@
       if (wake !== true && wokeAt && !busy && !fails && Date.now() - wokeAt < ms / 2) { wokeAt = 0; mark(); return null; }
       if (busy || wait > 0) { if (!busy) wait--; mark(); return null; }
       busy = true; wokeAt = wake === true ? Date.now() : 0;
+      // A read that starts on figures already past their age (back from a laptop lid, hours later) says so while it
+      // runs: they stood as current until the read landed, which on a slow line took seconds (walk 2026-10-31).
+      if (Date.now() - okAt > staleAfter(ms)) mark();
       // The read starts now, not a microtask later: a page left in between must not start it.
       let run; try { run = Promise.resolve(read(POLL_READ)); } catch (e) { run = Promise.reject(e); }
       return run.then(
@@ -591,8 +595,34 @@
     if (h.getAttribute('tabindex') == null) h.setAttribute('tabindex', '-1');
     return h;
   }
+  // A page or section that didn't load (a loadFail with Try again) tries again by itself, on a back-off: 5s, then
+  // 10s, 20s, 40s, 80s and every two minutes, only while the tab shows and the phone has a network, so a tab back from
+  // hours away tries within a couple of seconds. The page sat on "This page didn't load" (and Strategies on "Your
+  // strategies didn't load") after a 20s server restart until someone pressed Try again (walk 2026-10-31). It presses
+  // each Try again on the page, whose own read takes the box away while it runs, so one try is out at a time. Armed
+  // once per page by the reads that failed; the page's next draw clears it. Reads only: a write never comes here.
+  const RECOVER_MS = [5000, 10000, 20000, 40000, 80000, 120000], PAGE_START_WAS = 'main h1[data-was-start]';
+  let recoverTry = 0, recoverGen = 0;
+  function recoverFails() {
+    if (recoverGen === S.gen) return;
+    const gen = recoverGen = S.gen;
+    let at = 0;
+    S.timers.push(setInterval(() => {
+      if (gen !== S.gen || document.hidden || offline()) return;
+      const tries = [...root.querySelectorAll('.load-fail [data-retry], #bootretry')].filter((b) => !b.disabled);
+      if (!tries.length) { at = 0; recoverTry = 0; return; }
+      if (!at) at = Date.now() + RECOVER_MS[Math.min(recoverTry, RECOVER_MS.length - 1)];
+      if (Date.now() < at) return;
+      recoverTry++; at = 0;
+      tries.forEach((b) => b.click());
+    }, 2000));
+  }
   async function render() {
-    const was = focusKey(document.activeElement);
+    // Focus on the page's heading (where a page change puts it) has no key of its own; a page drawn again in place (a
+    // failed page trying again by itself) gives it to the new page's start, where it fell to the top of the document.
+    // The sentinel matches nothing, so pageArrived goes to the start.
+    const a0 = document.activeElement;
+    const was = focusKey(a0) || (a0 && a0 !== document.body && a0 === root.querySelector('main h1') ? PAGE_START_WAS : null);
     clearTimers();
     const gen = ++S.gen;
     window.scrollTo(0, 0);
@@ -637,7 +667,7 @@
     }
     if (!match) return go('/', true);
     root.setAttribute('aria-busy', 'true');
-    try { await match[1](...match[0].slice(1)); } catch (e) {
+    try { await match[1](...match[0].slice(1)); if (gen === S.gen) recoverTry = 0; } catch (e) {
       if (gen === S.gen && e.status === 404) {
         // A deleted or mistyped strategy or session: Try again can't bring it back, so offer its list.
         const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
@@ -648,6 +678,7 @@
         const off = e.status === 0 && offline();
         shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'This page didn’t load'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
+        if (!off && (e.status === 0 || e.status === 429 || e.status >= 500)) recoverFails();
       }
     }
     if (gen !== S.gen) return;  // the user moved on while this page loaded
@@ -1204,6 +1235,8 @@
       <button class="btn" id="bootretry">Try again</button></div>`;
     const b = document.getElementById('bootretry');
     if (b) b.onclick = () => { b.disabled = true; render(); };
+    // Booting through a restart, or a page's file cut off: it tries again by itself too (recoverFails).
+    recoverFails();
   }
 
   // arm-to-confirm: the first press arms for 5s, a second press fires. The second press counts only once
@@ -2723,6 +2756,7 @@
         if (gen !== S.gen) return;
         host.innerHTML = loadFail(errText(e), 'Your track record');
         host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
+        recoverFails();
         return;
       }
       if (gen !== S.gen) return;
@@ -2797,7 +2831,9 @@
     if (!apLoop) {
       // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
       apLoop = true;
-      const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), false, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
+      // The poll shares a status read already out (the page mount's, the tab coming back): it sent a second one
+      // beside it, two reads of ~14 queries each in flight on a slow line (walk 2026-10-31).
+      const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), true, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
       // A page that mounts the panel reads a status over 18s old, just before this tick was due: the tick then
       // skips (apFresh), where it read the status again a second or two later.
       setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden && !apFresh()) tick(); }, 20000);
@@ -3849,7 +3885,7 @@
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
     marketFull, marketKnown, marketPicker, marketShort, markQuietRows, mdLite, money, notice, num, olderRows, overDays,
     paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, NOT_MARKED, markedOf, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, retried,
-    pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
+    pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, recoverFails, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, curveWords, finitePts, thinCurve, runKind, runTag, runWaitLine, runwayLabel, S, sessionEstimate,
     sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
     stripeFail, syncMeBilling, theme: 'meridian', tone, topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, wakers,

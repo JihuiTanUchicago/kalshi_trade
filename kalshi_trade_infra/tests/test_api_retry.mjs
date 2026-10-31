@@ -209,4 +209,15 @@ for (const file of ['app.js', 'app.meridian.js']) {
     assert.equal(t.signals[1], null, 'a write is never cut short');
     assert.equal(t.deadlines.length, 1);
   });
+  // A poll hands its read config ({timeoutMs: 15000}) on; a write sent with one (or the boot read's) still has no
+  // deadline and no abort: Tau may be doing it, and cutting it short would leave its result unknown for no reason.
+  test(file + ': a write given a timeout in its config still has no deadline or abort signal', async () => {
+    const t = loadApi(file);
+    t.replies.push(reply(200, {id: 1}), reply(200, {id: 2}));
+    assert.deepEqual(await t.api('/api/deployments/7/pause', {}, {timeoutMs: 15000}), {id: 1});
+    assert.deepEqual(await t.api('/api/community', {body: 'hi'}, {timeoutMs: 1, keep: true}), {id: 2});
+    assert.deepEqual(t.signals, [null, null]);
+    assert.equal(t.deadlines.length, 0);
+    assert.deepEqual(t.calls, ['POST', 'POST']);
+  });
 }

@@ -7,7 +7,7 @@ window.TauPage('research', (T) => {
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, liveOpen, loading, logTime, marketPicker, marketShort,
-    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, pct, phone, poll, retried, root, runKind, runTag,
+    markQuietRows, mdLite, marketFull, marketKnown, num, paint, paintRows, paperSince, pct, phone, poll, recoverFails, retried, root, runKind, runTag,
     runWaitLine, S, SEP, sessionEstimate, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     dateFmt, LOG_STAMP,
     whyFailedHtml, wireMarketPicker
@@ -80,6 +80,7 @@ window.TauPage('research', (T) => {
       paint(host, loadFail(rsiLoop.failed, 'Your research results'));
       const again = host.querySelector('[data-retry]');
       if (again) again.onclick = () => { rsiLoop.at = 0; paint(host, loading(56)); renderResearchLoop(host, pol, tried).then(() => retried(host, host.children.length ? null : root.querySelector('main h1'))); };
+      recoverFails();
       return;
     }
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }

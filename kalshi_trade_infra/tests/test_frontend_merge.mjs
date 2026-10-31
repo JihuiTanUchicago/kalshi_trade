@@ -49,6 +49,7 @@ import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
+import {badConnectionCases} from './bad_connection_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
@@ -6324,6 +6325,7 @@ creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: empt
 writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 flakyNetworkCases({name: 'Tau', frontend});
+badConnectionCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});

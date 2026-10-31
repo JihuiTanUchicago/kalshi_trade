@@ -548,6 +548,10 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 .skeleton { background: linear-gradient(90deg, var(--stock-sunk), var(--stock-raised), var(--stock-sunk)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: var(--radius); }
 @keyframes shimmer { to { background-position: -200% 0; } }
+/* loading()'s words: say what the box is waiting on; the late line shows only once a read has run 8s. */
+.skeleton .skel-say { display: block; padding: 8px 12px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); overflow: hidden; max-height: 100%; }
+.skeleton .skel-late { visibility: hidden; animation: skel-late 0s linear 8s forwards; }
+@keyframes skel-late { to { visibility: visible; } }
 .dev-pending { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .dev-pending .skeleton { flex: none; width: 48px; height: 8px; }
 
