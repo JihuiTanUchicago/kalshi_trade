@@ -214,12 +214,17 @@ window.TauPage('admin', (T) => {
     const gen = S.gen;
     const lay = phone() ? sysPhoneLayout() : null;
     const edges = lay ? lay.art : SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
+    // A box is named by what it shows (its name, its state line and its count, read from its own text): an
+    // aria-label of the name alone hid the rest from a screen reader, and a speech user saying what the box
+    // shows missed it (axe label-content-name-mismatch, walked 2026-10-31).
     const nodes = SYS_NODES.map((n) => {
       const at = lay ? lay.at[n.id] : { x: n.x, y: n.y, w: n.w, h: sysH(n) }, h = at.h;
-      // A two-line count is a line apiece, each set from metricLines on every read.
-      const m = n.lines === 2 ? `<text class="m" data-m="${n.id}"><tspan x="12" y="${h - 26}"></tspan><tspan x="12" y="${h - 12}"></tspan></text>`
+      // A two-line count is a line apiece, each set from metricLines on every read. The space between the lines keeps
+      // them two phrases in the box's name ("0 queued 61 done", where it read "0 queued61 done"); it ends the first line,
+      // where it shows as nothing.
+      const m = n.lines === 2 ? `<text class="m" data-m="${n.id}"><tspan x="12" y="${h - 26}"></tspan> <tspan x="12" y="${h - 12}"></tspan></text>`
         : `<text class="m" x="12" y="${h - 12}" data-m="${n.id}"></text>`;
-      return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${at.x},${at.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
+      return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${at.x},${at.y})" tabindex="0" role="button">
         <rect width="${at.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
         <text class="t" x="12" y="23">${esc(n.label)}</text>
         <text class="s" x="12" y="41" data-s="${n.id}">${esc(sysSub(n))}</text>

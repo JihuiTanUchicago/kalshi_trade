@@ -105,8 +105,8 @@ window.TauPage('community', (T) => {
   // Pills for the reactions a post has, then a way to add one: Tau's inline "+", Meridian's React.
   function reactionChips(list) {
     const chips = (list || []).map(rxChip).join('');
-    return chips + (tau ? `<button class="rx add" data-react-add aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`
-      : '<button class="rx add" data-react-add title="Add a reaction">React</button>');
+    return chips + (tau ? `<button class="rx add" data-react-add aria-expanded="false" aria-label="Add a reaction">${ICON.react}<i class="plus">+</i></button>`
+      : '<button class="rx add" data-react-add aria-expanded="false" title="Add a reaction">React</button>');
   }
   const GROUP_WINDOW = 5 * 60 * 1000;  // consecutive posts by one author within 5 min collapse the header
   // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,
@@ -125,7 +125,7 @@ window.TauPage('community', (T) => {
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
         ${postSnapshot(p.snapshot, snapOwner(p))}`;
     const actions = `<div class="post-actions">
-          <button class="thread-link" data-act="comments">${tau ? ICON.comment : ''}<span>${replies ? `${num(replies)} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
+          <button class="thread-link" data-act="comments" aria-expanded="false">${tau ? ICON.comment : ''}<span>${replies ? `${num(replies)} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
           ${p.mine ? `<button class="thread-link" data-act="edit">${ICON.pencil}<span>Edit</span></button><button class="thread-link" data-act="delete"><span>Delete</span></button>` : ''}
         </div>`;
     if (tau) {
@@ -155,20 +155,47 @@ window.TauPage('community', (T) => {
   // custom reaction: the Tau mark (Tau's stylesheet shakes it: excitement; Meridian's keeps it still).
   const REACTIONS = ['tau', '👍', '❤️', '🔥', '🚀', '😂', '🎉', '💯', '👀', '🤔', '😮', '😢', '🙌', '🧠', '📈', '📉', '💸', '✅', '❌', '🐂', '🐻', '🐐', '🦍', '🐳', '💎', '🤡', '💀', '🫡', '🌙'];
   const emojiHtml = (e) => e === 'tau' ? `<span class="tau-emoji">${ICON.mark}</span>` : esc(e);
-  let emojiPop = null;
+  let emojiPop = null, emojiClose = null;
+  // The picker opens at the end of the page (fixed over the post), so by keyboard it was out of reach: Tab from
+  // "Add a reaction" went on to the next post, Esc left focus where it was, and the button never said it opened
+  // anything (walked 2026-10-31). Focus goes to the first emoji, the arrows move through the grid, Esc or a pick
+  // hands focus back to the button, and Tab leaves from the button, as if the picker sat right after it.
   function openEmojiPicker(anchor, onPick) {
-    if (emojiPop) emojiPop.remove();
+    if (emojiClose) emojiClose(false);
     const pop = document.createElement('div');
     pop.className = 'emoji-pop';
-    pop.innerHTML = REACTIONS.map((e) => `<button type="button" class="ep" data-e="${esc(e)}" title="${e === 'tau' ? 'Tau' : ''}">${emojiHtml(e)}</button>`).join('');
+    pop.setAttribute('role', 'group');
+    pop.setAttribute('aria-label', 'Pick a reaction');
+    pop.innerHTML = REACTIONS.map((e) => `<button type="button" class="ep" data-e="${esc(e)}"${e === 'tau' ? ' title="Tau" aria-label="Tau"' : ''}>${emojiHtml(e)}</button>`).join('');
     document.body.appendChild(pop); emojiPop = pop;
+    anchor.setAttribute('aria-expanded', 'true');
     const r = anchor.getBoundingClientRect(), gut = 10;
     pop.style.left = Math.min(Math.max(gut, r.left), innerWidth - pop.offsetWidth - gut) + 'px';
     pop.style.top = (r.top - pop.offsetHeight - 6 < gut ? r.bottom + 6 : r.top - pop.offsetHeight - 6) + 'px';
-    const close = () => { if (emojiPop) { emojiPop.remove(); emojiPop = null; } document.removeEventListener('click', outside, true); document.removeEventListener('keydown', onEsc); };
-    const outside = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) close(); };
-    const onEsc = (e) => { if (e.key === 'Escape') close(); };
-    pop.addEventListener('click', (e) => { const b = e.target.closest('.ep'); if (b) { onPick(b.dataset.e); close(); } });
+    const close = (back) => {
+      if (emojiPop !== pop) return;
+      pop.remove(); emojiPop = null; emojiClose = null;
+      anchor.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('click', outside, true); document.removeEventListener('keydown', onEsc);
+      if (back && anchor.isConnected) anchor.focus();
+    };
+    emojiClose = close;
+    const outside = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) close(false); };
+    const onEsc = (e) => { if (e.key === 'Escape') close(pop.contains(document.activeElement) || document.activeElement === anchor); };
+    const eps = () => Array.from(pop.querySelectorAll('.ep'));
+    pop.addEventListener('keydown', (e) => {
+      // Tab leaves from the button: focus goes back to it and the key carries on from there.
+      if (e.key === 'Tab') { close(true); return; }
+      const all = eps(), at = all.indexOf(document.activeElement), cols = 5;
+      const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+      let to = -1;
+      if (step != null && at >= 0) to = Math.min(all.length - 1, Math.max(0, at + step));
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = all.length - 1;
+      if (to >= 0) { e.preventDefault(); all[to].focus(); }
+    });
+    pop.addEventListener('click', (e) => { const b = e.target.closest('.ep'); if (b) { close(true); onPick(b.dataset.e); } });
+    const first = eps()[0]; if (first) first.focus();
     setTimeout(() => { document.addEventListener('click', outside, true); document.addEventListener('keydown', onEsc); }, 0);
   }
   // What an empty feed says, the reader's own posts or everyone's, in each theme's words.
@@ -298,7 +325,17 @@ window.TauPage('community', (T) => {
     const shareBtn = form.querySelector('[data-share="pnl"]'), shareHtml = shareBtn.innerHTML;
     shareBtn.onclick = () => armed(shareBtn, 'Confirm: post P&L', () => { shareBtn.innerHTML = shareHtml; return submit('pnl'); });
     const feed = root.querySelector('#feed');
-    const renderReactions = (art, list) => { art.querySelector('.reactions').innerHTML = reactionChips(list); };
+    // The chips are drawn again with each reaction, the one pressed with them: focus there stays on the same chip (or
+    // on Add a reaction, after a pick or once the chip is gone), where it fell to the page's top.
+    const renderReactions = (art, list) => {
+      const box = art.querySelector('.reactions'), a = document.activeElement;
+      const had = a && box.contains(a) ? (a.dataset.emoji || 'add') : null;
+      box.innerHTML = reactionChips(list);
+      if (!had) return;
+      const chip = had === 'add' ? null : Array.from(box.querySelectorAll('.rx[data-emoji]')).find((b) => b.dataset.emoji === had);
+      const to = chip || box.querySelector('[data-react-add]');
+      if (to) to.focus();
+    };
     // One reaction at a time per post: each send toggles, so a double tap took it straight back off.
     const react = async (pid, art, emoji) => {
       if (art.dataset.reacting) return;
@@ -348,9 +385,11 @@ window.TauPage('community', (T) => {
     });
     // Opens (or closes) a post's thread, and resolves once it is drawn.
     async function openThread(art, pid) {
-      const box = art.querySelector('.comments');
-      if (!box.hidden) { box.hidden = true; return; }
+      const box = art.querySelector('.comments'), link = art.querySelector('[data-act="comments"]');
+      // The thread link says whether its replies are open (it read the same open or shut).
+      if (!box.hidden) { box.hidden = true; if (link) link.setAttribute('aria-expanded', 'false'); return; }
       box.hidden = false; box.innerHTML = loading(40);
+      if (link) link.setAttribute('aria-expanded', 'true');
       // A failed read says so: an empty thread under "2 replies" would read as the replies being gone.
       let d;
       try { d = await api(`/api/community/${pid}/comments`); }

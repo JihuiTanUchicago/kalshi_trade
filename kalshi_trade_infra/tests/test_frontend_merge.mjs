@@ -1283,7 +1283,7 @@ test('each dashboard money card offers its own trades CSV only when that mode ha
     await f.viewDashboard(); await flush();
     const html = f.root.querySelector('#boardbody').innerHTML;
     for (const mode of ['paper', 'demo', 'live']) {
-      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
+      const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)<span class="vh"> for the ${mode} book</span></a>`;
       assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
     }
     assert.equal((html.match(/csv-link/g) || []).length, Object.values(counts).filter(Boolean).length);
@@ -4990,7 +4990,7 @@ test('Tau: a page change names the tab, and a deployment control names its strat
   await f.render(); await flush(); await flush();
   assert.equal(f.document.title, 'Deploy · Tau');
   // Every row's Pause and Remove read the same; the hidden strategy name tells them apart.
-  assert.match(f.root.querySelector('#deps [data-act="pause"]').innerHTML, /^Pause<span class="vh"> Dep &lt;1&gt;<\/span>$/);
+  assert.match(f.root.querySelector('#deps [data-act="pause"]').innerHTML, /^Pause<span class="vh"> Dep &lt;1&gt;, paper book<\/span>$/);
   // The live regions are in the page before anything is said, and each message goes out through them.
   const said = (id) => { [...f.timeouts.values()].forEach((run) => run()); f.timeouts.clear(); return f.document.getElementById(id).textContent; };
   const stop = f.root.querySelector('#deps [data-act="stop"]');

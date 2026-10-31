@@ -2075,6 +2075,9 @@ body.landing-body .apf { display: none; }
   .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
   .bell-stale { padding-block: 14px; }
   .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
+  /* Settings' Account links (Manage keys on Funds, Billing), alone in their row, were 20px tall to a thumb: 40px, inside
+     the row's own padding, so the rows keep their height and no two links' reach meets (walked 2026-10-31 at 390px). */
+  .acct-rows dd > a { padding-block: 10px; margin-block: -10px; }
   :root { --apf-h: 44px; }
   .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }

@@ -259,7 +259,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const copy = deps.querySelector('[data-dep="2"][data-act="resume"]');
     assert.equal(copy.disabled, true);
     assert.equal(copy.getAttribute('title'), block);
-    assert.match(copy.innerHTML, /Resume<span class="vh"> Dep one: Resume its paper deployment first: this demo copy resumes with it\.<\/span>/);
+    assert.match(copy.innerHTML, /Resume<span class="vh"> Dep one, demo book: Resume its paper deployment first: this demo copy resumes with it\.<\/span>/);
     assert.match(deps.innerHTML, /Waiting on its paper deployment, which is paused\. Resume that one and this copy resumes with it/);
     assert.doesNotMatch(deps.innerHTML, /demo copy stopped too/);
     copy.onclick(); await settle();

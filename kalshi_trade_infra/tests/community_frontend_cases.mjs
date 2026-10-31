@@ -350,6 +350,102 @@ export function communityCases({name, frontend}) {
     f.clearTimers();
   });
 
+  // Keyboard and screen-reader walk 2026-10-31: the emoji picker opened at the end of the page with focus left on
+  // "Add a reaction", so Tab went on to the next post and never reached an emoji; Esc left focus where it was; the button
+  // never said it had opened anything; and a pick (or a press of a pill) drew the chips again and dropped focus to the top.
+  test(`${name}: the emoji picker takes focus, moves by arrow, hands focus back on Esc or a pick, and says it is open`, async () => {
+    let reactions = [{emoji: '🔥', count: 1, mine: false, names: ['Ann']}];
+    const f = frontend({globals: {innerWidth: 1366}, fetchImpl: (path, options) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/5/react') {
+        const {emoji} = JSON.parse(options.body);
+        reactions = emoji === '🔥' ? [{...reactions[0], count: 2, mine: true}] : [...reactions, {emoji, count: 1, mine: true, names: ['Me']}];
+        return response({reactions});
+      }
+      if (path.startsWith('/api/community')) return response({posts: [post(5, {reactions})]});
+      return response({});
+    }});
+    const proto = Object.getPrototypeOf(f.root);
+    if (!('getBoundingClientRect' in proto)) proto.getBoundingClientRect = () => ({left: 100, right: 140, top: 400, bottom: 428, width: 40, height: 28});
+    // Both harnesses: focus moves document.activeElement, as a browser's does.
+    const focus0 = proto.focus;
+    proto.focus = function (o) { focus0.call(this, o); f.document.activeElement = this; };
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const feed = f.root.querySelector('#feed');
+    const add = () => feed.querySelector('.post[data-id="5"] [data-react-add]');
+    const pop = () => f.document.body.querySelectorAll('.emoji-pop').filter((p) => p.isConnected).at(-1);
+    const docKey = (key) => { const ev = {key, preventDefault() {}}; for (const [n, cb] of f.documentListeners) if (n === 'keydown') cb(ev); };
+    const opener = add();
+    assert.equal(opener.getAttribute('aria-expanded'), 'false', 'it says it opens something, shut');
+    feed.listeners.get('click')({target: opener}); await settle();
+    const p = pop();
+    assert.ok(p, 'the picker opened');
+    assert.equal(p.getAttribute('role'), 'group');
+    assert.equal(p.getAttribute('aria-label'), 'Pick a reaction');
+    assert.equal(opener.getAttribute('aria-expanded'), 'true');
+    const eps = p.querySelectorAll('.ep');
+    assert.equal(f.document.activeElement, eps[0], 'focus is on the first emoji');
+    assert.equal(eps[0].getAttribute('aria-label'), 'Tau', 'the Tau mark has a name');
+    let stopped = 0;
+    p.listeners.get('keydown')({key: 'ArrowRight', preventDefault() { stopped++; }});
+    assert.equal(f.document.activeElement, eps[1]);
+    p.listeners.get('keydown')({key: 'ArrowDown', preventDefault() { stopped++; }});
+    assert.equal(f.document.activeElement, eps[6], 'down is a row of five on');
+    p.listeners.get('keydown')({key: 'End', preventDefault() { stopped++; }});
+    assert.equal(f.document.activeElement, eps.at(-1));
+    assert.equal(stopped, 3);
+    f.elapse(0);  // the picker listens for Esc from the next tick
+    docKey('Escape');
+    assert.equal(p.isConnected, false, 'Esc closes it');
+    assert.equal(opener.getAttribute('aria-expanded'), 'false');
+    assert.equal(f.document.activeElement, opener, 'focus is back on Add a reaction');
+    // Tab inside the picker closes it and leaves from the button (the key is not stopped).
+    feed.listeners.get('click')({target: opener}); await settle();
+    const p2 = pop(); let tabStopped = false;
+    p2.listeners.get('keydown')({key: 'Tab', preventDefault() { tabStopped = true; }});
+    assert.equal(p2.isConnected, false); assert.equal(tabStopped, false);
+    assert.equal(f.document.activeElement, opener);
+    // A pick reacts, the chips are drawn again, and focus lands on the new Add a reaction.
+    feed.listeners.get('click')({target: opener}); await settle();
+    const p3 = pop();
+    p3.listeners.get('click')({target: p3.querySelectorAll('.ep')[1]}); await settle();
+    assert.equal(p3.isConnected, false);
+    assert.deepEqual(feed.querySelectorAll('.post[data-id="5"] .rx[data-emoji]').map((b) => b.dataset.emoji), ['🔥', '👍']);
+    assert.notEqual(add(), opener, 'the chips were drawn again');
+    assert.equal(f.document.activeElement, add());
+    assert.equal(add().getAttribute('aria-expanded'), 'false');
+    // A pill pressed from the keyboard keeps focus on the same pill once the chips are drawn again.
+    const fire = feed.querySelector('.post[data-id="5"] .rx[data-emoji="🔥"]');
+    fire.focus();
+    feed.listeners.get('click')({target: fire}); await settle();
+    const fire2 = feed.querySelector('.post[data-id="5"] .rx[data-emoji="🔥"]');
+    assert.notEqual(fire2, fire);
+    assert.equal(fire2.getAttribute('aria-pressed'), 'true');
+    assert.equal(f.document.activeElement, fire2);
+    f.clearTimers();
+  });
+
+  test(`${name}: a post's reply link says whether its replies are open`, async () => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/5/comments') return response({comments: [{author: 'Ann', body: 'Hi', created_at: '2026-10-17T10:00:00Z'}]});
+      if (path.startsWith('/api/community')) return response({posts: [post(5)]});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const feed = f.root.querySelector('#feed');
+    const link = feed.querySelector('.post[data-id="5"] [data-act="comments"]');
+    assert.equal(link.getAttribute('aria-expanded'), 'false');
+    feed.listeners.get('click')({target: link}); await settle();
+    assert.equal(link.getAttribute('aria-expanded'), 'true');
+    assert.equal(feed.querySelector('.post[data-id="5"] .comments').hidden, false);
+    feed.listeners.get('click')({target: link}); await settle();
+    assert.equal(link.getAttribute('aria-expanded'), 'false');
+    f.clearTimers();
+  });
+
   // Walked 2026-10-31 (both themes, 1280 and 390px, as three customers): the fixes below each failed before.
   // Tau's harness marks a focused element (focused); Meridian's moves document.activeElement.
   const focusedOn = (f, el) => !!el && (el.focused === true || f.document.activeElement === el);

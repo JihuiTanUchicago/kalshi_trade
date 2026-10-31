@@ -479,6 +479,16 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     assert.equal(box.getAttribute('aria-label'), 'Autopilot panel');
     assert.notEqual(box.getAttribute('aria-label'), card.getAttribute('aria-label'));
     assert.doesNotMatch(source, /box\.setAttribute\('aria-label', 'Autopilot'\)/, 'no copy of the panel keeps the card\'s name');
+    // Its week too (walked 2026-10-31, axe landmark-unique and heading-order with the panel open): the card's week and the
+    // panel's were both "Autopilot, last 7 days", and the panel's h3 came right under the page's h1.
+    const week = {tested: 4, passed: 1, not_cleared: 0, paper_started: 1, research_credits: 0.84, checkin_credits: 0, paper_trades: 0, paper_pnl: 0};
+    f.apUpdate(box, {...f.S.ap, autopilot: true, mode: 'paper', week});
+    const pw = box.querySelector('#apf-week .ap-week');
+    assert.equal(pw.getAttribute('aria-label'), 'Autopilot panel, last 7 days');
+    assert.equal(pw.querySelector('h3').getAttribute('aria-level'), '2', 'a level under the page heading, not two');
+    assert.equal(pw.querySelector('h3').textContent, 'Last 7 days');
+    f.apUpdate(box, {...f.S.ap, autopilot: true, mode: 'paper', week: {tested: 0, passed: 0, paper_started: 0}});
+    assert.equal(box.querySelector('#apf-week .ap-week').getAttribute('aria-label'), 'Autopilot panel, last 7 days', 'an empty week too');
     f.clearTimers();
   });
 
@@ -1023,5 +1033,46 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     const figs = g.root.querySelector('#runfigs');
     assert.doesNotMatch(figs ? figs.innerHTML : '', /aria-label="in process"/);
     g.clearTimers();
+  });
+
+  // From a keyboard and screen-reader walk of every nav page (Tab through each, axe-core 4.14; both themes, 1366px and
+  // 390px; a seeded account with paper, demo and live books, 2026-10-31):
+  // - System's boxes were buttons named by an aria-label of the box's name alone, over a box that also shows its state and
+  //   its count: a screen reader heard "Kalshi API" and none of what the box says, and a speech user saying what it shows
+  //   missed it (axe label-content-name-mismatch, serious, 13 boxes). Each box is named by its own text.
+  test(`${name}: each System box is named by what it shows, not an aria-label of its name alone`, async () => {
+    const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes: {web: {up: true}, db: {rows: 10, size_mb: 5}}, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+    await f.viewSystem(); await settle();
+    const boxes = f.root.querySelectorAll('.sys-node');
+    assert.ok(boxes.length >= 10, 'the map drew its boxes');
+    for (const g of boxes) {
+      assert.equal(g.getAttribute('role'), 'button');
+      assert.equal(g.getAttribute('tabindex'), '0');
+      assert.equal(g.getAttribute('aria-label'), null, `${g.dataset.id} names itself by its text`);
+      assert.ok(g.querySelector('.t').textContent.trim(), `${g.dataset.id} shows its name`);
+    }
+    // A two-line count keeps a space between its lines, so the name reads "0 queued 61 done", not "0 queued61 done".
+    const two = f.root.querySelector('[data-m="agents"]');
+    assert.equal(two.querySelectorAll('tspan').length, 2);
+    assert.match(f.root.querySelector('#syssvg').innerHTML, /<text class="m" data-m="agents"><tspan [^>]*><\/tspan> <tspan /);
+    f.clearTimers();
+  });
+
+  // - Tau's dashboard shows a "Download trades (CSV)" link under each book that has a closed trade: three links alike in a
+  //   screen reader's list of links. Each says its book after the words it shows (so a speech user can still say them).
+  // - A strategy deployed on two books (live and paper, or paper and its demo copy) has two Deploy rows whose Pause, Resume
+  //   and Remove read the same: "Pause Live drift" twice, one stopping real money. Each names its book.
+  //   (The CSV links' words are pinned where the dashboard's links are checked, in each bundle's own suite.)
+  test(`${name}: each Deploy row's Pause and Remove say their book`, async () => {
+    const dep = (id, mode) => ({id, strategy_id: 7, title: 'Live drift', market: 'btc15m', mode, status: 'running', realized_pnl: 1, unrealized_pnl: null,
+      closed_trades: 1, open_positions: 0, created_at: '2026-10-20T10:00:00Z', backtest: null, curve: []});
+    const f = frontend({fetchImpl: (path) => (path === '/api/deployments' ? response({deployments: [dep(1, 'live'), dep(2, 'paper')], open_positions: []}) : response({}))});
+    f.location.pathname = '/deploy';
+    await f.render(); await settle();
+    const deps = f.root.querySelector('#deps');
+    const said = (act) => deps.querySelectorAll(`[data-act="${act}"]`).map((b) => b.textContent.replace(/\s+/g, ' ').trim());
+    assert.deepEqual(said('pause'), ['Pause Live drift, live book', 'Pause Live drift, paper book']);
+    assert.deepEqual(said('stop'), ['Remove Live drift, live book', 'Remove Live drift, paper book']);
+    f.clearTimers();
   });
 }

@@ -1686,13 +1686,13 @@
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">${gl('Realized P&amp;L', 'realized')}</th><th class="num">${gl('Unrealized', 'unrealized')}</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
-  const deploymentRemove = (d) => `<button class="btn sm danger" data-dep="${esc(d.id)}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button>`;
+  const deploymentRemove = (d) => `<button class="btn sm danger" data-dep="${esc(d.id)}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}, ${esc(d.mode)} book</span></button>`;
   // A demo copy the demo-copy sync paused waits on its paper deployment: Resume would be paused again
   // at the sync's next pass, so it is offered disabled with the server's reason (resume_block), which
   // the row's status line also says.
-  const resumeButton = (d, why = resumeBlock(d)) => `<button class="btn sm" data-dep="${d.id}" data-act="resume"${why ? ` disabled title="${esc(why)}"` : ''}>Resume<span class="vh"> ${esc(d.title)}${why ? ': ' + esc(why) : ''}</span></button>`;
+  const resumeButton = (d, why = resumeBlock(d)) => `<button class="btn sm" data-dep="${d.id}" data-act="resume"${why ? ` disabled title="${esc(why)}"` : ''}>Resume<span class="vh"> ${esc(d.title)}, ${esc(d.mode)} book${why ? ': ' + esc(why) : ''}</span></button>`;
   const deploymentActions = (d, remove = true) => `<div class="deployment-actions">
-    ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause" data-open="${+d.open_positions || 0}">Pause<span class="vh"> ${esc(d.title)}</span></button>` : ''}
+    ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause" data-open="${+d.open_positions || 0}">Pause<span class="vh"> ${esc(d.title)}, ${esc(d.mode)} book</span></button>` : ''}
     ${d.status === 'paused' ? resumeButton(d) : ''}
     ${remove ? deploymentRemove(d) : ''}</div>`;
   // What the deployment's closed trades would have made at the unseen-data backtest's average per
@@ -3243,7 +3243,11 @@
     const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true;
     const sel = box.querySelector('#apf-focus'); if (sel && sel.focus) sel.focus();
   }
-  function apWeek(w, d, open = false) {
+  // The panel shows the week too: on the Dashboard, beside the card's, the two were one name for two regions (axe
+  // landmark-unique), and in the panel its heading came under the page's h1 a level down (axe heading-order). In the panel
+  // the week is "Autopilot panel, last 7 days", its heading a level 2 (walked 2026-10-31).
+  const AP_WEEK = 'Autopilot, last 7 days', AP_WEEK_PANEL = 'Autopilot panel, last 7 days';
+  function apWeek(w, d, open = false, panel = false) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     // A first day's week is all zeros: a block of $0.00 and 0 under two paragraphs explaining them. Until
@@ -3257,12 +3261,12 @@
     // Its first session already running is not "once it starts": the card said so beside "It started 1 research
     // session" in Last 24 hours. While one runs (the status's research.active) it says that instead.
     const researching = !!(d && d.research && d.research.active && d.research.active.length);
-    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>${PNL_WINDOW.week}:</b> ${researching
+    if (empty) return `<section class="ap-week ap-week-empty" aria-label="${panel ? AP_WEEK_PANEL : AP_WEEK}"><p class="ap-week-none"><b>${PNL_WINDOW.week}:</b> ${researching
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
       : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : apOffCost(d, 'ap-week-left')}</section>`;
     // Its note on what each row counts is folded under "How these are counted": shown whole, it read as a dense
     // paragraph under the figures to a new account. Its words are unchanged inside.
-    return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>${PNL_WINDOW.week}</h3><dl>
+    return `<section class="ap-week" aria-label="${panel ? AP_WEEK_PANEL : AP_WEEK}"><h3${panel ? ' aria-level="2"' : ''}>${PNL_WINDOW.week}</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${apWeekSpent(w, spend, checkins)}</dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
