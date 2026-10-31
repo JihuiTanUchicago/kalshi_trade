@@ -52,6 +52,7 @@ import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {newcomerMoneyCases} from './newcomer_money_frontend_cases.mjs';
+import {firstWeekCases} from './first_week_frontend_cases.mjs';
 import {autopilotCostCases, billingCostCases} from './autopilot_cost_frontend_cases.mjs';
 import {settingsBillingCases} from './settings_billing_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
@@ -6313,6 +6314,7 @@ deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postR
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 newcomerMoneyCases({name: 'Tau', frontend, dashboard: emptyDashboard});
+firstWeekCases({name: 'Tau', frontend, dashboard: () => emptyDashboard(), detailStrategy, strategyFrontend});
 autopilotCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn});
 billingCostCases({name: 'Tau', frontend, dashboard: emptyDashboard, billingPage, cardedBilling});
 settingsBillingCases({name: 'Tau', frontend, billingPage, cardedBilling});

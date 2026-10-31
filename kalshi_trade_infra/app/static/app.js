@@ -20,7 +20,7 @@
     trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
     spotSect, closeLeft, closeWords, closeData, liveClose, glueTarget, compactCondition, marketSpot, MKT_GONE, vsHtml, spotListNote,
     EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips, exploreNoBtc, hotWhen, hotSpotNote,
-    waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip,
+    waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose, demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday,
     sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER, apPillLabel, apAgo, apEvery, FOCUS_WORDS,
     creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount, exitWord, AP_FOCUS, KIND_LABEL, runwayLabel,
     paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost, pageLede, deploymentMode, sessionNo, olderRows
@@ -2109,7 +2109,8 @@
       const paperUsed = p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper');
       // The paper book's realized today (UTC), the server's today_pnl, on its own line under its all-time figure, as
       // Meridian's "Today (UTC): paper realized" sits beside its: Tau's dashboard had no figure for the day. Paper only.
-      const paperToday = (b) => b.today_pnl == null ? '' : `<span class="fig-today">${pnlWin('today')} <span class="amt">${money(b.today_pnl)}</span> realized, ${PAPER_NET}</span>`;
+      // A day with no paper trade closed yet says so (closedToday): "$0.00 realized" read as a day that broke even.
+      const paperToday = (b) => b.today_pnl == null ? '' : `<span class="fig-today">${pnlWin('today')} ${!+b.today_pnl && closedToday(d.recent_closed, 'paper', b.closed_trades) === false ? 'no trades closed yet' : `<span class="amt">${money(b.today_pnl)}</span> realized, ${PAPER_NET}`}</span>`;
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
       // every user something was wrong that they couldn't act on). It stays red there: no Bitcoin spot candles, or
       // none for 45 minutes, means the collector is down and new backtests run on missing prices. It names the feed it
@@ -2648,10 +2649,11 @@
       ((s.books || {})[m] || {}).trades || d.deployments.some((x) => x.mode === m && x.status !== 'stopped'));
     const money = books.length ? books.map(([m, label]) => {
       const b = s.books[m] || { pnl: 0, trades: 0 };
-      // The book's name and its signed amount never break apart (a phone wraps the rest of the line).
+      // The book's name and its signed amount never break apart (a phone wraps the rest of the line). A book that
+      // closed trades before the window has "no trades closed", not "…yet" (day 4 of a new account, walk 2026-10-31).
       return `<span class="since-book" data-book="${m}">${b.trades
         ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${sinceNote(m)}`
-        : `<b>${label}</b>: no trades closed yet`}</span>`;
+        : `<b>${label}</b>: no trades closed${(d[m] || {}).closed_trades ? '' : ' yet'}`}</span>`;
     }).join('<span class="sep">·</span>') + sinceSlip(s.books) + sinceSplit(d, books) : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;

@@ -1150,6 +1150,19 @@
   // The paper book's line in the strip says its estimate after typical live slippage (the server's, for the trades
   // it closed in the strip's window) under it, as every other paper figure on the dashboard does (slipEstGl). Paper
   // is the strip's last book, so the line sits right under its figure; live and demo never carry one.
+  // Whether a book closed a trade today (UTC), from what the dashboard already holds: its newest closed trades
+  // (recent_closed: every book's, newest first) and the book's all-time count (closed_trades). true or false when
+  // they can tell, null when they can't (the newest rows all closed today and none of them is this book's), so the
+  // page keeps the server's figure then. Day 4 of a new account read "Today (UTC): $0.00 realized" with its last
+  // trade two days back, as if today's trading had broken even (walk 2026-10-31). Display only.
+  const closedToday = (rows, mode, closedAll, now = Date.now()) => {
+    const day = Math.floor(now / 864e5) * 864e5, at = (r) => Date.parse(r && r.closed_at);
+    const list = Array.isArray(rows) ? rows : [], mine = list.filter((r) => r && r.mode === mode);
+    if (mine.some((r) => at(r) >= day)) return true;
+    if (mine.length >= (+closedAll || 0)) return false;
+    const last = list[list.length - 1];
+    return last && at(last) < day ? false : null;
+  };
   const sinceSlip = (b) => (b && b.paper && +b.paper.trades ? slipEstGl(b.paper.slippage_estimate) : '');
   // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
   // each its own 44px, where on a line they reached into one another.
@@ -1316,7 +1329,7 @@
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, FEES_NET, demoCapital, demoNoClose,
-    demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
+    demoPnl, sinceNote, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit, sinceSlip, closedToday, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, sessionEstimate, apSessionCost,
     pageLede, deploymentMode, sessionNo, olderRows
