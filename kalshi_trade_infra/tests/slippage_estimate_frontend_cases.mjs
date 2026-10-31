@@ -18,7 +18,7 @@ export const SAID = '≈ +$3.10 after typical live slippage (estimate: 0.5¢ a c
 const estSpans = (html) => html.match(/<span class="slip-est">(?:[^<]|<span class="nobr">|<button[^>]*data-glo="slippage"[^>]*>[\s\S]*?<\/button><\/span>)*<\/span>/g) || [];
 const TH = {min_sharpe_days: 14, min_trades: 30};
 
-export function slippageEstimateCases({name, frontend, strategyFrontend, detailStrategy, dashboard}) {
+export function slippageEstimateCases({name, frontend, strategyFrontend, detailStrategy, dashboard, fundsData}) {
   const board = async (paper, extra = {}) => {
     const base = dashboard();
     const data = {...base, ...extra, paper: {...base.paper, realized_pnl: 3.2, closed_trades: 4, open_positions: 0, ...paper}};
@@ -200,5 +200,66 @@ export function slippageEstimateCases({name, frontend, strategyFrontend, detailS
     assert.equal(lines.filter((t) => t.includes('after typical live slippage')).length, 1, 'never under demo');
     assert.match(ladder.innerHTML, /<p class="rung-slip"><span class="slip-est">/);
     assert.equal(said((await open({})).innerHTML).length, 0);
+  });
+
+  // Walk 2026-10-31 (the estimate's money/trust walk, one seeded account in both themes at 1280 and 390): paper P&L
+  // figures that said the paper money with no estimate beside it, while the same book's estimate showed on other pages.
+  test(`${name}: the strip's paper book says its window's estimate under it; live and demo never`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const strip = (books) => f.sinceStrip({...dashboard(), deployments: [], since: {at: '2026-10-30T08:00:00Z', first: true, books,
+      passed: {n: 0, items: []}, autopilot: {}, runs: {}}}, '#dash-deps');
+    const money = (html) => /<dt>Money<\/dt><dd>([\s\S]*?)<\/dd>/.exec(html)[1];
+    const row = money(strip({paper: {pnl: 3.2, trades: 4, slippage_estimate: EST}, demo: {pnl: 1.2, trades: 1, slippage_estimate: {pnl: 9.91, per_fill_cents: 0.5}},
+      live: {pnl: 2, trades: 1, slippage_estimate: {pnl: 9.92, per_fill_cents: 0.5}}}));
+    assert.deepEqual(said(row), [SAID], 'the paper book’s own estimate, for the strip’s window');
+    // Right after the paper book's line (the strip's last book), outside its one-line since-book span.
+    assert.match(row, /data-book="paper">[\s\S]*?after Kalshi fees and the spread<\/span><span class="slip-est">≈/);
+    assert.doesNotMatch(row, /9\.91|9\.92/, 'live and demo are never estimated');
+    // No paper trade in the window, or a server without the estimate: nothing said.
+    assert.equal(said(money(strip({paper: {pnl: 0, trades: 0}, demo: {pnl: 1.2, trades: 1}}))).length, 0);
+    assert.equal(said(money(strip({paper: {pnl: 3.2, trades: 4}}))).length, 0);
+    f.clearTimers();
+  });
+
+  test(`${name}: the strategy page's paper line up top says its estimate after its link, the Since deploying figure's`, async () => {
+    const deployments = [{id: 1, mode: 'paper', status: 'running', realized_pnl: 3.2, closed_trades: 4, open_positions: 0, created_at: '2026-10-27T08:00:00Z'}];
+    const top = async (paper) => {
+      const f = strategyFrontend(detailStrategy({status: 'passed', deployments, book_totals: {paper: {pnl: 3.2, trades: 4, open: 0, ...paper}}}), () => response({}));
+      await f.viewStrategy(42); await flush();
+      return f.root.querySelector('.paper-top').innerHTML;
+    };
+    const html = await top({slippage_estimate: EST});
+    assert.deepEqual(said(html), [SAID]);
+    assert.match(html, /Details below<\/a><span class="slip-est">≈/);
+    assert.equal(said(await top({})).length, 0);
+  });
+
+  test(`${name}: the Strategies list's Paper P&L cell says the estimate under an instant-fill book too, as its page does`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const cell = (real) => (f.strategySlip(detailStrategy({id: 46, title: 'List fixture', deployed: true, books: ['paper'], real}), null, {paper: true})
+      .match(/<td class="num paper-col[^"]*" data-lab="Paper since deploying">([\s\S]*?)<\/td>/) || [])[1];
+    const instant = cell({pnl: 0.34, trades: 1, open: 0, mode: 'paper', instant_only: true, instant_fills: 1, slippage_estimate: EST});
+    assert.deepEqual(said(instant), [SAID]);
+    assert.match(instant, /left out of the track record\u00a0· after Kalshi fees and the spread<\/div><div class="sub-fig real-fig real-slip"><span class="slip-est">/);
+    assert.deepEqual(said(cell({pnl: 3.2, trades: 4, open: 0, mode: 'paper', slippage_estimate: EST})), [SAID]);
+    assert.equal(said(cell({pnl: 0.34, trades: 1, open: 0, mode: 'paper', instant_only: true, instant_fills: 1})).length, 0);
+    assert.equal(said(cell({pnl: 0, trades: 0, open: 0, mode: 'paper'})).length, 0);
+  });
+
+  if (fundsData) test(`${name}: Funds' paper balance says the estimate for its realized P&L; the Kalshi and demo figures never`, async () => {
+    const funds = async (paper, extra = {}) => {
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), ...extra,
+        paper: {...fundsData().paper, cash: 1002.7, equity: 1002.7, realized_pnl: 3.2, closed_trades: 4, ...paper}}) : response({})});
+      f.location.pathname = '/funds';
+      await f.viewFunds(); for (let i = 0; i < 6; i++) await flush();
+      f.clearTimers();
+      return f.root.querySelector('#ffigs').innerHTML;
+    };
+    const html = await funds({slippage_estimate: EST}, {demo: {capital: 1000, equity: 1001, realized: 1, closed_trades: 1, slippage_estimate: {pnl: 9.93, per_fill_cents: 0.5}}});
+    assert.deepEqual(said(html), [SAID]);
+    assert.match(plain(html).replace(/\u00a0/g, ' '), /\+\$3\.20 realized all time, after Kalshi fees and the spread · practice money ≈/);
+    assert.doesNotMatch(html, /9\.93/);
+    assert.equal(said(await funds({realized_pnl: 0, closed_trades: 0, slippage_estimate: null})).length, 0);
+    assert.equal(said(await funds({})).length, 0);
   });
 }

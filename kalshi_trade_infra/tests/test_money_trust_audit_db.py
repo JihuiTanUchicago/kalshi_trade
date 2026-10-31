@@ -238,7 +238,13 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
     # -- since your last visit: each book, and its split by deployment ----------------------------------------
     for m in ("paper", "demo", "live"):
         since = [r for r in rows if r["mode"] == m and r["status"] == "closed" and r["closed_at"] >= visit]
-        assert dash["since"]["books"][m] == {"pnl": _c(sum(Decimal(str(r["pnl"])) for r in since)), "trades": len(since)}, m
+        strip = dict(dash["since"]["books"][m])
+        # The paper book's estimate after typical live slippage rides beside it, from the same rows (live and demo: none).
+        fills = sum(int(r["qty"]) * (1 if r["close_reason"] == "settled" else 2) for r in since)
+        assert strip.pop("slippage_estimate", None) == (
+            {"pnl": _c(sum(Decimal(str(r["pnl"])) for r in since) - Decimal("0.005") * fills), "per_fill_cents": 0.5}
+            if m == "paper" and fills else None), m
+        assert strip == {"pnl": _c(sum(Decimal(str(r["pnl"])) for r in since)), "trades": len(since)}, m
     split = {r["deployment_id"]: r for r in dash["since"]["by_deployment"]["paper"]}
     assert split[dep["D0"]]["removed"] is True and split[dep["D0"]]["title"] is None  # a deleted strategy
     assert split[dep["A2"]]["pnl"] == dash_rows[dep["A2"]]["realized_pnl"] == 0.01 and "removed" not in split[dep["A2"]]

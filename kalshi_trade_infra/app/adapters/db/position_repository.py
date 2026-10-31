@@ -392,7 +392,9 @@ def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datet
     With `fills` a last item comes back: {mode: contract fills} of each book's closed rows (contracts
     times taker fills, sql.contract_fills_sql), summed in the same pass from the qty and close_reason of
     the rows it already fetches, for the paper book's after-slippage estimate (trading_core.domain.
-    slippage). No extra read; display only, as the rest."""
+    slippage). No extra read; display only, as the rest. With `fills` and a `visit`, each since-visit item
+    of the third is (realized, closed trades, contract fills) instead: the same rows' fills, for the strip's
+    paper estimate, summed in the same pass."""
     cols = ("mode, deployment_id, COALESCE(SUM(pnl),0) AS p_all, "
             "COALESCE(SUM(CASE WHEN closed_at >= %s THEN pnl END),0) AS p_since, COUNT(*) AS n, "
             "COALESCE(SUM(" + contract_fills_sql() + "),0) AS f")
@@ -401,11 +403,14 @@ def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datet
         cols += (", COALESCE(SUM(CASE WHEN closed_at >= %s THEN pnl END),0) AS p_visit, "
                  "COUNT(CASE WHEN closed_at >= %s THEN 1 END) AS n_visit")
         params += (visit, visit)
+        if fills:
+            cols += ", COALESCE(SUM(CASE WHEN closed_at >= %s THEN " + contract_fills_sql() + " END),0) AS f_visit"
+            params += (visit,)
     cur.execute("SELECT " + cols + " FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s AND status='closed' "
                 "GROUP BY mode, deployment_id", params + (user_id,))
     zero = Decimal(0)
     dec = lambda v: v if isinstance(v, Decimal) else Decimal(str(v or 0))  # noqa: E731 - exact, as SQL's SUM
-    sums = {m: [zero, zero, 0, zero, 0] for m in BOOK_MODES}  # all time, since, rows, since visit, trades since visit
+    sums = {m: [zero, zero, 0, zero, 0, 0] for m in BOOK_MODES}  # all time, since, rows, since visit, trades and fills since visit
     taker = {m: 0 for m in BOOK_MODES}  # contract fills of the closed rows, per book
     by_dep: Dict[Tuple[str, int], Tuple[float, int]] = {}
     for r in cur.fetchall():
@@ -420,10 +425,11 @@ def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datet
         if visit is not None:
             b[3] += dec(r.get("p_visit"))
             b[4] += int(r.get("n_visit") or 0)
+            b[5] += int(r.get("f_visit") or 0)
             if r.get("n_visit"):
                 by_dep[(m, int(r.get("deployment_id") or 0))] = (float(r.get("p_visit") or 0), int(r["n_visit"]))
     realized = {m: (float(b[0]), float(b[1])) for m, b in sums.items()}
-    recent = {m: (float(b[3]), b[4]) for m, b in sums.items()} if visit is not None else {}
+    recent = {m: (float(b[3]), b[4]) + ((b[5],) if fills else ()) for m, b in sums.items()} if visit is not None else {}
     out = (realized, {m: b[2] for m, b in sums.items() if b[2]}, recent)
     if split:
         out += (by_dep,)

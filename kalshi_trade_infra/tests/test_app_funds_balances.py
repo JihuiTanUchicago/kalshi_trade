@@ -227,7 +227,8 @@ def _no_closed_trades(monkeypatch, realized=None, closed=None):
     from app.services import book_memo
 
     realized = realized or {m: (0.0, 0.0) for m in ("paper", "demo", "live")}
-    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None: (realized, closed or {}, {}))
+    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None, fills=False: (realized, closed or {}, {})
+                        + (({},) if fills else ()))
 
 
 def test_funds_dates_the_demo_balance_from_its_memo_and_never_reads_kalshi_for_it(monkeypatch):

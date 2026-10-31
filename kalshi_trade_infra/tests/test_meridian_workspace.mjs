@@ -6690,7 +6690,7 @@ moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
 }});
-slippageEstimateCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
+slippageEstimateCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, fundsData: () => funds()});
 
 test('the strategies sort shows "Later-period P&L" whole, and the filter row still fits one line at 1366', () => {
   // Measured in DM Sans 14px: the label is ~110px of text, whole in the 175px select the market filter has. The

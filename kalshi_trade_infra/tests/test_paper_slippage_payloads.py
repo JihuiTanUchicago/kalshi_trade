@@ -102,6 +102,61 @@ def _dep(sid, mode, pnl, trades, fills, dep_id):
             "closed_trades": trades, "open_positions": 0, "contract_fills": fills}
 
 
+def test_the_strips_window_sums_its_own_fills_in_the_same_pass():
+    # Walk 2026-10-31: the "since your last visit" strip's paper figure had no estimate beside it. With `fills` and a
+    # visit, the one pass also sums each book's fills since the visit (f_visit), from the same rows as its P&L.
+    rows = [dict(r, p_visit=r["p_all"], n_visit=r["n"], f_visit=r["f"]) for r in _book_rows()]
+    rows[0].update(p_visit=Decimal("1.1000"), n_visit=1, f_visit=6)  # deployment 1: one of its 3 trades since the visit
+    cur = _Rows(rows)
+    day = datetime(2026, 10, 27)
+    realized, closed, recent, by_dep, fills = position_repository.closed_book_totals(cur, 7, day, day, split=True, fills=True)
+    assert len(cur.log) == 1
+    sql, params = cur.log[0]
+    assert "THEN qty * (CASE WHEN close_reason='settled' THEN 1 ELSE 2 END) END),0) AS f_visit" in sql
+    assert params == (day, day, day, day, 7)
+    assert recent == {"paper": (0.6, 2, 10), "live": (9.0, 2, 40), "demo": (1.0, 1, 2)}  # each book's own, never added
+    assert fills == {"paper": 24, "live": 40, "demo": 2}  # all time, as before
+    # Without `fills` the read and its since-visit shape are as before.
+    plain = _Rows(rows)
+    assert position_repository.closed_book_totals(plain, 7, day, day)[2]["paper"] == (0.6, 2)
+    assert "f_visit" not in plain.log[0][0]
+
+
+def test_the_strips_paper_book_carries_its_windows_estimate_and_live_and_demo_none():
+    books = {m: dashboard_routes._since_book(m, *b) for m, b in {"paper": (0.6, 2, 10), "live": (9.0, 2, 40), "demo": (1.0, 1, 2)}.items()}
+    assert books["paper"] == {"pnl": 0.6, "trades": 2, "slippage_estimate": {"pnl": 0.55, "per_fill_cents": 0.5}}
+    assert books["live"] == {"pnl": 9.0, "trades": 2} and books["demo"] == {"pnl": 1.0, "trades": 1}
+    # No closed paper trade in the window, or a pass made without fills: no estimate.
+    assert dashboard_routes._since_book("paper", 0.0, 0, 0) == {"pnl": 0.0, "trades": 0}
+    assert dashboard_routes._since_book("paper", 0.6, 2) == {"pnl": 0.6, "trades": 2}
+    # Half a cent rounds once, half up, as every page's money does: $0.93 less 13 fills x 0.5c = $0.865 -> $0.87.
+    assert dashboard_routes._since_book("paper", 0.93, 2, 13)["slippage_estimate"]["pnl"] == 0.87
+
+
+def test_funds_paper_figure_carries_the_dashboards_estimate_from_the_same_read(monkeypatch):
+    from app.services import book_memo
+    from app.web.routes import funds as funds_routes
+
+    asked = []
+
+    def totals(memo, day, visit=None, fills=False):
+        asked.append(fills)
+        return ({"paper": (2.49, 0.0), "demo": (1.82, 0.0), "live": (1.11, 0.0)}, {"paper": 8, "demo": 2, "live": 1}, {}) \
+            + (({"paper": 41, "demo": 13, "live": 10},) if fills else ())
+
+    monkeypatch.setattr(book_memo, "closed_book_totals", totals)
+    for name, fn in {"get_kalshi_key": lambda cur, uid: None, "get_kalshi_dev_key": lambda cur, uid: None,
+                     "demo_equity": lambda cur, uid, realized=None: {"capital": 1000, "equity": 1001.82, "realized": 1.82, "before_reload": False},
+                     "paper_balance": lambda cur, uid: 1000, "ledger_rows": lambda cur, uid: [],
+                     "user_positions": lambda cur, uid, status: []}.items():
+        monkeypatch.setattr(funds_routes.repo, name, fn)
+    out = server.funds(ctx())
+    assert asked == [True]  # one read, the one Funds already made
+    assert out["paper"]["realized_pnl"] == 2.49  # unchanged
+    assert out["paper"]["slippage_estimate"] == {"pnl": 2.29, "per_fill_cents": 0.5}  # $2.49 less 41 x 0.5c, half up
+    assert "slippage_estimate" not in out["demo"] and "slippage_estimate" not in out["kalshi"]
+
+
 def test_since_deploying_sums_each_books_fills_and_estimates_paper_only():
     deps = [_dep(7, "paper", "1.2000", 2, 8, 1), _dep(7, "paper", "2.0000", 3, 12, 2),
             _dep(7, "live", "5.0000", 4, 16, 3), _dep(7, "demo", "0.4000", 1, 2, 4), _dep(8, "paper", "-0.3000", 1, 1, 5)]
@@ -240,13 +295,13 @@ def _imports(path: Path):
             yield from (a.name for a in node.names)
 
 
-def test_only_the_three_display_pages_read_the_estimate():
+def test_only_the_display_pages_read_the_estimate():
     readers = sorted(str(p.relative_to(ROOT)) for top in ("app", "data_pipeline", "trading_core") for p in (ROOT / top).rglob("*.py")
                      if "trading_core.domain.slippage" in set(_imports(p)))
-    # Display routes only: the dashboard, the strategy list and page, the Deploy board (deployments) and the
+    # Display routes only: the dashboard, the strategy list and page, the Deploy board (deployments), Funds and the
     # autopilot panel's status (chat), plus the track record's summary. No gate, engine or research module.
     assert readers == ["app/trading/track_record.py", "app/web/routes/chat.py", "app/web/routes/dashboard.py",
-                       "app/web/routes/deployments.py", "app/web/routes/strategies.py"]
+                       "app/web/routes/deployments.py", "app/web/routes/funds.py", "app/web/routes/strategies.py"]
 
 
 def test_the_gate_inputs_and_the_engine_never_read_it():

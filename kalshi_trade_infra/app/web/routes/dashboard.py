@@ -183,7 +183,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
     act = repo.activity_since(cur, uid, visit)
     return {"at": visit, "first": first,
-            "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
+            "books": {m: _since_book(m, *b) for m, b in recent.items()},
             "passed": _passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
             "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": act.get("card_charged"),
@@ -193,6 +193,18 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "names": {sid: _short_title(t) for sid, t in (act.get("titles") or {}).items() if (t or "").strip()},
             "auto_paused": act.get("auto_paused") or [],
             "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
+
+
+def _since_book(mode: str, pnl: float, trades: int, fills: Optional[int] = None) -> Dict:
+    """One book's line in the strip: realized P&L and closed trades since the visit, and for the paper book
+    with contract fills in that window (closed_book_totals with `fills`) its `slippage_estimate` beside the
+    figure, as the dashboard's all-time paper figure carries one (trading_core.domain.slippage). Never on
+    live or demo, never in place of `pnl`; a book without one leaves the key out."""
+    out = {"pnl": cents(pnl), "trades": trades}
+    est = paper_estimate(mode, pnl, fills) if fills is not None else None
+    if est:
+        out["slippage_estimate"] = est
+    return out
 
 
 PASSED_JUDGE = 500  # the passes since the visit judged for a later check; the strip names 3 of them

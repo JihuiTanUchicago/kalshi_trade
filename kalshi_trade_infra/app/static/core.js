@@ -242,7 +242,8 @@
   const NOT_MARKED = 'Not marked yet';
   // What it leaves out is the price moving before a real order lands. Beside the paper headline figures (the
   // dashboard's, the strategy page's "Since deploying" and its ladder, the track record's paper tab, the
-  // Strategies list's paper card, Deploy's paper Realized, the autopilot's paper figures), the server's
+  // Strategies list's paper card, Deploy's paper Realized, the autopilot's paper figures, the dashboard strip's paper
+  // book, Funds' paper balance and a finished session's "Paper since deploying"), the server's
   // slippage_estimate (trading_core/domain/slippage.py) says what they might have been after it: muted, an
   // estimate with its assumption, never in place of the P&L. Paper only: live and demo never carry one.
   // slipTip says the same words as a title, where a figure sits inside a line about another book.
@@ -613,15 +614,20 @@
   const paperShown = (s) => !!(paperBook(s) || paperBeside(s) || pastPaper(s));
   // One paper book in a line ({pnl, trades, instant_fills}, as the server's book totals send it), for the strategy page's
   // head and a finished session's "Already deployed": paper money net of Kalshi fees and the spread, with its instant
-  // fills counted as the track record leaves them out. Never demo or live money.
-  const paperSince = (r) => `<b>Paper since deploying:</b> ${+r.trades ? `${money(+r.pnl || 0)}\u00a0· ${realTrades(+r.trades)}${pastInstant('paper', r, +r.trades)}\u00a0· ${PAPER_NET}` : 'no closed paper trades yet'}`;
+  // fills counted as the track record leaves them out. Never demo or live money. A book that carries the server's
+  // slippage_estimate (a finished session's `real`, as the Strategies list's) says it under the line, as the list's
+  // paper card does: the session's "Already deployed" line said the paper money with no estimate beside it.
+  const paperSince = (r) => `<b>Paper since deploying:</b> ${+r.trades ? `${money(+r.pnl || 0)}\u00a0· ${realTrades(+r.trades)}${pastInstant('paper', r, +r.trades)}\u00a0· ${PAPER_NET}${slipEst(r.slippage_estimate)}` : 'no closed paper trades yet'}`;
+  // The cell's estimate line: under every paper figure the cell shows, its instant-fill book's too, as the strategy
+  // page's Since deploying says it for the same book (an instant-fill book's cell had none while its page did).
+  const slipLine = (r) => (slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : '');
   // The column's cell: the paper figure first, as the Backtest P&L cell leads with its own, then what it covers. On a phone
   // the stacked card names it (data-lab) under the backtest's figures.
   const paperCell = (s) => {
     const r = paperBook(s), p = pastPaper(s);
     const now = !r ? '' : !r.trades ? '<div class="sub-fig real-fig">No closed paper trades yet</div>'
-      : r.instant_only ? `${money(r.pnl)}<div class="sub-fig real-fig">${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record\u00a0· ${PAPER_NET}</div>`
-      : `${money(r.pnl)}<div class="sub-fig real-fig">since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${PAPER_NET}</div>${slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}`;
+      : r.instant_only ? `${money(r.pnl)}<div class="sub-fig real-fig">${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record\u00a0· ${PAPER_NET}</div>${slipLine(r)}`
+      : `${money(r.pnl)}<div class="sub-fig real-fig">since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${PAPER_NET}</div>${slipLine(r)}`;
     const beside = !r && paperBeside(s) ? `<div class="sub-fig real-fig"><a href="/strategies/${s.id}">Its paper book is on its page</a></div>` : '';
     const body = now + beside + (p ? pastFig({ paper: p }) : '');
     return `<td class="num paper-col${body ? '' : ' nil'}" data-lab="Paper since deploying">${body || '\u2014'}</td>`;
@@ -1013,6 +1019,10 @@
       return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
     }).join('');
   }
+  // The paper book's line in the strip says its estimate after typical live slippage (the server's, for the trades
+  // it closed in the strip's window) under it, as every other paper figure on the dashboard does (slipEstGl). Paper
+  // is the strip's last book, so the line sits right under its figure; live and demo never carry one.
+  const sinceSlip = (b) => (b && b.paper && +b.paper.trades ? slipEstGl(b.paper.slippage_estimate) : '');
   // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
   // each its own 44px, where on a line they reached into one another.
   const sinceLinks = (links) => (links.length > 1 ? `<span class="since-links">${links.join(', ')}</span>` : links.join(''));
@@ -1142,7 +1152,7 @@
     spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, compactCondition, marketSpot, MKT_GONE, vsText, vsLab,
     rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
-    shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
+    shortReason, sinceRunsState, sinceSplit, sinceSlip, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
     sessionNo, olderRows

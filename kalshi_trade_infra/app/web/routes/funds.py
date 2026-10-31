@@ -15,6 +15,7 @@ from app.web.routes.brokers import _perps_live_call
 from app.web.settings import MAX_PAPER_BALANCE, MAX_WAITLIST_PER_MINUTE
 from app.web.views import FOLLOW_UP_TTL, _demo_cash, _live_balance, _open_book, _paper_equity
 from trading_core.domain.money import cents
+from trading_core.domain.slippage import PAPER, paper_estimate
 
 
 def _cash(v):
@@ -75,7 +76,8 @@ def funds(ctx: Ctx):
     # are unchanged), so Funds says what each book has made with the figure the dashboard, Deploy and
     # the track record show. Demo's is since its last reload, as on the dashboard.
     day = repo.now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
-    realized, closed, _ = book_memo.closed_book_totals(book_memo.BookMemo(cur, ctx.uid), day)
+    # The same pass sums each book's contract fills, for the paper book's after-slippage estimate (display only).
+    realized, closed, _, fills = book_memo.closed_book_totals(book_memo.BookMemo(cur, ctx.uid), day, fills=True)
     de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     # Each book's open positions, so every figure says what it leaves out; paper's balance is cash plus
     # open at cost, the dashboard's paper figure. Books are never added together.
@@ -87,6 +89,9 @@ def funds(ctx: Ctx):
     return {
         "paper": {"cash": cents(balance), "equity": cents(_paper_equity(balance, open_pos)), **paper,
                   "realized_pnl": cents(realized["paper"][0]), "closed_trades": int(closed.get("paper", 0)),
+                  # Beside realized_pnl, never in place of it: the dashboard's paper estimate for the same figure
+                  # (trading_core.domain.slippage). None before a closed paper trade; live and demo never carry one.
+                  "slippage_estimate": paper_estimate(PAPER, realized["paper"][0], fills.get(PAPER)),
                   "ledger": repo.ledger_rows(cur, ctx.uid)},
         "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
                  "before_reload": de["before_reload"], "closed_trades": int(closed.get("demo", 0)),
