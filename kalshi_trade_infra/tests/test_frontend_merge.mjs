@@ -2688,7 +2688,7 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   assert.match(card, /<dt><span class="pnl-win">Last 7 days:<\/span> autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 4 closed trades<\/small><\/dd>/);
   assert.match(card, /The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here/);
   assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
-  assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
+  assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas, last 7 days/);  // the scorecard says it
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
   assert.match(box.querySelector('#apf-week').innerHTML, /Credits spent on research[\s\S]*paper, not real money/);
@@ -2836,7 +2836,8 @@ test('autopilot says why it is not trading: the card and the panel lead with one
   f.S.ap = {...fresh, idle: {code: 'no_strategies', line: 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.', action: null}};
   f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   assert.equal(card().innerHTML, 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.');
-  assert.equal(box.querySelectorAll('#apf-story p').map(p => p.innerHTML)[1], first);
+  // Under that line the panel doesn't say "no research has run yet" again (walk 2026-10-31): the rest of the story's lead.
+  assert.equal(box.querySelectorAll('#apf-story p').map(p => p.innerHTML)[1], 'Its first research session starts at its next check-in; it checks in about every 10 minutes.');
   assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /between research runs/);
 });
 
@@ -5052,7 +5053,7 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   await f.viewDashboard(); await flush();
   const card = f.root.querySelector('#dash-ap').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>plus \$0\.42 on its check-ins<\/small><\/dd>/);
-  assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
+  assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at the last 7 days’ pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
   f.clearTimers();
@@ -5073,12 +5074,12 @@ test('a credits pause puts the week line in the paused state, and the next statu
   const line = () => f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
   // Already paused: it said "it uses credits until your balance is under $1.00, then pauses" and how long $0.40 lasts.
   assert.equal(line(), 'Credits left: <b>$0.40</b>. Research is paused until you add credits: a session needs $1.00 to start. <a href="/billing">Billing</a> lists every charge.');
-  assert.doesNotMatch(line(), /then pauses|this week’s pace|no daily spending cap/);
+  assert.doesNotMatch(line(), /then pauses|the last 7 days’ pace|no daily spending cap/);
   f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'card'}; f.paintDashAp();
   assert.match(line(), /Research is paused until you add a payment method\./);
   // Credits added: the status read clears the pause and the running copy comes back.
   f.S.ap = {...apOn, week: {...week, credits_left: 20.4, runway_days: 17}}; f.paintDashAp();
-  assert.match(line(), /^Credits left: <b>\$20\.40<\/b>, about 17 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
+  assert.match(line(), /^Credits left: <b>\$20\.40<\/b>, about 17 days at the last 7 days’ pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.clearTimers();
 });
 
@@ -5576,7 +5577,7 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.match(shut, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> cleared every paper-to-live check\. Live trading isn\u2019t open yet, so it stays on paper and nothing trades real money\./);
   assert.doesNotMatch(shut, /ready for live trading|Going live is your call/);
   // Counted to the pause, not to $0: $6.15 above the $1.00 floor at $27.45 a week.
-  assert.match(text, /Research pauses in about 2 days at this week’s pace, when credits fall under \$1\.00\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
+  assert.match(text, /Research pauses in about 2 days at the last 7 days’ pace, when credits fall under \$1\.00\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
   // Auto-reload on: no runway warning. A plenty balance: none either.
   assert.doesNotMatch(await strip({}, {auto_reload: {amount: 20, charge: 21.1, threshold: 5}}), /Research pauses/);
   assert.doesNotMatch(await strip({}, {credit_balance: 80}), /Research pauses/);
@@ -5593,9 +5594,9 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.doesNotMatch(sliver, /No credits spent/);
   // The pause is read at Billing's pace (the server's pace_days), as the autopilot panel reads it: a two-day-old
   // account's $27.45 is $13.73 a day, so $6.15 above the floor lasts under a day, not "about 2 days" (over 7).
-  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 2}}}), /Research pauses within a day at this week’s pace/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 2}}}), /Research pauses within a day at the last 7 days’ pace/);
   // A first day's spend counts as one day's (the panel's warning, never later): $79 at $27.45 a day is about 3 days.
-  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 0.4}}}, {credit_balance: 80}), /Research pauses in about 3 days at this week’s pace/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, pace_days: 0.4}}}, {credit_balance: 80}), /Research pauses in about 3 days at the last 7 days’ pace/);
   assert.doesNotMatch(await strip({since: {...since, spent: {...since.spent, pace_days: 7}}}, {credit_balance: 80}), /Research pauses/);
   // Something else passed too: the list first, the forward test after it.
   const both = await strip({since: {...since, passed: {n: 1, items: [{id: 9, title: 'Fade'}]}}});
@@ -6270,4 +6271,56 @@ test('Tau Research: with nothing tested yet the status line names the first step
   assert.equal(said, 'Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.');
   assert.doesNotMatch(said, /tests each on data it never saw/);
   f.clearTimers();
+});
+
+test('the autopilot says a session queued to start apart from the ones researching', async () => {
+  // Walk 2026-10-31: two sessions running and one queued for a free worker read "Researching Ethereum · Bitcoin
+  // · Bitcoin", the queued one first. The status's research.queued names those still waiting; they aren't researching.
+  const f = frontend({fetchImpl: path => { if (path === '/api/dashboard') return response(emptyDashboard()); throw new Error('Unexpected offline request: ' + path); }});
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'eth15m', series: 'KXETH15M', label: 'Ethereum up or down in 15 minutes'}];
+  const ap = {autopilot: true, mode: 'paper', paper_running: 0, research: {active: []}};
+  f.S.ap = {...ap, research: {active: ['eth15m', 'btc15m'], queued: ['eth15m']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes');
+  // The same market running and queued: the running one is still said.
+  f.S.ap = {...ap, research: {active: ['btc15m', 'btc15m'], queued: ['btc15m']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes');
+  f.S.ap = {...ap, research: {active: ['eth15m'], queued: ['eth15m']}};
+  assert.equal(f.apIdleLine(), 'Research session queued to start');
+  f.S.ap = {...ap, research: {active: ['eth15m', 'btc15m'], queued: ['eth15m', 'btc15m']}};
+  assert.equal(f.apIdleLine(), '2 research sessions queued to start');
+  // An older server without the field reads as before.
+  f.S.ap = {...ap, research: {active: ['eth15m']}};
+  assert.equal(f.apIdleLine(), 'Researching Ethereum up or down in 15 minutes');
+  // The dashboard card's "Meanwhile" under a paper idle line says the same.
+  f.S.me.user.autopilot = true;
+  const flat = {code: 'flat', line: 'Nothing open right now: ETH drift has closed 18 trades on paper and holds no position.', action: null};
+  f.S.ap = {...ap, paper_running: 1, story: [], idle: flat, research: {tested_7d: 3, passed_7d: 0, active: ['eth15m', 'btc15m'], queued: ['eth15m']}};
+  f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush();
+  const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
+  assert.match(now(), /Meanwhile it’s researching Bitcoin up or down in 15 minutes\.$/);
+  f.S.ap = {...f.S.ap, research: {tested_7d: 3, passed_7d: 0, active: ['eth15m'], queued: ['eth15m']}}; f.paintDashAp();
+  assert.match(now(), /Meanwhile a research session is queued to start\.$/);
+  // The panel's Research figure (shown when there is no story) says it too.
+  const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
+  f.apUpdate(box, {...ap, research: {active: ['eth15m'], queued: ['eth15m'], tested_7d: 3, passed_7d: 0}, story: []});
+  assert.match(box.querySelector('#apf-stats').innerHTML, /A session queued to start\s·\s3 ideas tested in the last 7 days, 0 passed/);
+});
+
+test('the autopilot card says strategies are paused, not None yet', async () => {
+  // Walk 2026-10-31: with two strategies paused the card's cell read "None yet", as if none had ever run, beside the
+  // header's "2 paused, needs you". It now counts the dashboard's paused deployments.
+  const f = frontend({fetchImpl: path => { if (path === '/api/dashboard') return response(emptyDashboard()); throw new Error('Unexpected offline request: ' + path); }});
+  f.S.me.user.autopilot = true;
+  f.S.ap = {autopilot: true, mode: 'paper', story: [], research: {tested_7d: 6, passed_7d: 2, active: []}, live_running: 0, demo_running: 0,
+    paper_running: 0, reviewing: false, last_action: null, last_review_at: new Date().toISOString(),
+    idle: {code: 'stopped', line: 'Nothing is trading: Fade tails is paused: you paused it.', action: null}};
+  f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush();
+  const cell = () => /<dt>Strategies running<\/dt><dd>(.*?)<\/dd>/.exec(f.root.querySelector('#dash-ap').innerHTML)[1];
+  assert.equal(f.S.dashPaused, f.S.dashPaused | 0);  // the dashboard counts its paused deployments
+  f.S.dashPaused = 0; f.paintDashAp();
+  assert.equal(cell(), 'None yet');  // nothing deployed, nothing paused
+  f.S.dashPaused = 2; f.paintDashAp();
+  assert.equal(cell(), 'None\u00a0· 2 paused');
 });

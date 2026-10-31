@@ -948,6 +948,21 @@ def test_idle_reason_is_none_while_something_trades(d, paper_run):
     assert server._idle_reason(d, paper_run, [], 20, []) is None
 
 
+def test_engine_line_counts_what_the_header_counts():
+    """A live deployment places no orders while live trading is closed (the header's "1 placing no orders"), so a
+    stalled engine stops only the others: "your 4 strategies can't buy or sell" beside "3 running" (walk 2026-10-31)."""
+    run = [_paper(), _paper()]
+    idle = server._idle_reason(_idle_d(paper_running=2, demo_running=1, live_running=1), run, [], 1500, [])
+    assert idle['code'] == 'engine' and 'so your 3 strategies can’t buy or sell' in idle['line']
+    idle = server._idle_reason(_idle_d(paper_running=1, live_running=1), [_paper()], [], None, [])
+    assert 'so your strategy can’t buy or sell' in idle['line'] and 'it carries on' in idle['line']
+    # With live trading open the live one trades too, and a stalled engine stops it.
+    idle = server._idle_reason(_idle_d(paper_running=2, demo_running=1, live_running=1, live_enabled=True), run, [], 1500, [])
+    assert 'so your 4 strategies can’t buy or sell' in idle['line']
+    # Only a waiting live strategy: nothing could buy or sell anyway, so no engine line (the story says it waits).
+    assert server._idle_reason(_idle_d(live_running=1), [], [], None, []) is None
+
+
 def test_idle_reason_skips_the_engine_when_its_beat_cannot_be_read():
     d = _idle_d(paper_running=1)
     assert server._idle_reason(d, [_paper()], [], server._UNKNOWN, [])['code'] == 'starting'

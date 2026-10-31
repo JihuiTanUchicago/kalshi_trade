@@ -201,7 +201,7 @@ test('the panel warns before credits run out, and says why when autopilot is pau
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const gates = f.box.querySelector('#apf-gates');
   f.apUpdate(f.box, status({credits_low_days: 1.6}));
-  assert.match(gates.innerHTML, /Research pauses in about 2 days at this week’s pace, when credits fall under/); assert.match(gates.innerHTML, /href="\/billing"/);
+  assert.match(gates.innerHTML, /Research pauses in about 2 days at the last 7 days’ pace, when credits fall under/); assert.match(gates.innerHTML, /href="\/billing"/);
   assert.equal(gates.classes.has('warn'), true);
   f.apUpdate(f.box, status({credits_low_days: 0.3}));
   assert.match(gates.innerHTML, /within a day/);

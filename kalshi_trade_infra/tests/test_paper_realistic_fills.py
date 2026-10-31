@@ -375,9 +375,13 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     assert (out["tested_7d"], out["passed_7d"], out["runs_7d"]) == (2668, 1, 277)
     assert out["cost_7d"] == 12.35
     assert abs((now - seen[0]).total_seconds() - 7 * 86400) < 5 and spent == seen  # one window for both
-    story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it’s still picking"])})
+    # The queued one (no market yet) is said apart: it hasn't started (walk 2026-10-31).
+    assert out["queued"] == ["a market it’s still picking"]
+    assert server._autopilot_now({"research": out}) == ("Right now it’s researching %s. A session is queued to start."
+                                                         % server.MARKETS["nhl_game"].label)
+    story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it’s still picking"], queued=[])})
     assert story[0] == "Right now it’s picking a market to research."
-    assert story[1] == "This week your sessions and the autopilot’s tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
+    assert story[1] == "In the last 7 days your sessions and the autopilot’s tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
     assert out["watch"] is None  # these rows carry no id: nothing to link
 
 
@@ -399,6 +403,27 @@ def test_research_activity_names_the_newest_active_session_to_watch(monkeypatch)
     assert server._research_activity(None, 7)["watch"] is None
 
 
+def test_the_story_says_sessions_queued_to_start_apart_from_those_researching():
+    """Two sessions running and one queued for a free worker read "Right now it's researching Ethereum ..., Bitcoin
+    ... and Bitcoin ...", the queued one first (walk 2026-10-31). research.queued names those still waiting."""
+    from app import server
+
+    def now(active, queued=None):
+        return server._autopilot_now({"research": {"active": active, "queued": queued or []}})
+    assert now(["ETH 15m", "BTC 5pm", "BTC 15m"], ["ETH 15m"]) == \
+        "Right now it’s researching BTC 5pm and BTC 15m. A session on ETH 15m is queued to start."
+    assert now(["A", "B", "C"], ["A", "B"]) == "Right now it’s researching C. Sessions on A and B are queued to start."
+    assert now(["BTC 15m", "BTC 15m"], ["BTC 15m"]) == "Right now it’s researching BTC 15m. A session on BTC 15m is queued to start."
+    assert now(["ETH 15m"], ["ETH 15m"]) == "Right now a session on ETH 15m is queued to start."
+    assert now(["a market it’s still picking"], ["a market it’s still picking"]) == "Right now a session is queued to start."
+    assert now(["A", "B"]) == "Right now it’s researching A and B."  # an older payload without queued reads as before
+    # The idle line takes the first sentence: only what is running, or the queued session when nothing is.
+    idle = server._idle_reason({"autopilot": True, "research": {"active": ["ETH 15m", "BTC 15m"], "queued": ["ETH 15m"]}}, [], [], None, [])
+    assert idle["line"] == "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m."
+    idle = server._idle_reason({"autopilot": True, "research": {"active": ["ETH 15m"], "queued": ["ETH 15m"]}}, [], [], None, [])
+    assert idle["line"] == "Nothing is on paper yet: no strategy has passed its research tests. A session on ETH 15m is queued to start."
+
+
 def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_passed():
     """passed_7d counts only passes cleared to trade; one whose holdout then failed or that the
     diversification check held back (not_cleared_7d) is said apart, never as passed."""
@@ -407,10 +432,10 @@ def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_pass
     def line(passed, fell):
         return server._autopilot_story({"autopilot": True, "research": {
             "active": [], "tested_7d": 12, "passed_7d": passed, "not_cleared_7d": fell}})[1]
-    assert line(1, 0) == "This week your sessions and the autopilot’s tested 12 ideas and 1 passed."
-    assert line(1, 1) == "This week your sessions and the autopilot’s tested 12 ideas and 1 passed, and 1 more passed but wasn’t cleared to trade."
-    assert line(2, 3) == "This week your sessions and the autopilot’s tested 12 ideas and 2 passed, and 3 more passed but weren’t cleared to trade."
-    assert line(0, 2) == ("This week your sessions and the autopilot’s tested 12 ideas and none has been cleared to trade yet: 2 passed, but a later "
+    assert line(1, 0) == "In the last 7 days your sessions and the autopilot’s tested 12 ideas and 1 passed."
+    assert line(1, 1) == "In the last 7 days your sessions and the autopilot’s tested 12 ideas and 1 passed, and 1 more passed but wasn’t cleared to trade."
+    assert line(2, 3) == "In the last 7 days your sessions and the autopilot’s tested 12 ideas and 2 passed, and 3 more passed but weren’t cleared to trade."
+    assert line(0, 2) == ("In the last 7 days your sessions and the autopilot’s tested 12 ideas and none has been cleared to trade yet: 2 passed, but a later "
                           "check didn’t clear them. Each one’s page says which check.")
     assert line(0, 1).endswith("1 passed, but a later check didn’t clear it. Each one’s page says which check.")
     assert "none has passed its tests yet" in line(0, 0)
@@ -424,7 +449,7 @@ def test_the_story_never_puts_the_users_own_research_spend_on_the_autopilot():
 
     story = server._autopilot_story({"autopilot": True, "research": {
         "active": [], "tested_7d": 32, "passed_7d": 0, "not_cleared_7d": 0, "cost_7d": 17.4}})
-    assert story[1].startswith("This week your sessions and the autopilot’s tested 32 ideas for $17.40 and none")
+    assert story[1].startswith("In the last 7 days your sessions and the autopilot’s tested 32 ideas for $17.40 and none")
     assert not any(s.startswith("This week it tested") for s in story)
 
 
@@ -509,6 +534,14 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     for days, words in ((22.5, "is about 23 days ("), (2.5, "is about 3 days ("), (0.4, "is under a day ("), (1.0, "is about a day (")):
         assert words in server._autopilot_story(dict(d2, paper_progress=dict(
             d2["paper_progress"], soonest_days=days, soonest_title="X")))[2], days
+    # Past the count and with its record in (walk 2026-10-31): not "34 of the 30 realistic paper trades", and not
+    # "could have enough for the live check ... under a day" for a record that already has it (Deploy: "are in").
+    done = server._autopilot_story(dict(d2, paper_progress={"trades": 34, "trades_needed": 30, "net_pnl": 48.86,
+                                                            "soonest_days": 0.0, "soonest_title": "Fade late YES — v2"}))
+    assert ("The furthest along has 34 realistic paper trades (live needs 30) and is up $48.86 on them net of fees "
+            "and spread, across all its paper runs.") in done[1]
+    assert done[2] == "Fade late YES already has the trades, events and hours the live check counts; the check also needs it to be up."
+    assert not any("34 of the 30" in line or "could have enough" in line for line in done)
     # Bought but not settled: it says so instead of "none has traded yet".
     story = server._autopilot_story(dict(d, paper_open=4))
     assert story[2] == "3 strategies are on paper (pretend money). 4 positions are open, waiting to settle; none has closed yet."

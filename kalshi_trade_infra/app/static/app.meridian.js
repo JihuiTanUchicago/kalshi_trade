@@ -2259,6 +2259,7 @@
       if (accountsFocused) root.querySelector('#other-accounts > summary').focus({ preventScroll: true });
       keepApCard(() => replaceDeploymentContent(root.querySelector('#main'), main));
       S.dashPaper = p;
+      S.dashPaused = d.deployments.filter((x) => x.status === 'paused').length;
       paintDashAp();
       resizePaperChart = days.length > 1 ? () => {
         const plot = root.querySelector('.paper-plot');
@@ -2948,8 +2949,10 @@
     const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
       d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : [`${pnlWin('all')} ${gl('paper P&amp;L, realized', 'realized')}`, pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEstGl(S.dashPaper.slippage_estimate)}`],
-      ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
-      d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
+      // With strategies paused (the dashboard's deployments, S.dashPaused) it says so: "None yet" read as nothing ever
+      // having run beside the header's "2 paused, needs you" (walk 2026-10-31).
+      ['Strategies running', `${running || (S.dashPaused ? `None${SEP}${num(S.dashPaused)} paused` : 'None yet')}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
+      d.week ? null : ['Ideas, last 7 days', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${gl(PAPER_COUNT_WHY, 'instantfill')}</small>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) + apEvery(d) : 'Starting up'],
     ].filter(Boolean);
@@ -3012,10 +3015,18 @@
     if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
     return contractMarket(s) || 'an unlisted market';
   }
-  const apMarketNames = (d) => [...new Set(((d && d.research && d.research.active) || []).map((n) => n === AP_PICKING ? n : apMarketName(n)))];
+  // The sessions researching now: the status's research.active less those still queued to start (research.queued).
+  // "Researching Ethereum · Bitcoin" named a session waiting for a free worker beside the two running (walk 2026-10-31).
+  const apResearching = (d) => {
+    const r = (d && d.research) || {}, q = [...(r.queued || [])];
+    return (r.active || []).filter((n) => { const i = q.indexOf(n); if (i < 0) return true; q.splice(i, 1); return false; });
+  };
+  const apQueued = (d) => ((d && d.research && d.research.queued) || []).length;
+  const apMarketNames = (d) => [...new Set(apResearching(d).map((n) => n === AP_PICKING ? n : apMarketName(n)))];
   function apMeanwhile(d) {
     if (!d || !d.idle || !AP_IDLE_PAPER.has(d.idle.code)) return '';
     const all = apMarketNames(d), names = all.filter((n) => n !== AP_PICKING);
+    if (!all.length && apQueued(d)) return ` Meanwhile ${apQueued(d) === 1 ? 'a research session is' : `${apQueued(d)} research sessions are`} queued to start.`;
     if (!all.length) return d.reviewing ? " Meanwhile it’s reviewing the markets to pick its next move." : '';
     if (!names.length) return " Meanwhile it’s picking a market to research.";
     const said = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
@@ -3133,7 +3144,7 @@
     // A first-day account has no pace yet, and one under a week old reads its pace per day so far
     // (the server's pace_days): its first minutes' spend over 7 days read "over 3 months".
     // With auto-reload on, the next thing at this pace is a card charge, not a pause (the server's reload_days).
-    const at = w.pace_days != null && w.pace_days < 7 ? 'its pace so far' : 'this week’s pace';
+    const at = w.pace_days != null && w.pace_days < 7 ? 'its pace so far' : 'the last 7 days’ pace';
     const reloadIn = !!me.auto_reload && w.reload_days != null && !(d && d.reload_failed);
     const pace = reloadIn ? `; at ${at} auto-reload adds ${usd(me.auto_reload.amount)} ${inDays(w.reload_days)} (card charged ${usd(me.auto_reload.charge)})`
       : w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at ${at}`
@@ -3517,7 +3528,7 @@
   // How long the balance lasts at last week's spend, counted to where research pauses (under
   // min_run_balance), which autopilot users need more than the one-time welcome credit.
   // The low-credit warning (the dashboard's Needs you, the autopilot panel): days until research pauses.
-  const pausesIn = (days) => `Research pauses ${days < 1 ? 'within a day' : inDays(days)} at this week’s pace, when credits fall under ${usd(S.me && S.me.min_run_balance != null ? S.me.min_run_balance : 0)}.`;
+  const pausesIn = (days) => `Research pauses ${days < 1 ? 'within a day' : inDays(days)} at the last 7 days’ pace, when credits fall under ${usd(S.me && S.me.min_run_balance != null ? S.me.min_run_balance : 0)}.`;
   // What the card pays for `credits` plus the purchase fee, to the cent as the server charges it
   // (billing.topup_charge_cents: exact decimal, half up), worked in whole cents: $19 x 1.055 as a float
   // read $20.04 before the press while the card paid $20.05.
@@ -3602,7 +3613,7 @@
     MKT_STATUS, mktLabel, NO_MARK, rulesText, spotListNote, spotSect, strikeIn, sum4, vsHtml,
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
-    apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
+    apMarketNames, apQueued, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE, LOG_STAMP, closeClock, liveClose,
     clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig, demoSpan,

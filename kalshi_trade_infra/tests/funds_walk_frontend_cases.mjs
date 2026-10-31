@@ -53,7 +53,7 @@ export function fundsWalkCases({name, frontend, fundsData}) {
       f.apUpdate(box, {autopilot: false, research: {active: [], tested_7d: 3, passed_7d: 0, ...research}, story: []});
       return box.querySelector('#apf-stats').innerHTML;
     };
-    assert.match(line({cost_7d: 0, cost_7d_under_cent: true}), /3 ideas tested this week, 0 passed, under \$0\.01 spent/);
+    assert.match(line({cost_7d: 0, cost_7d_under_cent: true}), /3 ideas tested in the last 7 days, 0 passed, under \$0\.01 spent/);
     assert.match(line({cost_7d: 0.004}), /0 passed, under \$0\.01 spent/);  // an unrounded figure says the same, never $0.00
     assert.doesNotMatch(line({cost_7d: 0.004}), /\$0\.00/);
     assert.match(line({cost_7d: 0.12}), /0 passed, \$0\.12 spent/);
