@@ -65,3 +65,78 @@ def test_settlement_labels_for_the_ledger():
     assert engine.settlement_label("yes") == "YES"
     assert engine.settlement_label(engine.VOID) == "VOID (refunded at cost)"
     assert engine.settlement_label(0.42) == "VOID at $0.42 a YES contract"
+
+
+def test_dataset_result_reads_hist_markets_rows():
+    from app.trading.settlement import dataset_result
+    assert dataset_result({"result": "yes", "settle_value": None}) == "yes"
+    assert dataset_result({"result": "void", "settle_value": "0.5000"}) == pytest.approx(0.5)
+    assert dataset_result({"result": "void", "settle_value": None}) is None
+    assert dataset_result({"result": "no"}) == "no"   # a row read before the column existed
+
+
+def test_contract_payout_pays_each_side_its_share():
+    from app.trading.settlement import contract_payout, yes_no_or_value
+    assert contract_payout("yes", "yes") == 1.0 and contract_payout("yes", "no") == 0.0
+    assert contract_payout(0.3, "yes") == pytest.approx(0.3) and contract_payout(0.3, "no") == pytest.approx(0.7)
+    assert contract_payout(None, "yes") == 0.0   # missing result: a loss, as the backtest always booked
+    assert yes_no_or_value(0.5) and yes_no_or_value("no") and not yes_no_or_value(None) \
+        and not yes_no_or_value("void")
+
+
+def test_history_stores_a_cancelled_market_at_its_price_and_skips_one_without():
+    """market_history keeps a cancelled market (result 'void' with its price in settle_value) instead
+    of dropping it, so backtests see the ~2% of sports markets Kalshi cancels."""
+    from datetime import datetime, timezone
+    from app import market_history
+    from app.trading.markets import Market
+
+    class Cur:
+        rows = None
+
+        def executemany(self, sql, rows):
+            assert "settle_value" in sql
+            Cur.rows = rows
+
+    mk = next(m for m in market_history.MARKETS.values() if m.underlying is None)
+    base = {"open_time": "2026-10-01T00:00:00Z", "close_time": "2026-10-01T03:00:00Z", "event_ticker": "E"}
+    page = [dict(base, ticker="A", result="yes", status="finalized"),
+            dict(base, ticker="B", result="scalar", status="finalized", settlement_value_dollars="0.5000"),
+            dict(base, ticker="C", result="", status="finalized"),           # void, no price: nothing to pay
+            dict(base, ticker="D", result="scalar", status="determined")]    # price not set yet
+    import unittest.mock as um
+    with um.patch.object(Market, "is_target_event", lambda self, ct: True):
+        n = market_history._upsert_settled(Cur(), mk, page)
+    assert n == 2
+    by = {r[0]: r for r in Cur.rows}
+    assert by["A"][6] == "yes" and by["A"][8] is None
+    assert by["B"][6] == "void" and by["B"][8] == pytest.approx(0.5)
+
+
+def test_resync_reads_every_collected_series_over_its_window_and_survives_one_failure(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app import market_history
+
+    binaries = [m for m in market_history.MARKETS.values() if m.kind == "binary"][:3]
+
+    class Cur:
+        def execute(self, sql, params=()):
+            assert sql.startswith("SELECT DISTINCT series_ticker FROM hist_markets")
+
+        def fetchall(self):
+            return [{"series_ticker": m.series} for m in binaries[:2]]
+
+    now = datetime(2026, 10, 31, tzinfo=timezone.utc)
+    calls = []
+
+    def sync(cur, market, min_close, max_close=None):
+        calls.append((market.series, min_close))
+        if market is binaries[1]:
+            raise RuntimeError("Kalshi 503")
+        return 7
+
+    monkeypatch.setattr(market_history, "sync_settled_markets", sync)
+    stats = market_history.resync_settled(Cur(), now)
+    assert stats == {binaries[0].series: 7}
+    assert (binaries[0].series, now - timedelta(days=binaries[0].history_days)) in calls
+    assert binaries[2].series not in {c[0] for c in calls}   # never collected: not started by a resync

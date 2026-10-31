@@ -787,6 +787,9 @@ def main() -> None:
         # Early exits scored against holding to settlement (engine.score_early_exits): what the
         # contract settled at and what the position would have made held to the end.
         _add_column_if_missing(cur, "app_positions", "settle_result", "ALTER TABLE app_positions ADD COLUMN settle_result VARCHAR(4) NULL")
+        # A market Kalshi cancelled and settled at a fair price (app/trading/settlement.py): result 'void'
+        # and its YES payout per contract here, so backtests pay it as the live engine is paid.
+        _add_column_if_missing(cur, "hist_markets", "settle_value", "ALTER TABLE hist_markets ADD COLUMN settle_value DECIMAL(6,4) NULL")
         _add_column_if_missing(cur, "app_positions", "hold_pnl", "ALTER TABLE app_positions ADD COLUMN hold_pnl DECIMAL(14,4) NULL")
         # Per-position close claim (EXECUTION_RISK_HARDENING P0-3): the order-placing risk sweeps
         # (drawdown force-sell) lease a position before sending a real close, so two engines can

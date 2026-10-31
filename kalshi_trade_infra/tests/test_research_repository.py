@@ -134,7 +134,7 @@ class LedgerCursor:
                     n += h["evaluations_used"]
             self._last = [{"n": n}]
         # -- hist_markets (partition_contracts) --
-        elif s.startswith("SELECT ticker, open_time, close_time, result FROM hist_markets"):
+        elif s.startswith("SELECT ticker, open_time, close_time, result, settle_value FROM hist_markets"):
             series, since = p[0], p[1]
             rows = [dict(r) for r in self.t["hist_markets"]
                     if r["series_ticker"] == series and r["close_time"] >= since]

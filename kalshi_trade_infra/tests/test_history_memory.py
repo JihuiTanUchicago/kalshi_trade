@@ -36,7 +36,7 @@ class BufferedCur:
 
     def execute(self, sql, params=()):
         s = " ".join(sql.split())
-        if s.startswith("SELECT ticker, strike, close_time, result FROM hist_markets"):
+        if s.startswith("SELECT ticker, strike, close_time, result, settle_value FROM hist_markets"):
             self._last = [dict(r) for r in MARKETS_ROWS]
         elif s.startswith("SELECT c.ticker, c.end_period_ts"):
             self._last = [{"ticker": t, "end_period_ts": ts, "yes_bid_close": b, "yes_ask_close": a}

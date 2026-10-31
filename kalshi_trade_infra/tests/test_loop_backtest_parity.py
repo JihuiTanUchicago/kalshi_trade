@@ -14,10 +14,12 @@ from trading_core.domain import InstrumentId, OrderIntent, Quote, Side
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 
 
-def _random_dataset(seed, n_events=30, minutes=15, strikes=(98.0, 100.0, 102.0), gaps=0.0, sizes=False):
+def _random_dataset(seed, n_events=30, minutes=15, strikes=(98.0, 100.0, 102.0), gaps=0.0, sizes=False, voids=0.0):
     """Overlapping strikes per 15-minute event, a random-walk spot and noisy books, so entries,
     take-profits, stops, edge-gone exits and settlements all happen. ``gaps`` drops that fraction of
-    quotes (orders rest, go stale, contracts vanish for a bar); ``sizes`` adds top-of-book sizes."""
+    quotes (orders rest, go stale, contracts vanish for a bar); ``sizes`` adds top-of-book sizes;
+    ``voids`` settles that fraction of markets as Kalshi settles a cancelled one (hist_markets result
+    'void' at a fair price in settle_value)."""
     rng = random.Random(seed)
     spot, btc = 100.0, []
     for i in range(n_events * minutes + 200):
@@ -32,8 +34,11 @@ def _random_dataset(seed, n_events=30, minutes=15, strikes=(98.0, 100.0, 102.0),
         settle_spot = px.get(close_ts - close_ts % 60, spot)
         for strike in strikes:
             ticker = "M%d_%d" % (k, int(strike))
-            markets.append({"ticker": ticker, "strike": strike, "close_time": close,
-                            "result": "yes" if settle_spot > strike else "no"})
+            row = {"ticker": ticker, "strike": strike, "close_time": close,
+                   "result": "yes" if settle_spot > strike else "no"}
+            if voids and rng.random() < voids:
+                row.update(result="void", settle_value=round(rng.uniform(0.05, 0.95), 2))
+            markets.append(row)
             mid = rng.uniform(0.15, 0.85)
             for m in range(1, minutes + 1):
                 mid = min(0.95, max(0.05, mid + rng.gauss(0, 0.06)))
@@ -219,3 +224,22 @@ def test_simulate_clocks_its_own_thread_once_per_call(monkeypatch):
     monkeypatch.setattr(backtest, "ENGINE", "loop")
     backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1)
     assert 0 < one < backtest.sim_seconds() - before
+
+
+@pytest.mark.parametrize("fill", ["signal_bar", "next_bar"])
+@pytest.mark.parametrize("raw", SPECS)
+def test_a_cancelled_market_pays_its_settlement_price_on_both_paths(monkeypatch, fill, raw):
+    """A market Kalshi cancelled settles at its fair price, as the live engine is paid: YES gets the
+    price and NO one minus it, on the legacy backtest and on the loop alike. Before, it paid 0 to both."""
+    monkeypatch.setattr(backtest, "FILL_MODEL", fill)
+    ds = _random_dataset(4, voids=0.3)
+    values = {t: r for t, r in ds.results.items() if isinstance(r, float)}
+    assert values  # the dataset carries the price, not the raw 'void'
+    spec = specmod.validate(raw)
+    legacy = sorted(backtest.simulate(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)
+    loop = sorted(simulate_on_loop(spec, ds, ds.start_ts, ds.end_ts + 1), key=_key)
+    assert [_row(t) for t in loop] == [_row(t) for t in legacy]
+    for t in legacy:
+        if t.reason == "settled" and t.ticker in values:
+            want = values[t.ticker] if t.side == "yes" else 1.0 - values[t.ticker]
+            assert t.exit_price == pytest.approx(want)
