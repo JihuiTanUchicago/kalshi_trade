@@ -200,6 +200,66 @@ def former_names(text: Optional[str]) -> Optional[str]:
     return _FORMER_LABEL.sub(lambda m: _FORMER[m.group(1)], text) if text else text
 
 
+# The research agent's housekeeping lines (its playbook and long-term memory, the quicker screening model's hand-offs,
+# the lead scan, a reclaim after a restart), which its log printed as written: a customer watching a session read
+# "Using research playbook v3 for crypto markets (current).", "Handing “X” to the developer model (the screen would
+# commit it)." and "Session interrupted — reclaiming it to resume from the last checkpoint (attempt 1 of 3)." (walk
+# 2026-10-31). gate_explain.step_note says the ledger's own step lines; these are the rest, by the words agent.py and
+# the run reaper (agent_run_repository) write today (tests/test_run_step_words.py holds them to it). A line neither
+# knows keeps its words. The stored line is unchanged.
+_STEP_WORDS: List = [
+    (re.compile(r"^Using research playbook v\d+ for .+? markets \(on trial against the current one\)\.$"),
+     "Trying out revised notes on how to research these markets, against the current ones."),
+    (re.compile(r"^Using research playbook v\d+ for .+? markets \(current\)\.$"),
+     "Drawing on its notes from earlier sessions on how to research these markets."),
+    (re.compile(r"^Research playbook for .+? markets: promoted v\d+ over v\d+\b"),
+     "Its revised research notes for these markets did better than the old ones, so it keeps them."),
+    (re.compile(r"^Research playbook for .+? markets: retired v\d+, v\d+ stays\b"),
+     "Its revised research notes for these markets did no better than the old ones, so it keeps the old ones."),
+    (re.compile(r"^Wrote research playbook v\d+ for .+? markets from this run"),
+     "Rewrote its notes on how to research these markets from this session’s results; later sessions try them "
+     "against the current ones."),
+    (re.compile(r"^Playbook update skipped this time\."),
+     "Its research notes weren’t updated this time; this session’s results are saved."),
+    (re.compile(r"^Using long-term research memory for .+? markets\.$"),
+     "Drawing on what earlier sessions on these markets found."),
+    (re.compile(r"^Consolidated long-term research memory for .+? markets:"),
+     "Summed up what sessions on these markets have found so far, for later sessions to build on."),
+    (re.compile(r"^Handing [\"“](.+)[\"”] to the developer model \(.*\)\.$", re.S),
+     lambda m: "A quicker model looked at “%s” first and passed it on to be worked out in full." % m.group(1)),
+    (re.compile(r"^Screen audit on [\"“](.+)[\"”]: screen abandoned, developer says abandon\.$", re.S),
+     lambda m: "A second look agreed to drop “%s”." % m.group(1)),
+    (re.compile(r"^Screen audit on [\"“](.+)[\"”]: screen abandoned, developer says \w+\.$", re.S),
+     lambda m: "A quicker model would have dropped “%s”; a second look kept it to work out in full." % m.group(1)),
+    (re.compile(r"^Session interrupted — reclaiming it to resume from the last checkpoint\b"),
+     "The session was interrupted, so it’s picking up again from where it last saved its progress."),
+    (re.compile(r"^Session interrupted before its first checkpoint — restarting it\b"),
+     "The session was interrupted before it saved any progress, so it’s starting again from the top."),
+    (re.compile(r"^Paused for a server update; resuming from the last checkpoint\.$"),
+     "Paused for a server update; it picks up again from where it last saved its progress."),
+    (re.compile(r"^Paused too long — stopping to free the worker\."),
+     "Paused too long, so the session stopped. Start a new session to continue."),
+    (re.compile(r"^Scanning every feature x life x price cell for measured mispricing…$"),
+     "Scanning the research data for mispriced setups first…"),
+    (re.compile(r"^Lead scan skipped this time\.$"),
+     "Skipped the scan of the data this time and went straight to ideas."),
+    (re.compile(r"^Dreaming hiccup \(kept current policy\)\.$"),
+     "Couldn’t tune how it searches this time, so it keeps its current approach."),
+    (re.compile(r"^Policy-evolution step skipped this time\.$"),
+     "Skipped tuning how it searches this time."),
+]
+
+
+def step_words(message: Optional[str]) -> Optional[str]:
+    """One plain sentence for a research step line in the agent's housekeeping terms (_STEP_WORDS), else None."""
+    msg = str(message or "")
+    for rx, say in _STEP_WORDS:
+        m = rx.match(msg)
+        if m:
+            return say(m) if callable(say) else say
+    return None
+
+
 def event_rows(events: List[Dict]) -> List[Dict]:
     """A run's log lines, and the text values of their data. An error line (the provider's or the
     app's own failure text) goes through ``clean``; every other line is the agent's thinking, steps,

@@ -294,5 +294,9 @@ export function stopReasonCases({name, frontend}) {
     assert.doesNotMatch(some, /hypothes/i);
     assert.match(f.runRow(run({status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 1, strategies_passed: 0})), /Tested 1 idea\b|run-ratio/);
     assert.doesNotMatch(some, /run-state"><span class="vh">Outcome <\/span>Interrupted<|run-state">Interrupted</);
+    // And it says why it stopped, as its page's status does: Tau's card said only "Tested 3 ideas" and Meridian's row
+    // "1/3 passed" for a session its page called Interrupted (walk 2026-10-31).
+    assert.match(some, /Interrupted/);
+    assert.match(f.runRow(run({status: 'stopped', stop_reason: 'interrupted', hypotheses_tried: 1, strategies_passed: 0})), /Interrupted/);
   });
 }
