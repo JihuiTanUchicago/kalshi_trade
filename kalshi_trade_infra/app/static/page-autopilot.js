@@ -462,7 +462,10 @@ window.TauPage('autopilot', (T) => {
     const lines = apStory(d), raw = String(((d && d.story) || [])[0] || '');
     const cut = (s) => { const i = s.indexOf('. '); return i < 0 ? [s.replace(/\.$/, ''), ''] : [s.slice(0, i), s.slice(i + 2)]; };
     const doing = cut(raw)[0].replace(/^Right now /, '');
-    if (!idleShown || !lines.length || !doing || !String(d.idle.line || '').includes(doing.charAt(0).toUpperCase() + doing.slice(1))) return lines;
+    // Said mid-sentence too ("Nothing is on paper yet: no research has run yet."): a brand-new autopilot's panel read
+    // that line and then "Right now no research has run yet." (walk 2026-10-31).
+    const said = String((d && d.idle && d.idle.line) || '');
+    if (!idleShown || !lines.length || !doing || !(said.includes(doing.charAt(0).toUpperCase() + doing.slice(1)) || said.includes(doing))) return lines;
     const rest = cut(lines[0])[1].trim();
     return (rest ? [rest] : []).concat(lines.slice(1));
   }

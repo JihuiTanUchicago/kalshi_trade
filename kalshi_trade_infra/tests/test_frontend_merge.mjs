@@ -2836,7 +2836,8 @@ test('autopilot says why it is not trading: the card and the panel lead with one
   f.S.ap = {...fresh, idle: {code: 'no_strategies', line: 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.', action: null}};
   f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   assert.equal(card().innerHTML, 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.');
-  assert.equal(box.querySelectorAll('#apf-story p').map(p => p.innerHTML)[1], first);
+  // Under that line the panel doesn't say "no research has run yet" again (walk 2026-10-31): the rest of the story's lead.
+  assert.equal(box.querySelectorAll('#apf-story p').map(p => p.innerHTML)[1], 'Its first research session starts at its next check-in; it checks in about every 10 minutes.');
   assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /between research runs/);
 });
 
@@ -6304,4 +6305,22 @@ test('the autopilot says a session queued to start apart from the ones researchi
   const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
   f.apUpdate(box, {...ap, research: {active: ['eth15m'], queued: ['eth15m'], tested_7d: 3, passed_7d: 0}, story: []});
   assert.match(box.querySelector('#apf-stats').innerHTML, /A session queued to start\s·\s3 ideas tested in the last 7 days, 0 passed/);
+});
+
+test('the autopilot card says strategies are paused, not None yet', async () => {
+  // Walk 2026-10-31: with two strategies paused the card's cell read "None yet", as if none had ever run, beside the
+  // header's "2 paused, needs you". It now counts the dashboard's paused deployments.
+  const f = frontend({fetchImpl: path => { if (path === '/api/dashboard') return response(emptyDashboard()); throw new Error('Unexpected offline request: ' + path); }});
+  f.S.me.user.autopilot = true;
+  f.S.ap = {autopilot: true, mode: 'paper', story: [], research: {tested_7d: 6, passed_7d: 2, active: []}, live_running: 0, demo_running: 0,
+    paper_running: 0, reviewing: false, last_action: null, last_review_at: new Date().toISOString(),
+    idle: {code: 'stopped', line: 'Nothing is trading: Fade tails is paused: you paused it.', action: null}};
+  f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush();
+  const cell = () => /<dt>Strategies running<\/dt><dd>(.*?)<\/dd>/.exec(f.root.querySelector('#dash-ap').innerHTML)[1];
+  assert.equal(f.S.dashPaused, f.S.dashPaused | 0);  // the dashboard counts its paused deployments
+  f.S.dashPaused = 0; f.paintDashAp();
+  assert.equal(cell(), 'None yet');  // nothing deployed, nothing paused
+  f.S.dashPaused = 2; f.paintDashAp();
+  assert.equal(cell(), 'None\u00a0· 2 paused');
 });

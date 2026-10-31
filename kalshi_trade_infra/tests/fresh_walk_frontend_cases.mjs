@@ -38,6 +38,12 @@ export function freshWalkCases({name, frontend, dashboard}) {
     assert.equal(storyText(await panel(other))[1], REVIEWING);
     // With no idle line, the story is as the server sent it.
     assert.deepEqual(storyText(await panel({...FRESH_ON, idle: null})), FRESH_ON.story);
+    // Before any research (walk 2026-10-31): the idle line says it mid-sentence, and the story's lead isn't said again.
+    const first = {...FRESH_ON, reviewing: false, idle: {code: 'no_strategies', line: 'Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.', action: null},
+      story: ['Right now no research has run yet. Its first research session starts at its next check-in; it checks in about every 10 minutes.', FRESH_ON.story[2]]};
+    const said = storyText(await panel(first));
+    assert.equal(said.join(' ').split('no research has run yet').length - 1, 1, said.join('\n'));
+    assert.equal(said[1], 'Its first research session starts at its next check-in; it checks in about every 10 minutes.');
   });
 
   // A new account's autopilot showed "$0.00" for a paper P&L it had never had: "Paper P&L, realized all time $0.00"

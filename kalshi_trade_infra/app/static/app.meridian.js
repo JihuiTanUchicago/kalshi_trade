@@ -2259,6 +2259,7 @@
       if (accountsFocused) root.querySelector('#other-accounts > summary').focus({ preventScroll: true });
       keepApCard(() => replaceDeploymentContent(root.querySelector('#main'), main));
       S.dashPaper = p;
+      S.dashPaused = d.deployments.filter((x) => x.status === 'paused').length;
       paintDashAp();
       resizePaperChart = days.length > 1 ? () => {
         const plot = root.querySelector('.paper-plot');
@@ -2948,7 +2949,9 @@
     const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
       d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : [`${pnlWin('all')} ${gl('paper P&amp;L, realized', 'realized')}`, pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEstGl(S.dashPaper.slippage_estimate)}`],
-      ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
+      // With strategies paused (the dashboard's deployments, S.dashPaused) it says so: "None yet" read as nothing ever
+      // having run beside the header's "2 paused, needs you" (walk 2026-10-31).
+      ['Strategies running', `${running || (S.dashPaused ? `None${SEP}${num(S.dashPaused)} paused` : 'None yet')}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas, last 7 days', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${gl(PAPER_COUNT_WHY, 'instantfill')}</small>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) + apEvery(d) : 'Starting up'],
