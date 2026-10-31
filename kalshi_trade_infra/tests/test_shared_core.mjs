@@ -201,3 +201,10 @@ test('the check finds a helper defined again', () => {
   assert.ok(!defined('    const esc = 1;\n').has('esc'), 'a local inside a function is its own');
   assert.deepEqual(taken('\n  const {\n    esc, usd\n  } = window.TauCore;\n'), ['esc', 'usd']);
 });
+
+// Explore walk 2026-10-31: the hot rail's compact volume read "1000.0k" for 999,960 contracts traded.
+test('a compact volume that rounds up into the next unit takes it', () => {
+  const {kfmt} = core();
+  assert.deepEqual([0, 88, 999.4, 999.6, 9045, 99949, 999949, 999960, 1234567].map(kfmt),
+    ['0', '88', '999', '1.0k', '9.0k', '99.9k', '999.9k', '1.0M', '1.2M']);
+});

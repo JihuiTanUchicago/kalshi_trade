@@ -2698,6 +2698,11 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
   .post-footer .rx, .post-footer .rx:not(.add), .post-footer .rx.add, .post-footer .thread-link, .active-open, .research-page .research-create > summary, .t-explore th button, .t-explore .xlink a,
   .strategy-summary > summary { min-height: 44px; }
   .t-explore .xlink a { min-width: 44px; opacity: 1; }
+  /* Walked 2026-10-31 at 390px: the Bitcoin filter was 43px wide, a row named by its title alone (no condition, chip
+     or close) a 26px link, and a market page's "Back to Explore" 33px tall. */
+  .explore-filters .xshow .chip { min-width: 44px; }
+  .t-explore td.name[colspan] > a.market-name { min-height: 44px; align-content: center; }  /* rows with no Context cell only */
+  .mk-back a { padding-block: 13px; margin-block: -6px; }
 }
 
 /* ── Phone & touch ─────────────────────────────────────────────────────────── */
@@ -2884,7 +2889,7 @@ span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
 /* The ticker moves to the next line whole when it fits there, and breaks inside only when it is wider than a line:
    a market page at 390px split "KXBTCD-26OCT2717-" from "T112999.99". */
 .kalshi-ref .tick { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-/* On a market page it is the line under the name ("Open for trading · Kalshi contract KX…"), at that line's size. */
+/* On a market page it is the line under the name ("Open on Kalshi · Kalshi contract KX…"), at that line's size. */
 .deck .kalshi-ref { font-size: inherit; color: inherit; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */

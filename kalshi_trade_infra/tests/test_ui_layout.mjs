@@ -743,3 +743,20 @@ test('Meridian: a strategy page\'s four-figure P&L stays on one line in a 320px 
   assert.equal(decl(all, '.detail #figs .fig', 'overflow-wrap'), 'anywhere');  // still the last resort, never overflow
   assert.equal(decl(all, '.detail #figs.measure', 'grid-template-columns', '@media (max-width: 720px)'), 'repeat(2, minmax(0, 1fr))');
 });
+
+// Explore walk 2026-10-31 at 390px, both themes: a market page's "Back to Explore" was 33px tall (Tau and Meridian);
+// Meridian's Bitcoin filter was 43px wide and a row named by its title alone (no condition, chip or close) a 26px link.
+test('a market page\'s Back to Explore is 44px to a thumb, its padding taken back so the heading stays put', () => {
+  for (const [file, media] of [['app.css', COARSE], ['app.meridian.css', '@media (hover: none), (pointer: coarse)']]) {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.mk-back a', 'padding-block', media), '13px', file);
+    assert.equal(decl(all, '.mk-back a', 'margin-block', media), '-6px', file);
+    assert.equal(decl(all, '.mk-back a', 'padding'), '7px 0', file);  // a desktop keeps its line
+  }
+});
+test('Meridian: Explore\'s Bitcoin filter and a title-only row\'s link are 44px to a thumb, the Context column untouched', () => {
+  const all = rules(read('app.meridian.css')), media = '@media (hover: none), (pointer: coarse)';
+  assert.equal(decl(all, '.explore-filters .xshow .chip', 'min-width', media), '44px');
+  assert.equal(decl(all, '.t-explore td.name[colspan] > a.market-name', 'min-height', media), '44px');
+  assert.ok(!all.some((r) => sels(r).some((s) => /market-context/.test(s)) && r.media === media), 'no touch rule reaches the Context column');
+});

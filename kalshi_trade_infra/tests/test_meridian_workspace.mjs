@@ -2697,7 +2697,7 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
     } else assert.ok(f.root.querySelector('#xbody .empty'));
     assert.equal(JSON.stringify(payload), before); assert.equal(postRequests(f).length, 0); assert.deepEqual(f.navigations, []);
     assert.deepEqual(f.requests.filter(request => request.path !== '/api/notifications').map(request => request.path), [endpoint]);
-    assert.equal(f.S.timers.length, 1);
+    assert.equal(f.S.timers.length, 2);  // its poll and the close clock
   }
 });
 
@@ -2764,7 +2764,7 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
   markets = Object.freeze([b, a]); f.root.querySelector('[data-sort="v24"]').onclick(); await flush(); check([a.t, b.t]);
   assert.deepEqual(f.requests.filter(request => request.path !== '/api/notifications').map(request => request.path),
     ['/api/explore?q=&sort=v24&page=0', '/api/explore?q=&sort=oi&page=0', '/api/explore?q=&sort=v24&page=0']);
-  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 1);
+  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 2);  // its poll and the close clock
 });
 
 test('Explore keeps every source event and contract independently legible when the sort interleaves event families', async () => {
@@ -2950,7 +2950,7 @@ test('Explore header sorting keeps the original criteria and search, resets pagi
   }
   assert.deepEqual(queries, [{q: 'btc', sort: 'oi', page: '2'}, ...['last', 'v24', 'oi'].map(sort => ({q: 'btc', sort, page: '0'}))]);
   assert.deepEqual(f.navigations, ['last', 'v24', 'oi'].map(sort => '/explore?' + new URLSearchParams({q: 'btc', sort, page: '0'})));
-  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 1);
+  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 2);  // its poll and the close clock
 });
 
 test('Explore ignores superseded requests and responses from a departed route, including its initial read', async () => {
@@ -5905,7 +5905,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin \$113,500 or above at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin \$113,500 or above at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open on Kalshi<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   // Each piece holds together ("bid 58¢" ended a 390px line and "/ ask 61¢" began the next), breaking only at "·".
   assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));

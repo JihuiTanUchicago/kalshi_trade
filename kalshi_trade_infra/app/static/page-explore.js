@@ -122,7 +122,9 @@ window.TauPage('explore', (T) => {
     // A contract nobody has traded and nobody quotes both sides of read only "— as of 01:36": it says so, and shows
     // the one side of the book there is.
     const quote = bid > 0 && ask > 0 ? `bid\u00a0${cents(bid)}\u00a0/ ask\u00a0${cents(ask)}` : ask > 0 ? `no bid\u00a0/ ask\u00a0${cents(ask)}` : bid > 0 ? `bid\u00a0${cents(bid)}\u00a0/ no ask` : '';
-    const priceSub = [mid == null ? 'No trades yet' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, quote,
+    // A price under half a cent read "≈ 0% chance of Yes" and one over 99.5¢ "≈ 100%", odds Kalshi's book doesn't give.
+    const chance = (p) => { const n = Math.round(p * 100); return n < 1 ? 'under\u00a01%' : n > 99 ? 'over\u00a099%' : `≈\u00a0${n}%`; };
+    const priceSub = [mid == null ? 'No trades yet' : `${chance(mid)} chance of Yes`, quote,
       d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as\u00a0of\u00a0${keepZone(settleAt(d.as_of))}`) : ''].filter(Boolean).join(SEP);
     const settled = d.result === 'yes' || d.result === 'no';
     // The close, counting down from when Tau read the market (as_of; the feed's snapshot is older, so it counts from
@@ -220,7 +222,7 @@ window.TauPage('explore', (T) => {
         ${exploreShowChips(f.btc)}
         <div class="figures measure" id="xfigs"></div>
       </div></div>`, `<p class="stale-note" id="xstale" role="status"></p><div id="xbody">${loading(240)}</div>`);
-    const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs'), gen = S.gen;
+    const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs'), staleNote = root.querySelector('#xstale'), gen = S.gen;
     // Kalshi sends 0 for a side nobody quotes (a closed contract, or no orders on that side): a closed row read
     // "Bid 0¢ · Ask 0¢", a Yes on offer for nothing. A side at 0 reads "—" and says why, as the market page's
     // "no bid / ask 5¢" does (its Yes price, the midpoint, already skips a 0 side).
@@ -269,10 +271,13 @@ window.TauPage('explore', (T) => {
         if (cfg) { if (shown) paintFigs(shown); throw e; }
         // Said aloud too (failure walk 2026-10-31): the failed list was a plain heading, and a screen reader that
         // pressed Try again, or opened the page, heard nothing at all.
-        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = reread;
+        // Its "Last updated 30s ago, retrying" line read over a list that never loaded: it stays hidden while the failed
+        // state shows (the polls go on retrying under it) and comes back with the next good read.
+        shown = null; staleNote.hidden = true; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = reread;
         announce(`Markets didn’t load. ${e.message}`, true); return;
       }
       if (mine !== seq || !tau && gen !== S.gen) return;
+      staleNote.hidden = false;
       paintFigs(d);
       if (typed && f.q) announce(d.markets.length ? `${num(d.matched)} ${+d.matched === 1 ? 'market matches' : 'markets match'} “${f.q}”.` : `No markets match “${f.q}”.`);
       if (!d.markets.length) {
@@ -345,7 +350,10 @@ window.TauPage('explore', (T) => {
     const setShow = (btc) => { f.btc = btc; f.page = 0; root.querySelectorAll('[data-show]').forEach((o) => o.setAttribute('aria-pressed', String(btc === (o.dataset.show === 'bitcoin')))); sync(); load(); };
     root.querySelectorAll('[data-show]').forEach((b) => b.onclick = () => setShow(b.dataset.show === 'bitcoin'));
     await load();
-    // The rows' closes ("in 3 min", "closed") are worked out afresh on each poll, so they count down with it.
+    // The rows' closes ("in 3 min", "closed") are worked out afresh on each poll, and the close clock rewrites them (and
+    // the hot rail's) every 5s between polls: walked 2026-10-31 with the polls failing, a row and the rail said "in under
+    // a minute" for a contract that had closed a minute before.
+    closeClock();
     poll(load, EXPLORE_POLL_MS, 'xstale');
   }
   return {viewExplore};

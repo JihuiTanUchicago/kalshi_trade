@@ -2058,6 +2058,8 @@ body.landing-body .apf { display: none; }
   :root { --apf-h: 44px; }
   .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }
+  /* A market page's "Back to Explore" (33px tall at 390px): 44px, its padding taken back so the heading stays put. */
+  .mk-back a { padding-block: 13px; margin-block: -6px; }
   /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
   .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
@@ -2226,7 +2228,7 @@ body.landing-body .apf { display: none; }
 /* The ticker moves to the next line whole when it fits there, and breaks inside only when it is wider than a line:
    a market page at 390px split "KXBTCD-26OCT2717-" from "T112999.99". */
 .kalshi-ref .tick { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-/* On a market page it is the line under the name ("Open for trading · Kalshi contract KX…"), at that line's size. */
+/* On a market page it is the line under the name ("Open on Kalshi · Kalshi contract KX…"), at that line's size. */
 .deck .kalshi-ref { font-size: inherit; color: inherit; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */

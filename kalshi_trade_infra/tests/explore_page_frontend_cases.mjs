@@ -47,7 +47,7 @@ export function explorePageCases({name, frontend}) {
     // The name line reads the market's name with this contract's strike, its status in words and the contract;
     // never the raw series alone.
     // The status follows the close clock (closeClock), so it sits in a data-close span of its own.
-    assert.match(f.root.innerHTML, /Bitcoin \$113,500 or above at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
+    assert.match(f.root.innerHTML, /Bitcoin \$113,500 or above at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open on Kalshi<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
   });
 
   test(`${name}: a market Tau doesn't research says so, with no raw series key in its name line`, async () => {
@@ -55,7 +55,7 @@ export function explorePageCases({name, frontend}) {
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau doesn’t research this market, so your strategies can’t trade it\./);
     assert.equal(next.querySelector('a.primary'), null, 'no research button for a market research can’t pick');
-    assert.match(f.root.innerHTML, />Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXFEDDECISION-26DEC-H0</);
+    assert.match(f.root.innerHTML, />Open on Kalshi<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXFEDDECISION-26DEC-H0</);
     assert.doesNotMatch(f.root.innerHTML, /KXFEDDECISION ·/);
   });
 
@@ -63,14 +63,14 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page({ticker: 'KXFEDDECISION-26DEC-H0', series: 'KXFEDDECISION', title: '', sub: ''}));
     assert.equal(f.root.querySelector('h1').textContent, 'Kalshi contract', 'never the raw ticker as the heading');
     // The ticker is labelled the way a position's is (kalshiRef): it read "Open for trading · KXFEDDECISION-26DEC-H0".
-    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open for trading\u00a0· Kalshi contract KXFEDDECISION-26DEC-H0$/);
+    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open on Kalshi\u00a0· Kalshi contract KXFEDDECISION-26DEC-H0$/);
     assert.doesNotMatch(f.root.querySelector('.board-title .deck').textContent, /·\sKX/);
   });
 
   test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
     const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
     assert.doesNotMatch(f.root.innerHTML, /Bitcoin (?:above \S+|\S+ or above) at 5pm ET ·/, 'the midnight contract is not the 5pm market');
-    assert.match(f.root.innerHTML, /Bitcoin \$113,000 or above at midnight ET\u00a0· <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span>\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
+    assert.match(f.root.innerHTML, /Bitcoin \$113,000 or above at midnight ET\u00a0· <span data-close="[^"]+" data-form="status" data-skew="\d+">Open on Kalshi<\/span>\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
     assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);
@@ -407,11 +407,11 @@ export function explorePageCases({name, frontend}) {
     const status = () => f.root.querySelector('.board-title .deck [data-close]');
     const deck = () => f.root.querySelector('.board-title .deck').textContent;
     const closes = () => f.root.querySelectorAll('.figures .m').find((m) => /^Clos/.test(m.querySelector('dt').textContent));
-    assert.equal(status().textContent, 'Open for trading');
-    assert.match(deck(), / · Open for trading · Kalshi contract KXBTCD-26OCT2803-T112999\.99$/);
+    assert.equal(status().textContent, 'Open on Kalshi');
+    assert.match(deck(), / · Open on Kalshi · Kalshi contract KXBTCD-26OCT2803-T112999\.99$/);
     const tick = async () => { for (const run of [...f.intervals.values()]) await run(); await settle(); };
     f.shiftClock(60000); await tick();
-    assert.equal(status().textContent, 'Open for trading', 'a minute and a half still to go');
+    assert.equal(status().textContent, 'Open on Kalshi', 'a minute and a half still to go');
     f.shiftClock(120000); await tick();
     assert.equal(status().textContent, 'Closed, result pending');
     assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'Closed, result pending', 'the line and the Closes figure agree');
@@ -419,7 +419,7 @@ export function explorePageCases({name, frontend}) {
     // A market Kalshi still calls active, read after its close, says closed from the start.
     const late = await open(page({as_of: now.toISOString(), close_time: new Date(now.getTime() - 90.5e3).toISOString()}));
     assert.equal(late.root.querySelector('.board-title .deck [data-close]').textContent, 'Closed, result pending');
-    assert.doesNotMatch(late.root.querySelector('.board-title .deck').textContent, /Open for trading/);
+    assert.doesNotMatch(late.root.querySelector('.board-title .deck').textContent, /Open on Kalshi/);
     assert.match(late.root.querySelector('.board-title .deck').textContent, / · Closed, result pending · Kalshi contract KXBTCD-26OCT2617-T113499\.99$/);
     late.clearTimers && late.clearTimers();
     // Kalshi's other statuses are its own word, on no clock: they read the same before and after the close.
@@ -431,7 +431,7 @@ export function explorePageCases({name, frontend}) {
       assert.ok(line().includes(' · ' + words + ' · Kalshi contract'), `${over.status}: ${line()}`);
       g.shiftClock(180000); for (const run of [...g.intervals.values()]) await run(); await settle();
       assert.ok(line().includes(' · ' + words + ' · Kalshi contract'), `${over.status} after the close: ${line()}`);
-      assert.doesNotMatch(line(), /Open for trading/);
+      assert.doesNotMatch(line(), /Open on Kalshi/);
       g.clearTimers && g.clearTimers();
     }
   });
@@ -544,5 +544,62 @@ export function explorePageCases({name, frontend}) {
     assert.match(html, /bid 55¢ \/ ask 57¢/);
     assert.match(html, /as of [^<·]* (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)<\/dd>/, 'the read time keeps its zone');
     assert.match(html, /Closes(?:<\/span>)?<\/dt><dd><span class="fig ">[^<]*\d (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)<\/span>/, 'the close keeps its zone');
+  });
+
+  // Explore walk 2026-10-31 (both themes, 1280 and 390, stubbed feed).
+  // The list (/explore), with `answer(n)` for its nth read.
+  const openList = async (answer) => {
+    let n = 0;
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? answer(++n) : response({}))});
+    f.S.me.markets = MARKETS;
+    f.location.pathname = '/explore'; f.location.search = '';
+    await f.viewExplore(); await settle();
+    return f;
+  };
+  const feed = (markets) => response({at: new Date().toISOString(), total: 41000, shown: markets.length, matched: markets.length, page: 0, per: 40, sort: 'v24', markets});
+  const FAIL = () => response({error: 'Something went wrong on our side.'}, 500);
+  const tickAll = async (f) => { for (const run of [...f.intervals.values()]) await run(); await settle(); };
+
+  // A 15-minute row 40s from its close said "in under a minute", and the hot rail with it, a minute after the close:
+  // the rows were worked out only on a good poll. The close clock rewrites them between polls, failing or not.
+  test(`${name}: Explore's rows count down to closed between polls, even while the polls fail`, async () => {
+    const row = {t: 'KXNBAGAME-26OCT26MINDEN-MIN', s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', bid: .41, ask: .42, last: .41, v24: 3008, oi: 1100,
+      ct: new Date(Date.now() + 40.5e3).toISOString()};
+    const f = await openList((n) => (n === 1 ? feed([row]) : FAIL()));
+    const chip = () => f.root.querySelector('#xrows [data-close]').textContent;
+    assert.match(chip(), /^closes .* in under a minute$/i);
+    f.shiftClock(60000); await tickAll(f);
+    assert.match(chip(), /^closed \d\d:\d\d/i, 'past its close the row says closed');
+    assert.doesNotMatch(chip(), /in under a minute/);
+    f.clearTimers && f.clearTimers();
+  });
+
+  // A list that never loaded read "Last updated 30s ago, retrying" over "Markets didn't load": nothing had been updated.
+  // The line stays hidden while the failed state shows and comes back with the list.
+  test(`${name}: a list that never loaded doesn't say when it was last updated while its polls retry`, async () => {
+    let ok = false;
+    const row = {t: 'KXNBAGAME-26OCT26MINDEN-MIN', s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', bid: .41, ask: .42, v24: 3008, oi: 1100, ct: null};
+    const f = await openList(() => (ok ? feed([row]) : FAIL()));
+    const note = () => f.root.querySelector('#xstale');
+    assert.match(f.root.querySelector('#xbody').textContent, /Markets didn’t load/);
+    for (let i = 0; i < 4; i++) { f.shiftClock(31000); await tickAll(f); }
+    assert.ok(note().hidden || !note().textContent, `no stale line over a list that never loaded: "${note().textContent}"`);
+    assert.match(f.root.querySelector('#xbody').textContent, /Markets didn’t load/);
+    ok = true;
+    for (let i = 0; i < 8 && !f.root.querySelector('#xrows'); i++) { f.shiftClock(15000); await tickAll(f); }
+    assert.ok(f.root.querySelector('#xrows'), 'a later poll brings the list');
+    assert.equal(note().hidden, false, 'the line is back for the list it now shows');
+    assert.equal(note().textContent, '');
+    f.clearTimers && f.clearTimers();
+  });
+
+  // A price under half a cent read "≈ 0% chance of Yes" and one over 99.5¢ "≈ 100%".
+  test(`${name}: a market page's chance of Yes never reads 0% or 100% for a quoted price`, async () => {
+    const chance = async (bid, ask) => (/([^\s>]+\u00a0\d+%) chance of Yes/.exec((await open(page({yes_bid: bid, yes_ask: ask, last: null}))).root.innerHTML) || [])[1];
+    assert.equal(await chance('0.003', '0.005'), 'under\u00a01%');
+    assert.equal(await chance('0.995', '0.998'), 'over\u00a099%');
+    assert.equal(await chance('0.01', '0.02'), '≈\u00a02%');
+    assert.equal(await chance('0.98', '0.99'), '≈\u00a099%');
+    assert.equal(await chance('0.55', '0.57'), '≈\u00a056%');
   });
 }
