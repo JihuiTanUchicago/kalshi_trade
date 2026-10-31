@@ -799,7 +799,10 @@
     const parts = BELL_SUM.filter(([k]) => by[k] > 0).map(([k, say]) => say(+by[k]));
     const rest = Object.entries(by).filter(([k]) => !BELL_SUM.some(([b]) => b === k)).reduce((a, [, n]) => a + n, 0);
     if (rest) parts.push(`${num(rest)} other${rest === 1 ? '' : 's'}`);
-    return `<p class="bell-sum">${num(d.unread)} new: ${parts.join(SEP)}</p>`;
+    // The parts count the newest notices the server read (unread_kinds_of, 100), the lead count every unread one:
+    // "131 new: 50 strategies put on paper · 50 comments" added up to 100. Past that window it says which it covers.
+    const covered = Object.values(by).reduce((a, n) => a + (+n || 0), 0);
+    return `<p class="bell-sum">${num(d.unread)} new${covered < d.unread ? `; the newest ${num(+d.unread_kinds_of || covered)}` : ''}: ${parts.join(SEP)}</p>`;
   }
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');

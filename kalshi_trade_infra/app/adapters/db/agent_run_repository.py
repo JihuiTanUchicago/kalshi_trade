@@ -158,9 +158,10 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
             # explored = developed + dropped, as run_research reports it (most theses are dropped)
             tried_n = len(ck.get("tried") or []) + int(ck.get("dropped_n") or 0) if ck else 0
             passed_n = int(ck.get("total_passed") or 0) if ck else 0
-            msg = ("Explored %d hypothes%s, then the session was interrupted and stopped — start a new "
-                   "one to keep going." % (tried_n, "is" if tried_n == 1 else "es")) if tried_n \
-                else "The session was interrupted before it explored a hypothesis — start a new one."
+            # In the customer's words ("ideas", as every page counts them); customer_text.idea_words reads older rows so.
+            msg = ("Tested %d idea%s, then the session was interrupted and stopped — start a new "
+                   "one to keep going." % (tried_n, "" if tried_n == 1 else "s")) if tried_n \
+                else "The session was interrupted before it tested an idea — start a new one."
             cur.execute(
                 """UPDATE app_agent_runs SET status='stopped', error=%s, hypotheses_tried=%s,
                      strategies_passed=%s, finished_at=%s

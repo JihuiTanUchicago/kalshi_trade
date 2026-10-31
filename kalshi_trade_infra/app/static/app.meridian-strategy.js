@@ -342,6 +342,7 @@ window.TauPage('strategy', (T) => {
     // "Demo +$1.16 realized" read like real money and like a figure before fees, and an open position's cost
     // isn't in it. The engine takes every fill's Kalshi fee off a demo or live trade's P&L.
     const BOOK_NET = { live: 'real money, after Kalshi fees', demo: `after Kalshi fees, in ${DEMO_BOOK}: not real money`, paper: PAPER_NET };
+    const DEMO_WINDOW = `${SEP}since its first demo trade: a demo reload doesn\u2019t reset it`;
     const lines = order.map((mode) => {
       const ds = (s.deployments || []).filter((d) => d.mode === mode);
       if (!ds.length) return '';
@@ -350,7 +351,10 @@ window.TauPage('strategy', (T) => {
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
       // What follows the figure: its open positions and when it was deployed. After the paper fills button the first "·"
       // stays with the button (gloSep): "· 1 open" began a line.
-      const head = n ? `${money(pnl)} realized over ${num(n)} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}` : 'No closed trades yet';
+      // The demo figure counts every closed demo trade, as Deploy and the track record do, while the dashboard and Funds
+      // count Tau's demo book from its last reload: after a reload "+$0.51 realized … in Tau's demo book" sat beside a
+      // dashboard's "+$0.36 realized since reload" with no word of its window (walk 2026-10-31). It says it.
+      const head = n ? `${money(pnl)} realized over ${num(n)} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'demo' ? DEMO_WINDOW : ''}` : 'No closed trades yet';
       const tail = [open ? `${num(open)} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : '', since ? `<span class="nobr">deployed ${when(since)}</span>` : ''].filter(Boolean).join(SEP);
       return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
@@ -442,7 +446,8 @@ window.TauPage('strategy', (T) => {
       // Before its first close a book has no realized P&L: "0 closed trades · $0.00 realized" read as a result.
       // Each says what its realized is net of, as its Since deploying line does: paper's "after Kalshi fees and the spread"
       // sat over a demo rung's bare "−$0.29 realized" (walk 2026-10-31).
-      const stats = !n && !+pnl ? 'no closed trades yet' : `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${n ? `, ${m === 'paper' ? PAPER_NET : FEES_NET}` : ''}`;
+      // The demo rung's counts every closed demo trade (a reload doesn't reset it), as its Since deploying line says.
+      const stats = !n && !+pnl ? 'no closed trades yet' : `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${n ? `, ${m === 'paper' ? PAPER_NET : FEES_NET}${m === 'demo' ? ', since its first demo trade' : ''}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats}${SEP}${demoHealthLine(s.demo_health)}</p>`;
       const runs = ds.some((d) => d.status === 'running');

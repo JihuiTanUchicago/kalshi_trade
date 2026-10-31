@@ -185,6 +185,31 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, said);
   });
 
+  // Walk 2026-10-31: a failed autopilot session that tested nothing said "The autopilot takes these results into its
+  // next ideas" with no result to take. It says only what the autopilot does next; one that tested something keeps it.
+  test(`${name}: an autopilot session that tested nothing never says the autopilot takes its results`, async () => {
+    const at = async (run, strategies = []) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+        ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, by_autopilot: 1, ...run}, events: [], strategies})
+        : response({})});
+      f.S.me.user.autopilot = true;
+      await f.viewRun(9); f.clearTimers();
+      return f.root.querySelector('#runnext').innerHTML;
+    };
+    const results = /takes these results/, starts = /<span data-ap-next>The autopilot starts its next session on its own\.<\/span>/;
+    const err = 'The research model couldn’t be reached just now, so the session stopped.';
+    for (const run of [{status: 'failed', stop_reason: 'error', error: err, hypotheses_tried: 0},
+      {status: 'stopped', stop_reason: 'interrupted', error: 'The session was interrupted before it tested an idea — start a new one.', hypotheses_tried: 0},
+      {status: 'succeeded', stop_reason: 'limit', hypotheses_tried: 0}]) {
+      const next = await at(run);
+      assert.doesNotMatch(next, results, run.status); assert.match(next, starts, run.status);
+    }
+    // Tested ideas, even with no strategy row listed (an interrupted one), or a failed one that listed some: kept.
+    assert.match(await at({status: 'stopped', stop_reason: 'interrupted', error: 'Interrupted.', hypotheses_tried: 3}), results);
+    assert.match(await at({status: 'failed', stop_reason: 'error', error: err, hypotheses_tried: 0},
+      [{id: 42, title: 'Late fade', status: 'failed', market: 'btc15m', direction: 'custom'}]), results);
+  });
+
   test(`${name}: a verdict's figures lead with the average per trade after fees, and name the gate's 90% range`, async () => {
     const stats = {n_trades: 132, mean_net_return: 0.031, p_value: 0.012, ci: {lo: 0.006, hi: 0.058}};
     const f = await open({status: 'succeeded', stop_reason: 'limit'}, [ev(1, 'hypothesis', 'Idea'),

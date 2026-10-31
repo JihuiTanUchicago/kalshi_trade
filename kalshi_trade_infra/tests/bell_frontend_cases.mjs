@@ -92,6 +92,24 @@ export function bellCases({name, frontend}) {
     assert.match(await empty(true), /passes its paper test or is ready for live, and/);
   });
 
+  // Walk 2026-10-31: "131 new: 50 strategies put on paper · 50 comments": the lead counted every unread notice, the
+  // parts only the newest 100 the server read (unread_kinds_of). Past that window the summary says which it covers.
+  test(`${name}: the bell's summary says its parts cover the newest notices when more are unread than it read`, async () => {
+    const items = [1, 2, 3, 4].map((i) => ({id: i, kind: i % 2 ? 'deployed' : 'comment', body: `Notice ${i}.`, link: null, created_at: ago(i * 60e3), read: false, more: 0}));
+    const sum = async (d) => {
+      const f = dashboard({items, ...d}); f.location.pathname = '/';
+      await f.render(); await settle();
+      const el = f.root.querySelector('.bell-sum');
+      f.clearTimers && f.clearTimers();
+      return el ? el.textContent : '';
+    };
+    assert.equal(await sum({unread: 131, unread_kinds: {deployed: 50, comment: 50}, unread_kinds_of: 100}),
+      '131 new; the newest 100: 50 strategies put on paper\u00a0· 50 comments');
+    // Every unread one counted in the parts: as before.
+    assert.equal(await sum({unread: 6, unread_kinds: {deployed: 4, comment: 2}, unread_kinds_of: 100}),
+      '6 new: 4 strategies put on paper\u00a0· 2 comments');
+  });
+
   test(`${name}: a notice about a strategy no longer in the list says so as text, and a big count is grouped`, async () => {
     // Walk 2026-10-31: a shared strategy the user later deleted, and a forward-test pass of one deleted since,
     // linked to "Not found". The server marks them gone; the line says so and opens nothing.
